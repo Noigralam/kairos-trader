@@ -18,9 +18,11 @@ build/
 secrets.json
 config.json
 
-# Logs
+# Logs & runtime state
 *.log
 logs/
+data/state.json
+data/trades.db
 
 # IDE
 .vscode/
