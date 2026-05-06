@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Crypto_Bot</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --green:   #3fb950;
+      --red:     #f85149;
+      --yellow:  #d29922;
+      --blue:    #58a6ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 24px; border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
+
+    .badge {
+      padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+    .badge.running  { background: #1a3a1f; color: var(--green); }
+    .badge.paused   { background: #3a2e0a; color: var(--yellow); }
+    .badge.stopped  { background: #3a1a1a; color: var(--red); }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+    .stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px;
+    }
+    .stat-card .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .stat-card .value { font-size: 22px; font-weight: 600; }
+    .stat-card .value.positive { color: var(--green); }
+    .stat-card .value.negative { color: var(--red); }
+
+    .controls {
+      display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap;
+    }
+    button {
+      padding: 8px 20px; border-radius: 6px; border: 1px solid var(--border);
+      cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity .15s;
+      background: var(--surface); color: var(--text);
+    }
+    button:hover { opacity: .8; }
+    button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    button.danger  { background: #6e1a1a; border-color: var(--red); color: var(--red); }
+    button.warning { background: #3a2e0a; border-color: var(--yellow); color: var(--yellow); }
+    button.override { padding: 4px 12px; font-size: 12px; }
+
+    section { margin-bottom: 28px; }
+    section h2 { font-size: 14px; font-weight: 600; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-size: 12px; font-weight: 500; background: var(--surface); }
+    td { font-size: 13px; }
+    tr:last-child td { border-bottom: none; }
+    .tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+    .empty { padding: 24px; text-align: center; color: var(--muted); }
+    .buy  { color: var(--green); font-weight: 600; }
+    .sell { color: var(--red);   font-weight: 600; }
+    .pos  { color: var(--green); }
+    .neg  { color: var(--red);   }
+
+    #refresh-indicator { font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Crypto_Bot</h1>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span id="refresh-indicator">Refreshing…</span>
+    <span id="status-badge" class="badge stopped">stopped</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Balance</div>
+      <div class="value" id="balance">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total P&L</div>
+      <div class="value" id="pnl">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total Trades</div>
+      <div class="value" id="total-trades">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Mode</div>
+      <div class="value" id="mode" style="font-size:16px;">—</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" onclick="control('start')">▶ Start</button>
+    <button class="warning" onclick="control('pause')">⏸ Pause</button>
+    <button onclick="control('resume')">↺ Resume</button>
+    <button class="danger" onclick="control('stop')">■ Stop</button>
+  </div>
+
+  <section>
+    <h2>Open Positions</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Pair</th>
+            <th>Entry Price</th>
+            <th>Amount</th>
+            <th>Value (EUR)</th>
+            <th>Stop-Loss</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="positions-body">
+          <tr><td colspan="6" class="empty">No open positions</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Recent Trades</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time (UTC)</th>
+            <th>Pair</th>
+            <th>Side</th>
+            <th>Price</th>
+            <th>Amount</th>
+            <th>Value (EUR)</th>
+            <th>PnL</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="trades-body">
+          <tr><td colspan="8" class="empty">No trades yet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Tax Summary (Vero)</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>Year</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net P&L (EUR)</th></tr>
+        </thead>
+        <tbody id="tax-body">
+          <tr><td colspan="4" class="empty">No data</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  function fmt(n, decimals=2) {
+    if (n === null || n === undefined) return '—';
+    return '€' + Number(n).toFixed(decimals);
+  }
+  function fmtPnl(n) {
+    if (n === null || n === undefined) return '—';
+    const v = Number(n).toFixed(2);
+    const cls = n >= 0 ? 'pos' : 'neg';
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}€${v}</span>`;
+  }
+
+  async function control(action, pair) {
+    const body = { action };
+    if (pair) body.pair = pair;
+    await fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await refresh();
+  }
+
+  async function refresh() {
+    try {
+      const [statusRes, tradesRes, taxRes] = await Promise.all([
+        fetch('/api/status'),
+        fetch('/api/trades'),
+        fetch('/api/tax'),
+      ]);
+      const s = await statusRes.json();
+      const trades = await tradesRes.json();
+      const tax = await taxRes.json();
+
+      // Badge
+      const badge = document.getElementById('status-badge');
+      badge.textContent = s.status;
+      badge.className = 'badge ' + s.status;
+
+      // Stats
+      document.getElementById('balance').textContent = fmt(s.balance);
+      document.getElementById('mode').textContent = s.mode;
+      document.getElementById('total-trades').textContent = s.total_trades;
+      const pnlEl = document.getElementById('pnl');
+      pnlEl.innerHTML = fmtPnl(s.total_pnl);
+
+      // Positions
+      const pb = document.getElementById('positions-body');
+      const pairs = Object.keys(s.positions);
+      if (pairs.length === 0) {
+        pb.innerHTML = '<tr><td colspan="6" class="empty">No open positions</td></tr>';
+      } else {
+        pb.innerHTML = pairs.map(pair => {
+          const p = s.positions[pair];
+          return `<tr>
+            <td>${pair}</td>
+            <td>${fmt(p.entry_price)}</td>
+            <td>${Number(p.amount).toFixed(6)}</td>
+            <td>${fmt(p.value_eur)}</td>
+            <td><span class="neg">${fmt(p.stop_loss)}</span></td>
+            <td><button class="override danger" onclick="control('override','${pair}')">Close</button></td>
+          </tr>`;
+        }).join('');
+      }
+
+      // Trades
+      const tb = document.getElementById('trades-body');
+      if (trades.length === 0) {
+        tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+      } else {
+        tb.innerHTML = trades.map(t => `<tr>
+          <td>${t.timestamp.slice(0,19)}</td>
+          <td>${t.pair}</td>
+          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${fmt(t.price)}</td>
+          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>${fmt(t.value_eur)}</td>
+          <td>${fmtPnl(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.notes || '—'}</td>
+        </tr>`).join('');
+      }
+
+      // Tax
+      const txb = document.getElementById('tax-body');
+      if (tax.length === 0) {
+        txb.innerHTML = '<tr><td colspan="4" class="empty">No data</td></tr>';
+      } else {
+        txb.innerHTML = tax.map(r => `<tr>
+          <td>${r.year}</td>
+          <td class="pos">${fmt(r.gains)}</td>
+          <td class="neg">${fmt(r.losses)}</td>
+          <td>${fmtPnl(r.net_pnl)}</td>
+        </tr>`).join('');
+      }
+
+      document.getElementById('refresh-indicator').textContent =
+        'Updated ' + new Date().toLocaleTimeString();
+
+    } catch (e) {
+      document.getElementById('refresh-indicator').textContent = 'Connection error';
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>
