@@ -1,6 +1,8 @@
+import logging
 import requests
-from datetime import datetime
 from . import config
+
+log = logging.getLogger("cryptobot")
 
 
 def _discord(message: str):
@@ -13,7 +15,7 @@ def _discord(message: str):
 
 
 def _terminal(message: str):
-    print(f"[{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC] {message}")
+    log.info(message)
 
 
 def notify(message: str, discord: bool = True):

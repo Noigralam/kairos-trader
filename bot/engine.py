@@ -1,7 +1,10 @@
+import logging
 import threading
 import time
 from enum import Enum
 from . import config
+
+log = logging.getLogger("cryptobot")
 from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
 from .simulator import open_position, close_position, check_stops, get_state
@@ -60,6 +63,7 @@ def _loop():
                     close_position(pair, prices[pair], reason="signal")
 
         except Exception as e:
+            log.error(e, exc_info=True)
             notify(f"[ERROR] {e}", discord=False)
 
         time.sleep(sleep_sec)
