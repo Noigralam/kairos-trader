@@ -15,4 +15,4 @@ POSITION_SIZE_PCT = float(os.getenv("POSITION_SIZE_PCT", "0.10"))
 INTERVAL = os.getenv("INTERVAL", "1h")
 
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
-WEB_PORT = int(os.getenv("WEB_PORT", "5000"))
+WEB_PORT = int(os.getenv("WEB_PORT", "8888"))
