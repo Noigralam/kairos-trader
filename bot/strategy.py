@@ -37,13 +37,14 @@ def compute_signal(
     rsi_period: int = 14,
     ema_fast: int = 9,
     ema_slow: int = 21,
+    ema_trend: int = 50,
 ) -> StrategyResult:
     """
     RSI + EMA crossover strategy.
-    BUY  when EMA-fast crosses above EMA-slow AND RSI < 60 (not yet overbought).
+    BUY  when EMA-fast crosses above EMA-slow AND RSI < 60 AND price > EMA-trend.
     SELL when EMA-fast crosses below EMA-slow OR RSI > 70 (overbought).
     """
-    if len(df) < ema_slow + 2:
+    if len(df) < ema_trend + 2:
         return StrategyResult(Signal.HOLD, "Not enough candles", 0.0, 0.0, 0.0)
 
     close = df["close"]
@@ -51,16 +52,22 @@ def compute_signal(
     ema_f_series = _ema(close, ema_fast)
     ema_s_series = _ema(close, ema_slow)
 
+    ema_trend_series = _ema(close, ema_trend)
+
     rsi = float(rsi_series.iloc[-1])
     ema_f = float(ema_f_series.iloc[-1])
     ema_s = float(ema_s_series.iloc[-1])
+    ema_t = float(ema_trend_series.iloc[-1])
     prev_ema_f = float(ema_f_series.iloc[-2])
     prev_ema_s = float(ema_s_series.iloc[-2])
 
     crossed_above = prev_ema_f <= prev_ema_s and ema_f > ema_s
     crossed_below = prev_ema_f >= prev_ema_s and ema_f < ema_s
+    price = float(close.iloc[-1])
 
     if crossed_above and rsi < 60:
+        if price < ema_t:
+            return StrategyResult(Signal.HOLD, f"BUY blocked — price below EMA{ema_trend} (downtrend)", rsi, ema_f, ema_s)
         return StrategyResult(Signal.BUY, f"EMA crossover ↑, RSI={rsi:.1f}", rsi, ema_f, ema_s)
     if crossed_below or rsi > 70:
         reason = "EMA crossover ↓" if crossed_below else f"RSI overbought ({rsi:.1f})"
