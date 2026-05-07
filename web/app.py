@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 from bot import engine, simulator, db, config
+from bot.notifier import get_recent_logs
 
 app = Flask(__name__)
 
@@ -45,6 +46,11 @@ def api_tax():
         {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3]}
         for r in rows
     ])
+
+
+@app.route("/api/log")
+def api_log():
+    return jsonify(get_recent_logs())
 
 
 @app.route("/api/control", methods=["POST"])

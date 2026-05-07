@@ -1,8 +1,12 @@
+import collections
+import datetime
 import logging
 import requests
 from . import config
 
 log = logging.getLogger("cryptobot")
+
+_log_buffer: collections.deque = collections.deque(maxlen=50)
 
 
 def _discord(message: str):
@@ -16,6 +20,14 @@ def _discord(message: str):
 
 def _terminal(message: str):
     log.info(message)
+    _log_buffer.append({
+        "time": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+        "msg": message,
+    })
+
+
+def get_recent_logs() -> list:
+    return list(reversed(_log_buffer))
 
 
 def notify(message: str, discord: bool = True):

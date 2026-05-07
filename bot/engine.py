@@ -49,14 +49,39 @@ def _loop():
 
         try:
             prices = {pair: get_price(pair) for pair in config.TRADING_PAIRS}
+            notify(
+                "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
+                discord=False,
+            )
             check_stops(prices)
 
             state = get_state()
-            for pair in config.TRADING_PAIRS:
-                df = get_klines(pair)
-                result = compute_signal(df)
-                has_position = pair in state.positions
+            results = {pair: compute_signal(get_klines(pair)) for pair in config.TRADING_PAIRS}
 
+            # Per-pair detail: file + web buffer only
+            for pair, result in results.items():
+                pos_flag = "IN" if pair in state.positions else "OUT"
+                ema_cmp = "↑" if result.ema_fast > result.ema_slow else "↓"
+                notify(
+                    f"[TICK] {pair} ({pos_flag})  RSI={result.rsi:.1f}  "
+                    f"EMA9={result.ema_fast:.2f} {ema_cmp} EMA21={result.ema_slow:.2f}  "
+                    f"→ {result.signal.value}: {result.reason}",
+                    discord=False,
+                )
+
+            # Compact Discord summary (one message per tick)
+            price_header = "  ".join(f"{p} €{prices[p]:,.0f}" for p in config.TRADING_PAIRS)
+            signal_lines = []
+            for pair, result in results.items():
+                pos_flag = "IN" if pair in state.positions else "—"
+                signal_lines.append(
+                    f"`{pair}` RSI={result.rsi:.1f} → **{result.signal.value}** — {result.reason}  `({pos_flag})`"
+                )
+            notify("**[TICK]** " + price_header + "\n" + "\n".join(signal_lines))
+
+            # Execute signals
+            for pair, result in results.items():
+                has_position = pair in state.positions
                 if result.signal == Signal.BUY and not has_position:
                     open_position(pair, prices[pair])
                 elif result.signal == Signal.SELL and has_position:
