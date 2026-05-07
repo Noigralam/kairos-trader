@@ -7,7 +7,7 @@ from . import config
 log = logging.getLogger("cryptobot")
 from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
-from .simulator import open_position, close_position, check_stops, get_state
+from .simulator import open_position, close_position, get_state
 from .notifier import notify, bot_status_alert
 
 INTERVAL_SECONDS = {
@@ -53,7 +53,6 @@ def _loop():
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
                 discord=False,
             )
-            check_stops(prices)
 
             state = get_state()
             results = {pair: compute_signal(get_klines(pair)) for pair in config.TRADING_PAIRS}
@@ -79,13 +78,16 @@ def _loop():
                 )
             notify("**[TICK]** " + price_header + "\n" + "\n".join(signal_lines))
 
-            # Execute signals
+            # Execute signals — never sell below entry price
             for pair, result in results.items():
                 has_position = pair in state.positions
                 if result.signal == Signal.BUY and not has_position:
                     open_position(pair, prices[pair])
                 elif result.signal == Signal.SELL and has_position:
-                    close_position(pair, prices[pair], reason="signal")
+                    if prices[pair] > state.positions[pair].entry_price:
+                        close_position(pair, prices[pair], reason="signal")
+                    else:
+                        notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below entry €{state.positions[pair].entry_price:,.2f}", discord=False)
 
         except Exception as e:
             log.error(e, exc_info=True)
