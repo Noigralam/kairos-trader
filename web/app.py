@@ -19,12 +19,15 @@ def api_status():
         "balance": round(state.balance, 2),
         "total_trades": state.total_trades,
         "total_pnl": round(state.total_pnl, 2),
+        "total_fees": round(state.total_fees, 4),
         "positions": {
             pair: {
                 "entry_price": pos.entry_price,
                 "amount": pos.amount,
-                "stop_loss": pos.stop_loss_price,
                 "value_eur": round(pos.value_eur, 2),
+                "highest_price": pos.peak(),
+                "trailing_stop": round(pos.trailing_stop_level(), 2),
+                "take_profit": pos.take_profit_price,
             }
             for pair, pos in state.positions.items()
         },

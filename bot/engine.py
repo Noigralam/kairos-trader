@@ -7,7 +7,7 @@ from . import config
 log = logging.getLogger("cryptobot")
 from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
-from .simulator import open_position, close_position, get_state
+from .simulator import open_position, close_position, get_state, check_stops
 from .notifier import notify, bot_status_alert
 
 INTERVAL_SECONDS = {
@@ -76,7 +76,11 @@ def _loop():
                 signal_lines.append(
                     f"`{pair}` RSI={result.rsi:.1f} → **{result.signal.value}** — {result.reason}  `({pos_flag})`"
                 )
-            notify("**[TICK]** " + price_header + "\n" + "\n".join(signal_lines))
+            footer = f"PnL: €{state.total_pnl:+.2f}  |  Fees paid: €{state.total_fees:.4f}  |  Trades: {state.total_trades}"
+            notify("**[TICK]** " + price_header + "\n" + "\n".join(signal_lines) + "\n" + footer)
+
+            # Check stop-loss and take-profit on every tick
+            check_stops(prices)
 
             # Execute signals — never sell below entry price
             for pair, result in results.items():
