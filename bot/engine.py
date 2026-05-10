@@ -94,10 +94,12 @@ def _loop():
                         notify(f"[DCA] {pair} down {drop*100:.1f}% from entry — averaging down", discord=False)
                         dca_position(pair, prices[pair])
                 elif result.signal == Signal.SELL and has_position:
-                    if prices[pair] > state.positions[pair].entry_price:
+                    pos = state.positions[pair]
+                    min_exit = pos.entry_price * (1 + config.MIN_EXIT_PROFIT_PCT)
+                    if prices[pair] >= min_exit:
                         close_position(pair, prices[pair], reason="signal")
                     else:
-                        notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below entry €{state.positions[pair].entry_price:,.2f}", discord=False)
+                        notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below min exit €{min_exit:,.2f} (entry €{pos.entry_price:,.2f} +{config.MIN_EXIT_PROFIT_PCT*100:.1f}%)", discord=False)
 
         except Exception as e:
             log.error(e, exc_info=True)
