@@ -321,7 +321,7 @@
       }
 
       document.getElementById('refresh-indicator').textContent =
-        'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki' });
+        'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki', hour: '2-digit', minute: '2-digit' });
       document.getElementById('last-tick').textContent =
         'Last tick: ' + (s.last_tick || '—');
 
@@ -331,7 +331,7 @@
   }
 
   refresh();
-  setInterval(refresh, 5000);
+  setInterval(refresh, 60000);
 </script>
 </body>
 </html>
