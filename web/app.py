@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 from bot import engine, simulator, db, config
+from bot.engine import get_last_tick
 from bot.notifier import get_recent_logs
 
 app = Flask(__name__)
@@ -15,6 +16,7 @@ def api_status():
     state = simulator.get_state()
     return jsonify({
         "status": engine.get_status(),
+        "last_tick": get_last_tick(),
         "mode": config.MODE,
         "balance": round(state.balance, 2),
         "total_trades": state.total_trades,

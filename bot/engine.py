@@ -25,10 +25,15 @@ class BotStatus(Enum):
 _status = BotStatus.STOPPED
 _thread: threading.Thread = None
 _lock = threading.Lock()
+_last_tick: str = None
 
 
 def get_status() -> str:
     return _status.value
+
+
+def get_last_tick() -> str:
+    return _last_tick
 
 
 def _set_status(new_status: BotStatus):
@@ -48,6 +53,9 @@ def _loop():
             continue
 
         try:
+            import datetime, zoneinfo
+            global _last_tick
+            _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M:%S")
             prices = {pair: get_price(pair) for pair in config.TRADING_PAIRS}
             notify(
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),

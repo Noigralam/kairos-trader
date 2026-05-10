@@ -78,6 +78,7 @@
     .neg  { color: var(--red);   }
 
     #refresh-indicator { font-size: 11px; color: var(--muted); }
+    #last-tick { font-size: 11px; color: var(--muted); }
 
     .log-box {
       background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
@@ -98,7 +99,10 @@
 <header>
   <h1>Crypto_Bot</h1>
   <div style="display:flex;align-items:center;gap:16px;">
-    <span id="refresh-indicator">Refreshing…</span>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+      <span id="refresh-indicator">Refreshing…</span>
+      <span id="last-tick">Last tick: —</span>
+    </div>
     <span id="status-badge" class="badge stopped">stopped</span>
   </div>
 </header>
@@ -318,6 +322,8 @@
 
       document.getElementById('refresh-indicator').textContent =
         'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki' });
+      document.getElementById('last-tick').textContent =
+        'Last tick: ' + (s.last_tick || '—');
 
     } catch (e) {
       document.getElementById('refresh-indicator').textContent = 'Connection error';
