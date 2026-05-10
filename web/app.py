@@ -1,9 +1,14 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 from bot import engine, simulator, db, config
 from bot.engine import get_last_tick
 from bot.notifier import get_recent_logs
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(app.static_folder, "favicon.ico", mimetype="image/x-icon")
 
 
 @app.route("/")
