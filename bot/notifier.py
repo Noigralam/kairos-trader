@@ -1,8 +1,15 @@
 import collections
 import datetime
 import logging
+import zoneinfo
 import requests
 from . import config
+
+_TZ = zoneinfo.ZoneInfo("Europe/Helsinki")
+
+
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(tz=_TZ)
 
 log = logging.getLogger("cryptobot")
 
@@ -21,7 +28,7 @@ def _discord(message: str):
 def _terminal(message: str):
     log.info(message)
     _log_buffer.append({
-        "time": datetime.datetime.utcnow().strftime("%H:%M:%S"),
+        "time": _now().strftime("%Y-%m-%dT%H:%M:%S"),
         "msg": message,
     })
 

@@ -5,6 +5,7 @@ from . import config
 from .risk import Position, create_position, update_peak, check_trailing_stop, check_take_profit, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert
 from .db import log_trade
+from .exchange import round_qty
 
 BINANCE_FEE = config.BINANCE_FEE
 STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "state.json")
@@ -88,6 +89,8 @@ def open_position(pair: str, price: float):
         return
 
     pos = create_position(pair, price, _state.balance)
+    pos.amount = round_qty(pair, pos.amount)
+    pos.value_eur = pos.amount * price
     buy_fee = pos.value_eur * BINANCE_FEE
     _state.positions[pair] = pos
     _state.balance -= pos.value_eur + buy_fee

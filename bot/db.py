@@ -1,6 +1,9 @@
 import sqlite3
 import os
+import zoneinfo
 from datetime import datetime
+
+_TZ = zoneinfo.ZoneInfo("Europe/Helsinki")
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "trades.db")
 
@@ -33,7 +36,7 @@ def log_trade(pair, side, price, amount, value_eur, fee, mode, pnl=None, notes=N
     conn.execute("""
         INSERT INTO trades (timestamp, pair, side, price, amount, value_eur, fee, mode, pnl, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (datetime.utcnow().isoformat(), pair, side, price, amount, value_eur, fee, mode, pnl, notes))
+    """, (datetime.now(tz=_TZ).isoformat(), pair, side, price, amount, value_eur, fee, mode, pnl, notes))
     conn.commit()
     conn.close()
 
@@ -57,7 +60,7 @@ def get_tax_summary():
             SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END)   AS losses,
             SUM(pnl)                                            AS net_pnl
         FROM trades
-        WHERE pnl IS NOT NULL
+        WHERE pnl IS NOT NULL AND mode = 'live'
         GROUP BY year
         ORDER BY year DESC
     """).fetchall()
