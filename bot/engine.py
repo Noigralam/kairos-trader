@@ -55,7 +55,7 @@ def _loop():
         try:
             import datetime, zoneinfo
             global _last_tick
-            _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M:%S")
+            _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
             prices = {pair: get_price(pair) for pair in config.TRADING_PAIRS}
             notify(
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
