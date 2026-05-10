@@ -10,6 +10,7 @@ class Position:
     value_eur: float
     take_profit_price: float = 0.0
     highest_price: float = 0.0  # tracks peak for trailing stop; 0.0 means use entry_price
+    dca_done: bool = False
 
     def peak(self) -> float:
         return self.highest_price if self.highest_price > 0 else self.entry_price
@@ -18,6 +19,19 @@ class Position:
         # floor guarantees at least 1% net profit after both fees
         fee_plus_profit_floor = self.entry_price * (1 + config.BINANCE_FEE + 0.01) / (1 - config.BINANCE_FEE)
         return max(fee_plus_profit_floor, self.peak() * (1 - config.TRAILING_STOP_PCT))
+
+
+def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> None:
+    """Merge a second tranche, updating weighted average entry price."""
+    dca_amount = dca_value_eur / dca_price
+    total_value = position.value_eur + dca_value_eur
+    total_amount = position.amount + dca_amount
+    position.entry_price = total_value / total_amount
+    position.amount = total_amount
+    position.value_eur = total_value
+    position.take_profit_price = position.entry_price * (1 + config.TAKE_PROFIT_PCT)
+    position.highest_price = max(position.highest_price, dca_price)
+    position.dca_done = True
 
 
 def create_position(pair: str, entry_price: float, balance: float) -> Position:

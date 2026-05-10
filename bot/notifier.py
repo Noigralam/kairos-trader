@@ -45,7 +45,7 @@ def notify(message: str, discord: bool = True):
 
 def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: float,
                 pnl: float = None, fee: float = None):
-    tag = "BUY" if side == "BUY" else "SELL"
+    tag = side  # BUY, SELL, or DCA
     msg = f"**[{tag}]** {pair} @ €{price:.2f} | {amount:.6f} units | €{value_eur:.2f}"
     if fee is not None:
         msg += f" | fee: €{fee:.3f}"

@@ -2,7 +2,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from . import config
-from .risk import Position, create_position, update_peak, check_trailing_stop, check_take_profit, calc_pnl
+from .risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert
 from .db import log_trade
 from .exchange import round_qty
@@ -38,6 +38,7 @@ def _save():
                 "value_eur": pos.value_eur,
                 "take_profit_price": pos.take_profit_price,
                 "highest_price": pos.highest_price,
+                "dca_done": pos.dca_done,
             }
             for pair, pos in _state.positions.items()
         },
@@ -99,6 +100,27 @@ def open_position(pair: str, price: float):
 
     trade_alert("BUY", pair, price, pos.amount, pos.value_eur, fee=buy_fee)
     log_trade(pair, "BUY", price, pos.amount, pos.value_eur, buy_fee, mode="simulation")
+
+
+def dca_position(pair: str, price: float):
+    if pair not in _state.positions:
+        return
+    pos = _state.positions[pair]
+    if pos.dca_done:
+        return
+
+    dca_value = config.SIMULATION_BALANCE * config.POSITION_SIZE_PCT
+    if _state.balance < dca_value:
+        return
+
+    buy_fee = dca_value * BINANCE_FEE
+    apply_dca(pos, price, dca_value)
+    _state.balance -= dca_value + buy_fee
+    _state.total_fees += buy_fee
+    _save()
+
+    trade_alert("DCA", pair, price, pos.amount, dca_value, fee=buy_fee)
+    log_trade(pair, "DCA", price, pos.amount, dca_value, buy_fee, mode="simulation")
 
 
 def close_position(pair: str, price: float, reason: str = "signal"):

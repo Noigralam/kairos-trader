@@ -7,7 +7,7 @@ from . import config
 log = logging.getLogger("cryptobot")
 from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
-from .simulator import open_position, close_position, get_state, check_stops
+from .simulator import open_position, close_position, dca_position, get_state, check_stops
 from .notifier import notify, bot_status_alert
 
 INTERVAL_SECONDS = {
@@ -87,6 +87,12 @@ def _loop():
                 has_position = pair in state.positions
                 if result.signal == Signal.BUY and not has_position:
                     open_position(pair, prices[pair])
+                elif result.signal == Signal.BUY and has_position:
+                    pos = state.positions[pair]
+                    drop = (pos.entry_price - prices[pair]) / pos.entry_price
+                    if not pos.dca_done and drop >= config.DCA_DROP_PCT:
+                        notify(f"[DCA] {pair} down {drop*100:.1f}% from entry — averaging down", discord=False)
+                        dca_position(pair, prices[pair])
                 elif result.signal == Signal.SELL and has_position:
                     if prices[pair] > state.positions[pair].entry_price:
                         close_position(pair, prices[pair], reason="signal")
