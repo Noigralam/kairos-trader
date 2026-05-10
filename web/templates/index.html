@@ -141,7 +141,7 @@
             <th>Entry Price</th>
             <th>Amount</th>
             <th>Value (EUR)</th>
-            <th>Stop-Loss</th>
+            <th>Trailing Stop</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -158,7 +158,7 @@
       <table>
         <thead>
           <tr>
-            <th>Time (UTC)</th>
+            <th>Time (Helsinki)</th>
             <th>Pair</th>
             <th>Side</th>
             <th>Price</th>
@@ -268,7 +268,7 @@
             <td>${fmt(p.entry_price)}</td>
             <td>${Number(p.amount).toFixed(6)}</td>
             <td>${fmt(p.value_eur)}</td>
-            <td><span class="neg">${fmt(p.stop_loss)}</span></td>
+            <td><span class="neg">${fmt(p.trailing_stop)}</span></td>
             <td><button class="override danger" onclick="control('override','${pair}')">Close</button></td>
           </tr>`;
         }).join('');
@@ -280,7 +280,7 @@
         tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
       } else {
         tb.innerHTML = trades.map(t => `<tr>
-          <td>${t.timestamp.slice(0,19)}</td>
+          <td>${t.timestamp.slice(0, 19).replace('T', ' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side.toLowerCase()}">${t.side}</td>
           <td>${fmt(t.price)}</td>
@@ -312,12 +312,12 @@
         lb.innerHTML = logs.map(e => {
           const cls = logEntryClass(e.msg);
           const escaped = e.msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          return `<div class="log-entry ${cls}"><span class="log-time">${e.time}</span>${escaped}</div>`;
+          return `<div class="log-entry ${cls}"><span class="log-time">${e.time.slice(11, 19)}</span>${escaped}</div>`;
         }).join('');
       }
 
       document.getElementById('refresh-indicator').textContent =
-        'Updated ' + new Date().toLocaleTimeString();
+        'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki' });
 
     } catch (e) {
       document.getElementById('refresh-indicator').textContent = 'Connection error';

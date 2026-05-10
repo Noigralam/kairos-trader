@@ -1,8 +1,10 @@
+import math
 import pandas as pd
 from binance.client import Client
 from . import config
 
 _client: Client = None
+_lot_step_cache: dict = {}
 
 
 def get_client() -> Client:
@@ -32,11 +34,31 @@ def get_price(pair: str) -> float:
     return float(ticker["price"])
 
 
+def get_lot_step(pair: str) -> float:
+    """Return the LOT_SIZE stepSize for a pair, cached after first fetch."""
+    if pair not in _lot_step_cache:
+        info = get_client().get_symbol_info(pair)
+        for f in info["filters"]:
+            if f["filterType"] == "LOT_SIZE":
+                _lot_step_cache[pair] = float(f["stepSize"])
+                break
+        else:
+            _lot_step_cache[pair] = 1e-6  # fallback
+    return _lot_step_cache[pair]
+
+
+def round_qty(pair: str, amount: float) -> float:
+    """Floor amount to the pair's allowed lot-size precision."""
+    step = get_lot_step(pair)
+    precision = max(0, round(-math.log10(step)))
+    return round(math.floor(amount / step) * step, precision)
+
+
 def place_order(pair: str, side: str, quantity: float) -> dict:
     """Live trading only — never called in simulation mode."""
     return get_client().create_order(
         symbol=pair,
         side=side,
         type="MARKET",
-        quantity=round(quantity, 6),
+        quantity=round_qty(pair, quantity),
     )

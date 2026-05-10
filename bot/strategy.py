@@ -65,11 +65,11 @@ def compute_signal(
     crossed_below = prev_ema_f >= prev_ema_s and ema_f < ema_s
     price = float(close.iloc[-1])
 
-    if crossed_above and rsi < 60:
+    if crossed_above and rsi < 65:
         if price < ema_t:
             return StrategyResult(Signal.HOLD, f"BUY blocked — price below EMA{ema_trend} (downtrend)", rsi, ema_f, ema_s)
         return StrategyResult(Signal.BUY, f"EMA crossover ↑, RSI={rsi:.1f}", rsi, ema_f, ema_s)
-    if crossed_below or rsi > 70:
+    if crossed_below or rsi > 65:
         reason = "EMA crossover ↓" if crossed_below else f"RSI overbought ({rsi:.1f})"
         return StrategyResult(Signal.SELL, reason, rsi, ema_f, ema_s)
 

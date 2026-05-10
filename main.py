@@ -7,10 +7,17 @@ LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "bot.log")
 
 
 def setup_logging():
+    import zoneinfo, time as _time
+    _tz = zoneinfo.ZoneInfo("Europe/Helsinki")
+
+    def _localtime(t):
+        import datetime
+        return datetime.datetime.fromtimestamp(t, tz=_tz).timetuple()
+
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-    fmt = logging.Formatter("%(asctime)s UTC  %(levelname)-8s  %(message)s",
+    fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s",
                             datefmt="%Y-%m-%d %H:%M:%S")
-    fmt.converter = __import__("time").gmtime  # UTC timestamps
+    fmt.converter = _localtime
 
     file_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
     file_handler.setFormatter(fmt)
