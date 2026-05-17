@@ -33,7 +33,7 @@ def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
 
 def compute_signal(
     df: pd.DataFrame,
-    rsi_period: int = 14,
+    rsi_period: int = 7,
     rsi_oversold: int = 30,
     rsi_overbought: int = 65,
     ema_trend: int = 200,
