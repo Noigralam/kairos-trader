@@ -8,7 +8,7 @@ BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 MODE = os.getenv("MODE", "simulation")  # simulation | live
-TRADING_PAIRS = ["BTCEUR", "ETHEUR"]
+TRADING_PAIRS = ["BTCEUR", "ETHEUR", "SOLEUR", "XRPEUR"]
 SIMULATION_BALANCE = float(os.getenv("SIMULATION_BALANCE", "200.0"))
 BINANCE_FEE = float(os.getenv("BINANCE_FEE", "0.001"))
 TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "0.10"))
