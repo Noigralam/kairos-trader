@@ -2,6 +2,8 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 from bot import engine, simulator, db, config
 from bot.engine import get_last_tick
 from bot.notifier import get_recent_logs
+from bot.exchange import get_klines, get_price
+from bot.strategy import compute_signal, Signal
 
 app = Flask(__name__, static_folder="static")
 
@@ -56,6 +58,53 @@ def api_tax():
         {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3]}
         for r in rows
     ])
+
+
+@app.route("/api/signals")
+def api_signals():
+    out = {}
+    state = simulator.get_state()
+    for pair in config.TRADING_PAIRS:
+        try:
+            price = get_price(pair)
+            result = compute_signal(get_klines(pair))
+            gap = price - result.ema_trend
+            above_trend = gap >= 0
+            has_position = pair in state.positions
+
+            if result.signal == Signal.BUY and not has_position:
+                commentary = f"RSI hit oversold ({result.rsi:.1f}) and price is above EMA200 — buy signal firing."
+            elif result.signal == Signal.SELL and has_position:
+                commentary = f"RSI recovered ({result.rsi:.1f}) — sell signal firing."
+            elif result.signal == Signal.SELL and not has_position:
+                commentary = f"RSI overbought ({result.rsi:.1f}) but no position held — nothing to sell."
+            elif not above_trend:
+                commentary = (
+                    f"Price is €{abs(gap):,.0f} below EMA200 — downtrend guard active. "
+                    f"No buys until price recovers above €{result.ema_trend:,.0f}."
+                )
+            elif result.rsi >= 30:
+                commentary = (
+                    f"Trend is healthy (price above EMA200 by €{gap:,.0f}), "
+                    f"but RSI is {result.rsi:.1f} — waiting for a dip below 30."
+                )
+            else:
+                commentary = result.reason
+
+            out[pair] = {
+                "price": round(price, 2),
+                "rsi": round(result.rsi, 1),
+                "ema200": round(result.ema_trend, 2),
+                "above_trend": above_trend,
+                "gap": round(gap, 2),
+                "signal": result.signal.value,
+                "reason": result.reason,
+                "commentary": commentary,
+                "has_position": has_position,
+            }
+        except Exception as e:
+            out[pair] = {"error": str(e)}
+    return jsonify(out)
 
 
 @app.route("/api/log")
