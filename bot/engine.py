@@ -68,10 +68,10 @@ def _loop():
             # Per-pair detail: file + web buffer only
             for pair, result in results.items():
                 pos_flag = "IN" if pair in state.positions else "OUT"
-                ema_cmp = "↑" if result.ema_fast > result.ema_slow else "↓"
+                trend_flag = "↑" if float(get_price(pair)) > result.ema_trend else "↓"
                 notify(
                     f"[TICK] {pair} ({pos_flag})  RSI={result.rsi:.1f}  "
-                    f"EMA9={result.ema_fast:.2f} {ema_cmp} EMA21={result.ema_slow:.2f}  "
+                    f"EMA200={result.ema_trend:.2f} {trend_flag}  "
                     f"→ {result.signal.value}: {result.reason}",
                     discord=False,
                 )
