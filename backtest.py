@@ -208,15 +208,22 @@ def report(pair: str, trades: list[Trade], start_balance: float, end_balance: fl
     for t in trades:
         reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
 
+    # Finnish capital gains tax: 30% up to €30k, 34% above
+    taxable  = max(0.0, total_pnl)
+    tax      = min(taxable, 30000) * 0.30 + max(0.0, taxable - 30000) * 0.34
+    after_tax_pnl     = total_pnl - tax
+    after_tax_balance = start_balance + after_tax_pnl
+
     print(f"  Trades        : {len(trades)}  (W {len(wins)} / L {len(losses)})  win rate {len(wins)/len(trades)*100:.0f}%")
-    print(f"  Total PnL     : €{total_pnl:+.2f}")
+    print(f"  Total PnL     : €{total_pnl:+.2f}  (after tax: €{after_tax_pnl:+.2f})")
+    print(f"  Tax (FI)      : €{tax:.2f}  ({tax/taxable*100:.0f}% of gains)" if taxable > 0 else f"  Tax (FI)      : €0.00")
     print(f"  Fees paid     : €{total_fees:.4f}")
     print(f"  Max drawdown  : €{max_dd:.2f}")
     print(f"  Avg hold time : {avg_hold:.1f}h")
     print(f"  Best trade    : €{max(t.pnl for t in trades):+.2f}")
     print(f"  Worst trade   : €{min(t.pnl for t in trades):+.2f}")
     print(f"  Exit reasons  : {', '.join(f'{k} ×{v}' for k, v in reasons.items())}")
-    print(f"  Balance       : €{start_balance:.2f} → €{end_balance:.2f}  ({(end_balance/start_balance-1)*100:+.1f}%)")
+    print(f"  Balance       : €{start_balance:.2f} → €{end_balance:.2f}  ({(end_balance/start_balance-1)*100:+.1f}%)  after tax: €{after_tax_balance:.2f}")
 
     print(f"\n  {'Entry':19}  {'Exit':19}  {'PnL':>8}  Reason")
     print(f"  {'─'*19}  {'─'*19}  {'─'*8}  {'─'*13}")
@@ -272,4 +279,8 @@ if __name__ == "__main__":
             total_pnl += end_balance - start_balance
 
         if len(pairs) > 1:
-            print(f"\n  Combined PnL: €{total_pnl:+.2f}  |  €{start_balance:.0f} → €{start_balance+total_pnl:.0f}")
+            taxable_combined = max(0.0, total_pnl)
+            tax_combined     = min(taxable_combined, 30000) * 0.30 + max(0.0, taxable_combined - 30000) * 0.34
+            after_tax        = total_pnl - tax_combined
+            print(f"\n  Combined PnL : €{total_pnl:+.2f}  (after tax: €{after_tax:+.2f})")
+            print(f"  Tax (FI)     : €{tax_combined:.2f}")
