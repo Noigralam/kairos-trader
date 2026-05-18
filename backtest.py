@@ -64,6 +64,7 @@ def run_pair(
     df: pd.DataFrame, pair: str, balance: float,
     tp_pct: float = None, trail_pct: float = None,
     cooldown: int = 0, profit_floor: float = 0.01,
+    ema_period: int = 200,
 ) -> tuple[list[Trade], float]:
     fee_rate  = config.BINANCE_FEE
     pos_pct   = config.POSITION_SIZE_PCT
@@ -76,7 +77,11 @@ def run_pair(
     trades: list[Trade]       = []
     cooldown_remaining        = 0
 
-    for i in range(WARMUP, len(df)):
+    # Skip the first ema_period+10 candles so the EMA has enough history to
+    # produce a meaningful value — before this point it's calculated from too
+    # few data points and would generate false signals.
+    warmup = ema_period + 10
+    for i in range(warmup, len(df)):
         window = df.iloc[: i + 1]
         row    = df.iloc[i]
         price  = float(row["close"])
@@ -123,7 +128,7 @@ def run_pair(
                 cooldown_remaining = cooldown
                 continue
 
-        result = compute_signal(window)
+        result = compute_signal(window, ema_trend=ema_period)
 
         if result.signal == Signal.BUY and position is None and cooldown_remaining == 0:
             size = balance * pos_pct
@@ -238,21 +243,21 @@ def report(pair: str, trades: list[Trade], start_balance: float, end_balance: fl
 # ── main ──────────────────────────────────────────────────────────────────────
 
 SCENARIOS = [
-    {"label": "floor=2.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.020},
-    {"label": "floor=1.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.010},
-    {"label": "floor=0.5%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.005},
-    {"label": "floor=0.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.000},
+    {"label": "EMA200  floor=1.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.010, "ema": 200},
+    {"label": "EMA100  floor=1.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.010, "ema": 100},
 ]
+
+ALL_PAIRS = ["BTCEUR", "ETHEUR", "SOLEUR", "XRPEUR"]
 
 if __name__ == "__main__":
     args  = sys.argv[1:]
     days  = int(args[0]) if args and args[0].isdigit() else 365
-    pairs = [args[1].upper()] if len(args) > 1 else config.TRADING_PAIRS
+    pairs = [args[1].upper()] if len(args) > 1 else ALL_PAIRS
 
     print(f"\nBacktest  |  interval={INTERVAL}  days={days}  pairs={', '.join(pairs)}")
-    print(f"Strategy  |  RSI(7) oversold<30 / overbought>65  |  EMA200 trend guard\n")
+    print(f"Strategy  |  RSI(7) oversold<30 / overbought>65\n")
 
-    # fetch data once per pair, reuse for both scenarios
+    # fetch data once per pair, reuse across scenarios
     data = {}
     for pair in pairs:
         data[pair] = fetch_historical(pair, days)
@@ -265,6 +270,7 @@ if __name__ == "__main__":
         trail    = scenario["trail"]
         cooldown = scenario["cooldown"]
         floor    = scenario["floor"]
+        ema      = scenario["ema"]
 
         print(f"\n{'═'*54}")
         print(f"  SCENARIO: {label}  |  TP={tp*100:.0f}%  trail={trail*100:.0f}%")
@@ -274,7 +280,7 @@ if __name__ == "__main__":
         for pair in pairs:
             trades, end_balance = run_pair(data[pair], pair, start_balance,
                                            tp_pct=tp, trail_pct=trail, cooldown=cooldown,
-                                           profit_floor=floor)
+                                           profit_floor=floor, ema_period=ema)
             report(pair, trades, start_balance, end_balance)
             total_pnl += end_balance - start_balance
 
