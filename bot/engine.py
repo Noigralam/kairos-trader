@@ -7,6 +7,7 @@ from . import config
 log = logging.getLogger("cryptobot")
 from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
+from .candles import initial_sync, sync as sync_candles, get_df
 from .simulator import open_position, close_position, dca_position, get_state, check_stops
 from .notifier import notify, bot_status_alert
 
@@ -47,6 +48,9 @@ def _loop():
     notify(f"Bot started | mode={config.MODE} | pairs={', '.join(config.TRADING_PAIRS)} | interval={config.INTERVAL}")
     sleep_sec = INTERVAL_SECONDS.get(config.INTERVAL, 3600)
 
+    for pair in config.TRADING_PAIRS:
+        initial_sync(pair, config.INTERVAL)
+
     while _status != BotStatus.STOPPED:
         if _status == BotStatus.PAUSED:
             time.sleep(5)
@@ -56,6 +60,9 @@ def _loop():
             import datetime, zoneinfo
             global _last_tick
             _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
+            for pair in config.TRADING_PAIRS:
+                sync_candles(pair, config.INTERVAL)
+
             prices = {pair: get_price(pair) for pair in config.TRADING_PAIRS}
             notify(
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
@@ -63,7 +70,7 @@ def _loop():
             )
 
             state = get_state()
-            results = {pair: compute_signal(get_klines(pair)) for pair in config.TRADING_PAIRS}
+            results = {pair: compute_signal(get_df(pair, config.INTERVAL)) for pair in config.TRADING_PAIRS}
 
             # Per-pair detail: file + web buffer only
             for pair, result in results.items():
@@ -76,16 +83,46 @@ def _loop():
                     discord=False,
                 )
 
-            # Compact Discord summary (one message per tick)
-            price_header = "  ".join(f"{p} €{prices[p]:,.0f}" for p in config.TRADING_PAIRS)
-            signal_lines = []
+            # Discord summary — one message per tick
+            import datetime as _dt, zoneinfo as _zi
+            tick_time = _dt.datetime.now(tz=_zi.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
+            header = f"**[TICK]** {tick_time}"
+
+            pair_blocks = []
             for pair, result in results.items():
-                pos_flag = "IN" if pair in state.positions else "—"
-                signal_lines.append(
-                    f"`{pair}` RSI={result.rsi:.1f} → **{result.signal.value}** — {result.reason}  `({pos_flag})`"
+                price    = prices[pair]
+                gap      = price - result.ema_trend
+                has_pos  = pair in state.positions
+                pos_tag  = "`IN`" if has_pos else "`—`"
+
+                trend_str = (f"↑ €{gap:,.2f} above EMA200" if gap >= 0
+                             else f"↓ €{abs(gap):,.2f} below EMA200")
+
+                if result.rsi < 30:
+                    rsi_zone = "oversold"
+                elif result.rsi > 65:
+                    rsi_zone = "overbought"
+                else:
+                    rsi_zone = "neutral"
+
+                if result.signal.value == "BUY" and not has_pos:
+                    commentary = f"RSI oversold + above EMA200 — buying"
+                elif result.signal.value == "SELL" and has_pos:
+                    commentary = f"RSI recovered — selling"
+                elif result.signal.value == "SELL" and not has_pos:
+                    commentary = f"RSI overbought but no position"
+                elif gap < 0:
+                    commentary = f"Waiting for price to recover above EMA200"
+                else:
+                    commentary = f"Above trend, waiting for RSI dip below 30"
+
+                pair_blocks.append(
+                    f"**{pair}** {pos_tag}  €{price:,.2f}  {trend_str}\n"
+                    f"RSI {result.rsi:.1f} ({rsi_zone}) → **{result.signal.value}** — {commentary}"
                 )
-            footer = f"PnL: €{state.total_pnl:+.2f}  |  Fees paid: €{state.total_fees:.4f}  |  Trades: {state.total_trades}"
-            notify("**[TICK]** " + price_header + "\n" + "\n".join(signal_lines) + "\n" + footer)
+
+            footer = f"PnL: €{state.total_pnl:+.2f}  |  Fees: €{state.total_fees:.4f}  |  Trades: {state.total_trades}"
+            notify(header + "\n\n" + "\n\n".join(pair_blocks) + "\n\n" + footer)
 
             # Check stop-loss and take-profit on every tick
             check_stops(prices)
