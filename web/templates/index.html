@@ -275,6 +275,8 @@
     return 'var(--text)';
   }
 
+  const _prevPrices = {};
+
   async function refreshSignals() {
     try {
       const res = await fetch('/api/signals');
@@ -282,16 +284,28 @@
       const grid = document.getElementById('signals-grid');
       grid.innerHTML = Object.entries(signals).map(([pair, d]) => {
         if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
-        const trendCls = d.above_trend ? 'above-trend' : 'below-trend';
-        const trendLabel = d.above_trend ? `↑ €${Math.abs(d.gap).toFixed(0)} above EMA200` : `↓ €${Math.abs(d.gap).toFixed(0)} below EMA200`;
-        const rsiPct = Math.min(100, Math.max(0, d.rsi));
+
+        const prev = _prevPrices[pair];
+        let priceArrow = '';
+        if (prev !== undefined && d.price !== prev) {
+          const up = d.price > prev;
+          priceArrow = `<span style="color:${up ? 'var(--green)' : 'var(--red)'};font-size:13px;margin-left:4px">${up ? '▲' : '▼'}</span>`;
+        }
+        _prevPrices[pair] = d.price;
+
+        const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
+        const trendLabel = d.above_trend
+          ? `↑ €${Math.abs(d.gap).toFixed(2)} above EMA200`
+          : `↓ €${Math.abs(d.gap).toFixed(2)} below EMA200`;
+        const rsiPct      = Math.min(100, Math.max(0, d.rsi));
         const rsiBarColor = d.rsi < 30 ? 'var(--green)' : d.rsi > 65 ? 'var(--red)' : 'var(--blue)';
+
         return `<div class="signal-card">
           <div class="pair-name">${pair} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
           <div class="metrics">
             <div class="metric">
               <div class="mlabel">Price</div>
-              <div class="mvalue">€${Number(d.price).toLocaleString('fi-FI', {minimumFractionDigits: 2})}</div>
+              <div class="mvalue">€${Number(d.price).toLocaleString('fi-FI', {minimumFractionDigits: 2})}${priceArrow}</div>
             </div>
             <div class="metric">
               <div class="mlabel">RSI (7)</div>

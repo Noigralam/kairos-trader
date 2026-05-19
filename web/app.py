@@ -2,7 +2,8 @@ from flask import Flask, jsonify, render_template, request, send_from_directory
 from bot import engine, simulator, db, config
 from bot.engine import get_last_tick
 from bot.notifier import get_recent_logs
-from bot.exchange import get_klines, get_price
+from bot.exchange import get_price
+from bot.candles import get_df
 from bot.strategy import compute_signal, Signal
 
 app = Flask(__name__, static_folder="static")
@@ -67,7 +68,7 @@ def api_signals():
     for pair in config.TRADING_PAIRS:
         try:
             price = get_price(pair)
-            result = compute_signal(get_klines(pair))
+            result = compute_signal(get_df(pair, config.INTERVAL))
             gap = price - result.ema_trend
             above_trend = gap >= 0
             has_position = pair in state.positions
@@ -80,12 +81,12 @@ def api_signals():
                 commentary = f"RSI overbought ({result.rsi:.1f}) but no position held — nothing to sell."
             elif not above_trend:
                 commentary = (
-                    f"Price is €{abs(gap):,.0f} below EMA200 — downtrend guard active. "
-                    f"No buys until price recovers above €{result.ema_trend:,.0f}."
+                    f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
+                    f"No buys until price recovers above €{result.ema_trend:,.2f}."
                 )
             elif result.rsi >= 30:
                 commentary = (
-                    f"Trend is healthy (price above EMA200 by €{gap:,.0f}), "
+                    f"Trend is healthy (price above EMA200 by €{gap:,.2f}), "
                     f"but RSI is {result.rsi:.1f} — waiting for a dip below 30."
                 )
             else:
