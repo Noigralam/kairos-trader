@@ -108,6 +108,28 @@ def api_signals():
     return jsonify(out)
 
 
+@app.route("/api/chart/<pair>")
+def api_chart(pair):
+    span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672}
+    span  = request.args.get("span", "1d")
+    limit = span_candles.get(span, 96)
+    # fetch extra candles for EMA200 warmup then slice to requested span
+    df = get_df(pair.upper(), config.INTERVAL, limit=limit + 210)
+    if df.empty:
+        return jsonify({"labels": [], "prices": [], "ema200": []})
+
+    close = df["close"]
+    ema   = close.ewm(span=200, adjust=False).mean()
+    df    = df.iloc[-limit:]
+    ema   = ema.iloc[-limit:]
+
+    return jsonify({
+        "labels": df["open_time"].dt.strftime("%m-%d %H:%M").tolist(),
+        "prices": close.iloc[-limit:].round(4).tolist(),
+        "ema200": ema.round(4).tolist(),
+    })
+
+
 @app.route("/api/log")
 def api_log():
     return jsonify(get_recent_logs())

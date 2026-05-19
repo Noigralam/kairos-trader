@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Crypto_Bot</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --bg:      #0d1117;
@@ -128,6 +129,24 @@
     .sig-badge.HOLD { background: #1c2128; color: var(--muted); }
     .above-trend { color: var(--green); }
     .below-trend { color: var(--red); }
+
+    .chart-section { margin-bottom: 28px; }
+    .chart-controls {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+    }
+    .chart-controls h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .btn-group { display: flex; gap: 6px; }
+    .btn-group button {
+      padding: 4px 12px; font-size: 12px; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    }
+    .btn-group button.active { border-color: var(--blue); color: var(--blue); }
+    .chart-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px; position: relative;
+    }
+    #price-chart { width: 100%; height: 260px; }
   </style>
 </head>
 <body>
@@ -219,6 +238,24 @@
     <h2>Market Conditions</h2>
     <div class="signals-grid" id="signals-grid">
       <div class="signal-card"><div class="commentary">Loading…</div></div>
+    </div>
+  </section>
+
+  <section class="chart-section">
+    <div class="chart-controls">
+      <h2>Price vs EMA200</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div class="btn-group" id="pair-btns"></div>
+        <div class="btn-group" id="span-btns">
+          <button onclick="setSpan('4h')"  data-span="4h">4h</button>
+          <button onclick="setSpan('1d')"  data-span="1d" class="active">1d</button>
+          <button onclick="setSpan('3d')"  data-span="3d">3d</button>
+          <button onclick="setSpan('1w')"  data-span="1w">1w</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="price-chart"></canvas>
     </div>
   </section>
 
@@ -446,6 +483,100 @@
   refreshSignals();
   setInterval(refresh, 60000);
   setInterval(refreshSignals, 60000);
+
+  // ── chart ──────────────────────────────────────────────────────────────────
+  let _chartPair = null;
+  let _chartSpan = '1d';
+  let _chart     = null;
+
+  function setSpan(span) {
+    _chartSpan = span;
+    document.querySelectorAll('#span-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.span === span));
+    loadChart();
+  }
+
+  function setPair(pair) {
+    _chartPair = pair;
+    document.querySelectorAll('#pair-btns button').forEach(b =>
+      b.classList.toggle('active', b.textContent === pair));
+    loadChart();
+  }
+
+  async function loadChart() {
+    if (!_chartPair) return;
+    try {
+      const res  = await fetch(`/api/chart/${_chartPair}?span=${_chartSpan}`);
+      const data = await res.json();
+      if (_chart) {
+        _chart.data.labels              = data.labels;
+        _chart.data.datasets[0].data   = data.prices;
+        _chart.data.datasets[1].data   = data.ema200;
+        _chart.update('none');
+      } else {
+        const ctx = document.getElementById('price-chart').getContext('2d');
+        _chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels:   data.labels,
+            datasets: [
+              {
+                label: 'Price',
+                data:  data.prices,
+                borderColor: '#58a6ff',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.1,
+              },
+              {
+                label: 'EMA200',
+                data:  data.ema200,
+                borderColor: '#d29922',
+                borderWidth: 1.5,
+                borderDash: [4, 3],
+                pointRadius: 0,
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { labels: { color: '#8b949e', boxWidth: 20, font: { size: 11 } } },
+              tooltip: {
+                backgroundColor: '#161b22',
+                borderColor: '#30363d',
+                borderWidth: 1,
+                titleColor: '#e6edf3',
+                bodyColor: '#8b949e',
+                callbacks: {
+                  label: ctx => ` ${ctx.dataset.label}: €${Number(ctx.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+                }
+              },
+            },
+            scales: {
+              x: { ticks: { color: '#8b949e', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#21262d' } },
+              y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => '€' + Number(v).toLocaleString('fi-FI') }, grid: { color: '#21262d' } },
+            },
+          },
+        });
+      }
+    } catch(e) {}
+  }
+
+  async function initChart() {
+    const res     = await fetch('/api/signals');
+    const signals = await res.json();
+    const pairs   = Object.keys(signals);
+    const pb      = document.getElementById('pair-btns');
+    pb.innerHTML  = pairs.map(p => `<button onclick="setPair('${p}')" data-pair="${p}">${p}</button>`).join('');
+    if (pairs.length) setPair(pairs[0]);
+  }
+
+  initChart();
+  setInterval(loadChart, 60000);
 </script>
 </body>
 </html>
