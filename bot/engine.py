@@ -27,6 +27,13 @@ _status = BotStatus.STOPPED
 _thread: threading.Thread = None
 _lock = threading.Lock()
 _last_tick: str = None
+_prev_tick: dict = {}   # pair -> {price, rsi, ema200}
+
+
+def _arrow(cur: float, prev: float | None) -> str:
+    if prev is None or cur == prev:
+        return ""
+    return " ▲" if cur > prev else " ▼"
 
 
 def get_status() -> str:
@@ -94,9 +101,15 @@ def _loop():
                 gap      = price - result.ema_trend
                 has_pos  = pair in state.positions
                 pos_tag  = "`IN`" if has_pos else "`—`"
+                prev     = _prev_tick.get(pair, {})
 
-                trend_str = (f"↑ €{gap:,.2f} above EMA200" if gap >= 0
-                             else f"↓ €{abs(gap):,.2f} below EMA200")
+                price_arrow = _arrow(price,           prev.get("price"))
+                rsi_arrow   = _arrow(result.rsi,      prev.get("rsi"))
+                ema_arrow   = _arrow(result.ema_trend, prev.get("ema200"))
+                _prev_tick[pair] = {"price": price, "rsi": result.rsi, "ema200": result.ema_trend}
+
+                trend_str = (f"↑ €{gap:,.2f} above EMA200{ema_arrow}" if gap >= 0
+                             else f"↓ €{abs(gap):,.2f} below EMA200{ema_arrow}")
 
                 if result.rsi < 30:
                     rsi_zone = "oversold"
@@ -117,8 +130,8 @@ def _loop():
                     commentary = f"Above trend, waiting for RSI dip below 30"
 
                 pair_blocks.append(
-                    f"**{pair}** {pos_tag}  €{price:,.2f}  {trend_str}\n"
-                    f"RSI {result.rsi:.1f} ({rsi_zone}) → **{result.signal.value}** — {commentary}"
+                    f"**{pair}** {pos_tag}  €{price:,.2f}{price_arrow}  {trend_str}\n"
+                    f"RSI {result.rsi:.1f}{rsi_arrow} ({rsi_zone}) → **{result.signal.value}** — {commentary}"
                 )
 
             footer = f"PnL: €{state.total_pnl:+.2f}  |  Fees: €{state.total_fees:.4f}  |  Trades: {state.total_trades}"
