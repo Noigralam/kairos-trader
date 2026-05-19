@@ -534,6 +534,7 @@
         _priceChart.data.datasets[1].data = data.ema200;
         _priceChart.data.datasets[2].data = data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
         _priceChart.data.datasets[3].data = data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _priceChart.data.datasets[4].data = data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
         _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
@@ -547,6 +548,8 @@
                 backgroundColor: '#3fb950', pointRadius: 5, pointStyle: 'triangle' },
               { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
                 backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
+              { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
             ],
           },
           options: {

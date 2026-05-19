@@ -134,26 +134,30 @@ def api_chart(pair):
     rsi      = 100 - (100 / (1 + rs))
 
     # signal markers — apply strategy logic across each candle
-    buy_prices  = [None] * len(df)
-    sell_prices = [None] * len(df)
+    buy_prices    = [None] * len(df)
+    sell_prices   = [None] * len(df)
+    blocked_buys  = [None] * len(df)
     for i in range(210, len(df)):
         r   = rsi.iloc[i]
         e   = ema.iloc[i]
         p   = close.iloc[i]
         if r < 30 and p > e:
             buy_prices[i] = round(p, 4)
+        elif r < 30 and p <= e:
+            blocked_buys[i] = round(p, 4)
         elif r > 65:
             sell_prices[i] = round(p, 4)
 
     # slice to requested span
     sl = slice(-limit, None)
     return jsonify({
-        "labels": df["open_time"].iloc[sl].dt.strftime("%m-%d %H:%M").tolist(),
-        "prices": close.iloc[sl].round(4).tolist(),
-        "ema200": ema.iloc[sl].round(4).tolist(),
-        "rsi":    rsi.iloc[sl].round(2).tolist(),
-        "buys":   buy_prices[-limit:],
-        "sells":  sell_prices[-limit:],
+        "labels":       df["open_time"].iloc[sl].dt.strftime("%m-%d %H:%M").tolist(),
+        "prices":       close.iloc[sl].round(4).tolist(),
+        "ema200":       ema.iloc[sl].round(4).tolist(),
+        "rsi":          rsi.iloc[sl].round(2).tolist(),
+        "buys":         buy_prices[-limit:],
+        "sells":        sell_prices[-limit:],
+        "blocked_buys": blocked_buys[-limit:],
     })
 
 
