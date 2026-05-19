@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Crypto_Bot</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="/static/chart.umd.min.js"></script>
   <style>
     :root {
       --bg:      #0d1117;
@@ -144,10 +144,8 @@
     .btn-group button.active { border-color: var(--blue); color: var(--blue); }
     .chart-wrap {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 16px; position: relative;
+      border-radius: 8px; padding: 16px;
     }
-    #price-chart { width: 100%; height: 240px; }
-    #rsi-chart   { width: 100%; height: 100px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -256,8 +254,8 @@
       </div>
     </div>
     <div class="chart-wrap">
-      <canvas id="price-chart"></canvas>
-      <canvas id="rsi-chart"></canvas>
+      <canvas id="price-chart" height="240" style="width:100%;display:block"></canvas>
+      <canvas id="rsi-chart"   height="100" style="width:100%;display:block;margin-top:8px"></canvas>
     </div>
   </section>
 
@@ -493,7 +491,7 @@
   let _rsiChart   = null;
 
   const CHART_OPTS = {
-    responsive: true, maintainAspectRatio: false,
+    responsive: false, maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
     animation: false,
     plugins: {
