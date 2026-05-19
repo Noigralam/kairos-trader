@@ -283,7 +283,14 @@
     return 'var(--text)';
   }
 
-  const _prevPrices = {};
+  const _prev = {};
+
+  function arrow(cur, prev, colored = true) {
+    if (prev === undefined || cur === prev) return '';
+    const up  = cur > prev;
+    const col = colored ? (up ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
+    return `<span style="color:${col};font-size:11px;margin-left:3px">${up ? '▲' : '▼'}</span>`;
+  }
 
   async function refreshSignals() {
     try {
@@ -293,13 +300,11 @@
       grid.innerHTML = Object.entries(signals).map(([pair, d]) => {
         if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
 
-        const prev = _prevPrices[pair];
-        let priceArrow = '';
-        if (prev !== undefined && d.price !== prev) {
-          const up = d.price > prev;
-          priceArrow = `<span style="color:${up ? 'var(--green)' : 'var(--red)'};font-size:13px;margin-left:4px">${up ? '▲' : '▼'}</span>`;
-        }
-        _prevPrices[pair] = d.price;
+        const p = _prev[pair] || {};
+        const priceArrow = arrow(d.price,  p.price);
+        const rsiArrow   = arrow(d.rsi,    p.rsi,   false);
+        const emaArrow   = arrow(d.ema200, p.ema200, false);
+        _prev[pair] = { price: d.price, rsi: d.rsi, ema200: d.ema200 };
 
         const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
         const trendLabel = d.above_trend
@@ -317,11 +322,11 @@
             </div>
             <div class="metric">
               <div class="mlabel">RSI (7)</div>
-              <div class="mvalue" style="color:${rsiColor(d.rsi)}">${d.rsi}</div>
+              <div class="mvalue" style="color:${rsiColor(d.rsi)}">${d.rsi}${rsiArrow}</div>
             </div>
             <div class="metric">
               <div class="mlabel">EMA200</div>
-              <div class="mvalue">€${Number(d.ema200).toLocaleString('fi-FI', {minimumFractionDigits: 2})}</div>
+              <div class="mvalue">€${Number(d.ema200).toLocaleString('fi-FI', {minimumFractionDigits: 2})}${emaArrow}</div>
             </div>
           </div>
           <div class="rsi-bar-wrap">
