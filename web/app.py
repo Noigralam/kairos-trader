@@ -110,23 +110,50 @@ def api_signals():
 
 @app.route("/api/chart/<pair>")
 def api_chart(pair):
+    import pandas as pd
     span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672}
     span  = request.args.get("span", "1d")
     limit = span_candles.get(span, 96)
-    # fetch extra candles for EMA200 warmup then slice to requested span
+
     df = get_df(pair.upper(), config.INTERVAL, limit=limit + 210)
     if df.empty:
-        return jsonify({"labels": [], "prices": [], "ema200": []})
+        return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
 
     close = df["close"]
-    ema   = close.ewm(span=200, adjust=False).mean()
-    df    = df.iloc[-limit:]
-    ema   = ema.iloc[-limit:]
 
+    # EMA200
+    ema = close.ewm(span=200, adjust=False).mean()
+
+    # RSI(7)
+    delta    = close.diff()
+    gain     = delta.clip(lower=0)
+    loss     = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=6, min_periods=7).mean()
+    avg_loss = loss.ewm(com=6, min_periods=7).mean()
+    rs       = avg_gain / avg_loss
+    rsi      = 100 - (100 / (1 + rs))
+
+    # signal markers — apply strategy logic across each candle
+    buy_prices  = [None] * len(df)
+    sell_prices = [None] * len(df)
+    for i in range(210, len(df)):
+        r   = rsi.iloc[i]
+        e   = ema.iloc[i]
+        p   = close.iloc[i]
+        if r < 30 and p > e:
+            buy_prices[i] = round(p, 4)
+        elif r > 65:
+            sell_prices[i] = round(p, 4)
+
+    # slice to requested span
+    sl = slice(-limit, None)
     return jsonify({
-        "labels": df["open_time"].dt.strftime("%m-%d %H:%M").tolist(),
-        "prices": close.iloc[-limit:].round(4).tolist(),
-        "ema200": ema.round(4).tolist(),
+        "labels": df["open_time"].iloc[sl].dt.strftime("%m-%d %H:%M").tolist(),
+        "prices": close.iloc[sl].round(4).tolist(),
+        "ema200": ema.iloc[sl].round(4).tolist(),
+        "rsi":    rsi.iloc[sl].round(2).tolist(),
+        "buys":   buy_prices[-limit:],
+        "sells":  sell_prices[-limit:],
     })
 
 

@@ -27,6 +27,20 @@ def init_db():
             notes       TEXT
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS candles (
+            pair        TEXT    NOT NULL,
+            interval    TEXT    NOT NULL,
+            open_time   INTEGER NOT NULL,
+            open        REAL    NOT NULL,
+            high        REAL    NOT NULL,
+            low         REAL    NOT NULL,
+            close       REAL    NOT NULL,
+            volume      REAL    NOT NULL,
+            PRIMARY KEY (pair, interval, open_time)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_candles_lookup ON candles (pair, interval, open_time)")
     conn.commit()
     conn.close()
 

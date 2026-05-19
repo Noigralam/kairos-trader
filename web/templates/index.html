@@ -146,7 +146,8 @@
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 8px; padding: 16px; position: relative;
     }
-    #price-chart { width: 100%; height: 260px; }
+    #price-chart { width: 100%; height: 240px; }
+    #rsi-chart   { width: 100%; height: 100px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -256,6 +257,7 @@
     </div>
     <div class="chart-wrap">
       <canvas id="price-chart"></canvas>
+      <canvas id="rsi-chart"></canvas>
     </div>
   </section>
 
@@ -485,9 +487,27 @@
   setInterval(refreshSignals, 60000);
 
   // ── chart ──────────────────────────────────────────────────────────────────
-  let _chartPair = null;
-  let _chartSpan = '1d';
-  let _chart     = null;
+  let _chartPair  = null;
+  let _chartSpan  = '1d';
+  let _priceChart = null;
+  let _rsiChart   = null;
+
+  const CHART_OPTS = {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    animation: false,
+    plugins: {
+      legend: { labels: { color: '#8b949e', boxWidth: 16, font: { size: 11 } } },
+      tooltip: {
+        backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+        titleColor: '#e6edf3', bodyColor: '#8b949e',
+      },
+    },
+    scales: {
+      x: { ticks: { color: '#8b949e', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#21262d' } },
+    },
+  };
 
   function setSpan(span) {
     _chartSpan = span;
@@ -499,7 +519,7 @@
   function setPair(pair) {
     _chartPair = pair;
     document.querySelectorAll('#pair-btns button').forEach(b =>
-      b.classList.toggle('active', b.textContent === pair));
+      b.classList.toggle('active', b.dataset.pair === pair));
     loadChart();
   }
 
@@ -508,62 +528,83 @@
     try {
       const res  = await fetch(`/api/chart/${_chartPair}?span=${_chartSpan}`);
       const data = await res.json();
-      if (_chart) {
-        _chart.data.labels              = data.labels;
-        _chart.data.datasets[0].data   = data.prices;
-        _chart.data.datasets[1].data   = data.ema200;
-        _chart.update('none');
+
+      // price chart
+      if (_priceChart) {
+        _priceChart.data.labels           = data.labels;
+        _priceChart.data.datasets[0].data = data.prices;
+        _priceChart.data.datasets[1].data = data.ema200;
+        _priceChart.data.datasets[2].data = data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _priceChart.data.datasets[3].data = data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
-        _chart = new Chart(ctx, {
-          type: 'line',
+        _priceChart = new Chart(ctx, {
           data: {
-            labels:   data.labels,
+            labels: data.labels,
             datasets: [
-              {
-                label: 'Price',
-                data:  data.prices,
-                borderColor: '#58a6ff',
-                borderWidth: 1.5,
-                pointRadius: 0,
-                tension: 0.1,
-              },
-              {
-                label: 'EMA200',
-                data:  data.ema200,
-                borderColor: '#d29922',
-                borderWidth: 1.5,
-                borderDash: [4, 3],
-                pointRadius: 0,
-                tension: 0.1,
-              },
+              { type: 'line',    label: 'Price',  data: data.prices, borderColor: '#58a6ff', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+              { type: 'line',    label: 'EMA200', data: data.ema200, borderColor: '#d29922', borderWidth: 1.5, borderDash: [4,3], pointRadius: 0, tension: 0.1 },
+              { type: 'scatter', label: 'BUY',    data: data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#3fb950', pointRadius: 5, pointStyle: 'triangle' },
+              { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
             ],
           },
           options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-              legend: { labels: { color: '#8b949e', boxWidth: 20, font: { size: 11 } } },
-              tooltip: {
-                backgroundColor: '#161b22',
-                borderColor: '#30363d',
-                borderWidth: 1,
-                titleColor: '#e6edf3',
-                bodyColor: '#8b949e',
-                callbacks: {
-                  label: ctx => ` ${ctx.dataset.label}: €${Number(ctx.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
-                }
-              },
-            },
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
+              callbacks: { label: c => c.dataset.type === 'scatter'
+                ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+                : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}` }
+            }},
             scales: {
-              x: { ticks: { color: '#8b949e', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#21262d' } },
-              y: { ticks: { color: '#8b949e', font: { size: 10 }, callback: v => '€' + Number(v).toLocaleString('fi-FI') }, grid: { color: '#21262d' } },
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') } },
             },
           },
         });
       }
-    } catch(e) {}
+
+      // rsi chart
+      const rsiAnnotations = [
+        { y: 30, color: '#3fb950' },
+        { y: 65, color: '#f85149' },
+      ];
+      if (_rsiChart) {
+        _rsiChart.data.labels           = data.labels;
+        _rsiChart.data.datasets[0].data = data.rsi;
+        _rsiChart.update('none');
+      } else {
+        const ctx2 = document.getElementById('rsi-chart').getContext('2d');
+        _rsiChart = new Chart(ctx2, {
+          type: 'line',
+          data: {
+            labels: data.labels,
+            datasets: [
+              { label: 'RSI(7)', data: data.rsi, borderColor: '#8b949e', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
+              { label: 'Oversold (30)',   data: Array(data.labels.length).fill(30), borderColor: '#3fb95066', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+              { label: 'Overbought (65)', data: Array(data.labels.length).fill(65), borderColor: '#f8514966', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+            ],
+          },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { labels: { color: '#8b949e', boxWidth: 16, font: { size: 10 },
+                filter: item => item.text === 'RSI(7)' } },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => c.datasetIndex === 0 ? ` RSI: ${Number(c.raw).toFixed(1)}` : null,
+                             filter: item => item.datasetIndex === 0 } },
+            },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y, min: 0, max: 100,
+                ticks: { color: '#8b949e', font: { size: 10 }, stepSize: 25 } },
+            },
+          },
+        });
+      }
+    } catch(e) { console.error(e); }
   }
 
   async function initChart() {
