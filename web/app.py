@@ -38,6 +38,7 @@ def api_status():
                 "highest_price": pos.peak(),
                 "trailing_stop": round(pos.trailing_stop_level(), 2),
                 "take_profit": pos.take_profit_price,
+                "dca_trigger": round(pos.entry_price * (1 - config.DCA_DROP_PCT), 2) if not pos.dca_done else None,
             }
             for pair, pos in state.positions.items()
         },
@@ -156,6 +157,8 @@ def api_chart(pair):
     # actual executed trades for this pair — map to chart labels
     import datetime as _dt, zoneinfo as _zi
     _tz = _zi.ZoneInfo("Europe/Helsinki")
+    _interval_mins = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
+    _candle_mins = _interval_mins.get(config.INTERVAL, 15)
     actual_buys  = []
     actual_sells = []
     actual_dcas  = []
@@ -166,6 +169,8 @@ def api_chart(pair):
             continue
         try:
             t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
+            # floor to candle boundary so label matches chart x-axis
+            t = t.replace(minute=(t.minute // _candle_mins) * _candle_mins, second=0, microsecond=0)
             label = t.strftime("%m-%d %H:%M")
         except Exception:
             continue
