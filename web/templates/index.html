@@ -535,6 +535,9 @@
         _priceChart.data.datasets[2].data = data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
         _priceChart.data.datasets[3].data = data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
         _priceChart.data.datasets[4].data = data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _priceChart.data.datasets[5].data = data.actual_buys;
+        _priceChart.data.datasets[6].data = data.actual_sells;
+        _priceChart.data.datasets[7].data = data.actual_dcas;
         _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
@@ -550,6 +553,12 @@
                 backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
               { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
                 backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+              { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
+                backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+              { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
+                backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
+              { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
             ],
           },
           options: {

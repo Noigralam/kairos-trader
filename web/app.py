@@ -150,14 +150,46 @@ def api_chart(pair):
 
     # slice to requested span
     sl = slice(-limit, None)
+    labels = df["open_time"].iloc[sl].dt.strftime("%m-%d %H:%M").tolist()
+    label_set = set(labels)
+
+    # actual executed trades for this pair — map to chart labels
+    import datetime as _dt, zoneinfo as _zi
+    _tz = _zi.ZoneInfo("Europe/Helsinki")
+    actual_buys  = []
+    actual_sells = []
+    actual_dcas  = []
+    for row in db.get_trades(200):
+        _, ts, tpair, side, price, *_ = row
+        notes = row[-1] or ""
+        if tpair != pair.upper():
+            continue
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
+            label = t.strftime("%m-%d %H:%M")
+        except Exception:
+            continue
+        if label not in label_set:
+            continue
+        pt = {"x": label, "y": round(price, 4)}
+        if side == "BUY" and "dca" in notes.lower():
+            actual_dcas.append(pt)
+        elif side == "BUY":
+            actual_buys.append(pt)
+        elif side == "SELL":
+            actual_sells.append(pt)
+
     return jsonify({
-        "labels":       df["open_time"].iloc[sl].dt.strftime("%m-%d %H:%M").tolist(),
-        "prices":       close.iloc[sl].round(4).tolist(),
-        "ema200":       ema.iloc[sl].round(4).tolist(),
-        "rsi":          rsi.iloc[sl].round(2).tolist(),
-        "buys":         buy_prices[-limit:],
-        "sells":        sell_prices[-limit:],
-        "blocked_buys": blocked_buys[-limit:],
+        "labels":        labels,
+        "prices":        close.iloc[sl].round(4).tolist(),
+        "ema200":        ema.iloc[sl].round(4).tolist(),
+        "rsi":           rsi.iloc[sl].round(2).tolist(),
+        "buys":          buy_prices[-limit:],
+        "sells":         sell_prices[-limit:],
+        "blocked_buys":  blocked_buys[-limit:],
+        "actual_buys":   actual_buys,
+        "actual_sells":  actual_sells,
+        "actual_dcas":   actual_dcas,
     })
 
 
