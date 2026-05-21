@@ -149,9 +149,12 @@ def api_chart(pair):
         elif r > 65:
             sell_prices[i] = round(p, 4)
 
-    # slice to requested span
+    # slice to requested span — convert to Helsinki time for display
+    import zoneinfo as _zi
     sl = slice(-limit, None)
-    labels = df["open_time"].iloc[sl].dt.strftime("%m-%d %H:%M").tolist()
+    labels = (df["open_time"].iloc[sl]
+              .dt.tz_convert(_zi.ZoneInfo("Europe/Helsinki"))
+              .dt.strftime("%m-%d %H:%M").tolist())
     label_set = set(labels)
 
     # actual executed trades for this pair — map to chart labels
