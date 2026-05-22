@@ -39,6 +39,7 @@ def api_status():
                 "trailing_stop": round(pos.trailing_stop_level(), 2),
                 "take_profit": pos.take_profit_price,
                 "dca_trigger": round(pos.entry_price * (1 - config.DCA_DROP_PCT), 2) if not pos.dca_done else None,
+                "break_even": round(pos.entry_price * (1 + config.BINANCE_FEE) / (1 - config.BINANCE_FEE), 2),
             }
             for pair, pos in state.positions.items()
         },

@@ -199,6 +199,7 @@
             <th>Entry Price</th>
             <th>Amount</th>
             <th>Value (EUR)</th>
+            <th>Break Even</th>
             <th>DCA Trigger</th>
             <th>Trailing Stop</th>
             <th>Action</th>
@@ -413,7 +414,7 @@
       const pb = document.getElementById('positions-body');
       const pairs = Object.keys(s.positions);
       if (pairs.length === 0) {
-        pb.innerHTML = '<tr><td colspan="7" class="empty">No open positions</td></tr>';
+        pb.innerHTML = '<tr><td colspan="8" class="empty">No open positions</td></tr>';
       } else {
         pb.innerHTML = pairs.map(pair => {
           const p = s.positions[pair];
@@ -422,9 +423,10 @@
             <td>${fmt(p.entry_price)}</td>
             <td>${Number(p.amount).toFixed(6)}</td>
             <td>${fmt(p.value_eur)}</td>
+            <td><span class="muted">${fmt(p.break_even)}</span></td>
             <td>${p.dca_trigger !== null ? `<span class="neg">${fmt(p.dca_trigger)}</span>` : '<span style="color:var(--muted)">used</span>'}</td>
             <td><span class="neg">${fmt(p.trailing_stop)}</span></td>
-            <td><button class="override danger" onclick="control('override','${pair}')">Close</button></td>
+            <td><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></td>
           </tr>`;
         }).join('');
       }
