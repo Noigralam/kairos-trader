@@ -423,7 +423,7 @@
             <td>${fmt(p.entry_price)}</td>
             <td>${Number(p.amount).toFixed(6)}</td>
             <td>${fmt(p.value_eur)}</td>
-            <td><span class="muted">${fmt(p.break_even)}</span></td>
+            <td><span style="color:var(--muted)">+€${(p.break_even - p.entry_price).toFixed(2)}</span></td>
             <td>${p.dca_trigger !== null ? `<span class="neg">${fmt(p.dca_trigger)}</span>` : '<span style="color:var(--muted)">used</span>'}</td>
             <td><span class="neg">${fmt(p.trailing_stop)}</span></td>
             <td><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></td>
