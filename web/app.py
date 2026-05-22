@@ -40,6 +40,7 @@ def api_status():
                 "take_profit": pos.take_profit_price,
                 "dca_trigger": round(pos.entry_price * (1 - config.DCA_DROP_PCT), 2) if not pos.dca_done else None,
                 "break_even": round(pos.entry_price * (1 + config.BINANCE_FEE) / (1 - config.BINANCE_FEE), 2),
+                "current_price": round(get_price(pair), 2),
             }
             for pair, pos in state.positions.items()
         },
