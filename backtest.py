@@ -71,6 +71,7 @@ def run_pair(
     tp_pct    = tp_pct    if tp_pct    is not None else config.TAKE_PROFIT_PCT
     trail_pct = trail_pct if trail_pct is not None else config.TRAILING_STOP_PCT
     dca_drop  = config.DCA_DROP_PCT
+    dca_pct   = config.DCA_SIZE_PCT
     min_exit  = config.MIN_EXIT_PROFIT_PCT
 
     position: Position | None = None
@@ -144,7 +145,7 @@ def run_pair(
         elif result.signal == Signal.BUY and position is not None:
             drop = (position.entry_price - price) / position.entry_price
             if not position.dca_done and drop >= dca_drop:
-                dca_value = balance * pos_pct
+                dca_value = balance * dca_pct
                 if dca_value >= 1:
                     buy_fee = dca_value * fee_rate
                     apply_dca(position, price, dca_value)

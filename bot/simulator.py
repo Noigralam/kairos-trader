@@ -109,8 +109,8 @@ def dca_position(pair: str, price: float):
     if pos.dca_done:
         return
 
-    dca_value = config.SIMULATION_BALANCE * config.POSITION_SIZE_PCT
-    if _state.balance < dca_value:
+    dca_value = _state.balance * config.DCA_SIZE_PCT
+    if dca_value < 1:
         return
 
     buy_fee = dca_value * BINANCE_FEE

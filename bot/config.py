@@ -16,6 +16,7 @@ TRAILING_STOP_PCT = float(os.getenv("TRAILING_STOP_PCT", "0.05"))
 POSITION_SIZE_PCT = float(os.getenv("POSITION_SIZE_PCT", "0.25"))
 INTERVAL = os.getenv("INTERVAL", "1h")
 DCA_DROP_PCT = float(os.getenv("DCA_DROP_PCT", "0.04"))
+DCA_SIZE_PCT = float(os.getenv("DCA_SIZE_PCT", "0.50"))
 MIN_EXIT_PROFIT_PCT = float(os.getenv("MIN_EXIT_PROFIT_PCT", "0.02"))
 
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
