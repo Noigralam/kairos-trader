@@ -562,9 +562,8 @@
       const pos = _positions[_chartPair] || null;
       const n   = data.labels.length;
       const posLines = {
-        breakEven:     pos ? Array(n).fill(pos.break_even)    : [],
-        trailingStop:  pos ? Array(n).fill(pos.trailing_stop) : [],
-        takeProfit:    pos ? Array(n).fill(pos.take_profit)   : [],
+        breakEven:    pos ? Array(n).fill(pos.break_even)    : [],
+        trailingStop: pos ? Array(n).fill(pos.trailing_stop) : [],
       };
 
       // price chart
@@ -578,9 +577,8 @@
         _priceChart.data.datasets[5].data = data.actual_buys;
         _priceChart.data.datasets[6].data = data.actual_sells;
         _priceChart.data.datasets[7].data = data.actual_dcas;
-        _priceChart.data.datasets[8].data  = posLines.breakEven;
-        _priceChart.data.datasets[9].data  = posLines.trailingStop;
-        _priceChart.data.datasets[10].data = posLines.takeProfit;
+        _priceChart.data.datasets[8].data = posLines.breakEven;
+        _priceChart.data.datasets[9].data = posLines.trailingStop;
         _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
@@ -604,7 +602,6 @@
                 backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
               { type: 'line', label: 'Break-even',    data: posLines.breakEven,    borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Trailing stop', data: posLines.trailingStop, borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
-              { type: 'line', label: 'Take profit',   data: posLines.takeProfit,   borderColor: '#3fb950', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
             ],
           },
           options: {
