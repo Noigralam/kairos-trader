@@ -8,7 +8,7 @@ log = logging.getLogger("cryptobot")
 from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
-from .simulator import open_position, close_position, dca_position, get_state, check_stops
+from .simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add
 from .notifier import notify, notify_tick, bot_status_alert, build_chart
 
 INTERVAL_SECONDS = {
@@ -220,10 +220,10 @@ def override_close(pair: str):
 
 
 def manual_buy(pair: str, size_pct: float):
-    """Manually open a position with a specified balance fraction."""
+    """Manually buy — opens or adds to an existing position."""
     try:
         price = get_price(pair)
-        open_position(pair, price, size_pct=size_pct)
+        manual_add(pair, price, size_pct)
         notify(f"[MANUAL BUY] {pair} @ €{price:.2f} ({size_pct*100:.0f}% of balance)")
     except Exception as e:
         notify(f"[MANUAL BUY ERROR] {e}")

@@ -91,7 +91,6 @@ def open_position(pair: str, price: float, size_pct: float = None):
         return
 
     from .risk import Position
-    import math
     amount   = size / price
     amount   = round_qty(pair, amount)
     value    = amount * price
@@ -105,6 +104,37 @@ def open_position(pair: str, price: float, size_pct: float = None):
 
     trade_alert("BUY", pair, price, pos.amount, pos.value_eur, fee=buy_fee)
     log_trade(pair, "BUY", price, pos.amount, pos.value_eur, buy_fee, mode="simulation")
+
+
+def manual_add(pair: str, price: float, size_pct: float):
+    """Manual buy — opens new position or merges into existing one."""
+    size = _state.balance * size_pct
+    if size < 1:
+        return
+
+    buy_fee = size * BINANCE_FEE
+
+    if pair not in _state.positions:
+        from .risk import Position
+        amount   = round_qty(pair, size / price)
+        value    = amount * price
+        buy_fee  = value * BINANCE_FEE
+        tp_price = price * (1 + config.TAKE_PROFIT_PCT)
+        pos      = Position(pair, price, amount, value, tp_price, price)
+        _state.positions[pair] = pos
+        _state.balance -= value + buy_fee
+        _state.total_fees += buy_fee
+        _save()
+        trade_alert("BUY", pair, price, pos.amount, pos.value_eur, fee=buy_fee)
+        log_trade(pair, "BUY", price, pos.amount, pos.value_eur, buy_fee, mode="simulation")
+    else:
+        pos = _state.positions[pair]
+        apply_dca(pos, price, size)
+        _state.balance -= size + buy_fee
+        _state.total_fees += buy_fee
+        _save()
+        trade_alert("BUY", pair, price, pos.amount, size, fee=buy_fee)
+        log_trade(pair, "BUY", price, pos.amount, size, buy_fee, mode="simulation", notes="manual_add")
 
 
 def dca_position(pair: str, price: float):
