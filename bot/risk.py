@@ -33,7 +33,7 @@ def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> Non
     position.amount = total_amount
     position.value_eur = total_value
     position.take_profit_price = position.entry_price * (1 + config.TAKE_PROFIT_PCT)
-    position.highest_price = max(position.highest_price, dca_price)
+    position.highest_price = dca_price  # reset peak so trailing stop starts fresh from new entry
     position.dca_done = True
     position.stop_cooldown = DCA_STOP_COOLDOWN
 
