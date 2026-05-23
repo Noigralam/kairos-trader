@@ -39,6 +39,7 @@ def _save():
                 "take_profit_price": pos.take_profit_price,
                 "highest_price": pos.highest_price,
                 "dca_done": pos.dca_done,
+                "stop_cooldown": pos.stop_cooldown,
             }
             for pair, pos in _state.positions.items()
         },
