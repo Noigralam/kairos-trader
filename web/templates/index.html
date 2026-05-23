@@ -398,7 +398,7 @@
               <div class="mvalue">€${Number(d.price).toLocaleString('fi-FI', {minimumFractionDigits: 2})}${priceArrow}</div>
             </div>
             <div class="metric">
-              <div class="mlabel">RSI (7)</div>
+              <div class="mlabel">RSI (${d.rsi_period})</div>
               <div class="mvalue" style="color:${rsiColor(d.rsi)}">${d.rsi}${rsiArrow}</div>
             </div>
             <div class="metric">
@@ -635,7 +635,7 @@
           data: {
             labels: data.labels,
             datasets: [
-              { label: 'RSI(7)', data: data.rsi, borderColor: '#8b949e', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
+              { label: `RSI(${_signals[_chartPair]?.rsi_period ?? 7})`, data: data.rsi, borderColor: '#8b949e', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
               { label: 'Oversold (30)',   data: Array(data.labels.length).fill(30), borderColor: '#3fb95066', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
               { label: 'Overbought (65)', data: Array(data.labels.length).fill(65), borderColor: '#f8514966', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
             ],
@@ -644,7 +644,7 @@
             ...CHART_OPTS,
             plugins: { ...CHART_OPTS.plugins,
               legend: { labels: { color: '#8b949e', boxWidth: 16, font: { size: 10 },
-                filter: item => item.text === 'RSI(7)' } },
+                filter: item => item.text.startsWith('RSI(') } },
               tooltip: { ...CHART_OPTS.plugins.tooltip,
                 callbacks: { label: c => c.datasetIndex === 0 ? ` RSI: ${Number(c.raw).toFixed(1)}` : null,
                              filter: item => item.datasetIndex === 0 } },

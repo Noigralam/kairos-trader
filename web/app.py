@@ -101,6 +101,7 @@ def api_signals():
             out[pair] = {
                 "price": round(price, 2),
                 "rsi": round(result.rsi, 1),
+                "rsi_period": config.rsi_period_for(pair),
                 "ema200": round(result.ema_trend, 2),
                 "above_trend": above_trend,
                 "gap": round(gap, 2),
