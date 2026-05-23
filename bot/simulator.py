@@ -39,7 +39,6 @@ def _save():
                 "take_profit_price": pos.take_profit_price,
                 "highest_price": pos.highest_price,
                 "dca_done": pos.dca_done,
-                "stop_cooldown": pos.stop_cooldown,
             }
             for pair, pos in _state.positions.items()
         },
@@ -61,6 +60,7 @@ def _load():
         _state.total_fees = data.get("total_fees", 0.0)
         _state.positions = {}
         for pair, pos in data.get("positions", {}).items():
+            pos.pop("stop_cooldown", None)
             p = Position(**pos)
             if p.highest_price == 0.0:
                 p.highest_price = p.entry_price
