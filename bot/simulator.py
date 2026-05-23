@@ -132,12 +132,13 @@ def manual_add(pair: str, price: float, size_pct: float):
         log_trade(pair, "BUY", price, pos.amount, pos.value_eur, buy_fee, mode="simulation")
     else:
         pos = _state.positions[pair]
+        bought = size / price
         apply_dca(pos, price, size)
         _state.balance -= size + buy_fee
         _state.total_fees += buy_fee
         _save()
-        trade_alert("BUY", pair, price, pos.amount, size, fee=buy_fee)
-        log_trade(pair, "BUY", price, pos.amount, size, buy_fee, mode="simulation", notes="manual_add")
+        trade_alert("BUY", pair, price, bought, size, fee=buy_fee)
+        log_trade(pair, "BUY", price, bought, size, buy_fee, mode="simulation", notes="manual_add")
 
 
 def dca_position(pair: str, price: float):
@@ -153,13 +154,14 @@ def dca_position(pair: str, price: float):
         return
 
     buy_fee = dca_value * BINANCE_FEE
+    bought  = dca_value / price
     apply_dca(pos, price, dca_value)
     _state.balance -= dca_value + buy_fee
     _state.total_fees += buy_fee
     _save()
 
-    trade_alert("DCA", pair, price, pos.amount, dca_value, fee=buy_fee)
-    log_trade(pair, "DCA", price, pos.amount, dca_value, buy_fee, mode="simulation")
+    trade_alert("DCA", pair, price, bought, dca_value, fee=buy_fee)
+    log_trade(pair, "DCA", price, bought, dca_value, buy_fee, mode="simulation")
 
 
 def close_position(pair: str, price: float, reason: str = "signal"):
