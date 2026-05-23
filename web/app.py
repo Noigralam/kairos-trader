@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from bot import engine, simulator, db, config
-from bot.engine import get_last_tick
+from bot.engine import get_last_tick, manual_buy
 from bot.notifier import get_recent_logs
 from bot.exchange import get_price
 from bot.candles import get_df
@@ -224,6 +224,9 @@ def api_control():
         engine.stop()
     elif action == "override" and pair:
         engine.override_close(pair)
+    elif action == "manual_buy" and pair:
+        size_pct = float(data.get("size_pct", 0.5))
+        manual_buy(pair, size_pct)
 
     return jsonify({"status": engine.get_status()})
 

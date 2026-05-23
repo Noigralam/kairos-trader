@@ -82,19 +82,24 @@ def reset():
     _save()
 
 
-def open_position(pair: str, price: float):
+def open_position(pair: str, price: float, size_pct: float = None):
     if pair in _state.positions:
         return
-    min_size = config.SIMULATION_BALANCE * config.POSITION_SIZE_PCT
-    if _state.balance < min_size:
+    pct = size_pct if size_pct is not None else config.POSITION_SIZE_PCT
+    size = _state.balance * pct
+    if size < 1:
         return
 
-    pos = create_position(pair, price, _state.balance)
-    pos.amount = round_qty(pair, pos.amount)
-    pos.value_eur = pos.amount * price
-    buy_fee = pos.value_eur * BINANCE_FEE
+    from .risk import Position
+    import math
+    amount   = size / price
+    amount   = round_qty(pair, amount)
+    value    = amount * price
+    buy_fee  = value * BINANCE_FEE
+    tp_price = price * (1 + config.TAKE_PROFIT_PCT)
+    pos      = Position(pair, price, amount, value, tp_price, price)
     _state.positions[pair] = pos
-    _state.balance -= pos.value_eur + buy_fee
+    _state.balance -= value + buy_fee
     _state.total_fees += buy_fee
     _save()
 

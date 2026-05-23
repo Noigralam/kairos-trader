@@ -217,3 +217,13 @@ def override_close(pair: str):
         notify(f"[OVERRIDE] Closed {pair} @ €{price:.2f}")
     except Exception as e:
         notify(f"[OVERRIDE ERROR] {e}")
+
+
+def manual_buy(pair: str, size_pct: float):
+    """Manually open a position with a specified balance fraction."""
+    try:
+        price = get_price(pair)
+        open_position(pair, price, size_pct=size_pct)
+        notify(f"[MANUAL BUY] {pair} @ €{price:.2f} ({size_pct*100:.0f}% of balance)")
+    except Exception as e:
+        notify(f"[MANUAL BUY ERROR] {e}")

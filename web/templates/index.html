@@ -294,6 +294,16 @@
     await refresh();
   }
 
+  async function controlBuy(pair, size_pct) {
+    await fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'manual_buy', pair, size_pct }),
+    });
+    await refresh();
+    await refreshSignals();
+  }
+
   function logEntryClass(msg) {
     if (msg.includes('[BUY]'))       return 'buy';
     if (msg.includes('[SELL]') || msg.includes('[STOP-LOSS]')) return 'sell';
@@ -409,6 +419,13 @@
           </div>
           <div class="commentary">${d.commentary}</div>
           ${posBlock}
+          ${!pos ? `
+          <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+            <button class="primary" style="flex:1;font-size:12px;padding:6px"
+              onclick="if(confirm('Buy ${pair} with 50% of balance?')) controlBuy('${pair}', 0.5)">Buy 50%</button>
+            <button class="primary" style="flex:1;font-size:12px;padding:6px"
+              onclick="if(confirm('Buy ${pair} with 100% of balance?')) controlBuy('${pair}', 1.0)">Buy 100%</button>
+          </div>` : ''}
         </div>`;
       }).join('');
     } catch(e) {}
