@@ -87,7 +87,8 @@ def open_position(pair: str, price: float, size_pct: float = None):
     if pair in _state.positions:
         return
     pct = size_pct if size_pct is not None else config.POSITION_SIZE_PCT
-    size = _state.balance * pct
+    max_size = _state.balance / (1 + BINANCE_FEE)
+    size = min(_state.balance * pct, max_size)
     if size < 1:
         return
 
@@ -109,7 +110,8 @@ def open_position(pair: str, price: float, size_pct: float = None):
 
 def manual_add(pair: str, price: float, size_pct: float):
     """Manual buy — opens new position or merges into existing one."""
-    size = _state.balance * size_pct
+    max_size = _state.balance / (1 + BINANCE_FEE)
+    size = min(_state.balance * size_pct, max_size)
     if size < 1:
         return
 
@@ -145,7 +147,8 @@ def dca_position(pair: str, price: float):
     if pos.dca_done:
         return
 
-    dca_value = _state.balance * config.DCA_SIZE_PCT
+    max_size  = _state.balance / (1 + BINANCE_FEE)
+    dca_value = min(_state.balance * config.DCA_SIZE_PCT, max_size)
     if dca_value < 1:
         return
 
