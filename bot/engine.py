@@ -78,6 +78,7 @@ def _loop():
 
             state = get_state()
             results = {pair: compute_signal(get_df(pair, config.INTERVAL),
+                                            rsi_period=config.RSI_PERIOD,
                                             rsi_oversold=config.RSI_OVERSOLD,
                                             rsi_overbought=config.RSI_OVERBOUGHT)
                        for pair in config.TRADING_PAIRS}

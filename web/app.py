@@ -72,6 +72,7 @@ def api_signals():
         try:
             price = get_price(pair)
             result = compute_signal(get_df(pair, config.INTERVAL),
+                                    rsi_period=config.RSI_PERIOD,
                                     rsi_oversold=config.RSI_OVERSOLD,
                                     rsi_overbought=config.RSI_OVERBOUGHT)
             gap = price - result.ema_trend
@@ -129,12 +130,13 @@ def api_chart(pair):
     # EMA200
     ema = close.ewm(span=200, adjust=False).mean()
 
-    # RSI(7)
+    # RSI
+    _rp      = config.RSI_PERIOD
     delta    = close.diff()
     gain     = delta.clip(lower=0)
     loss     = -delta.clip(upper=0)
-    avg_gain = gain.ewm(com=6, min_periods=7).mean()
-    avg_loss = loss.ewm(com=6, min_periods=7).mean()
+    avg_gain = gain.ewm(com=_rp - 1, min_periods=_rp).mean()
+    avg_loss = loss.ewm(com=_rp - 1, min_periods=_rp).mean()
     rs       = avg_gain / avg_loss
     rsi      = 100 - (100 / (1 + rs))
 
@@ -146,11 +148,11 @@ def api_chart(pair):
         r   = rsi.iloc[i]
         e   = ema.iloc[i]
         p   = close.iloc[i]
-        if r < 30 and p > e:
+        if r < config.RSI_OVERSOLD and p > e:
             buy_prices[i] = round(p, 4)
-        elif r < 30 and p <= e:
+        elif r < config.RSI_OVERSOLD and p <= e:
             blocked_buys[i] = round(p, 4)
-        elif r > 65:
+        elif r > config.RSI_OVERBOUGHT:
             sell_prices[i] = round(p, 4)
 
     # slice to requested span — convert to Helsinki time for display
