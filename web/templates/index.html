@@ -120,6 +120,15 @@
       font-size: 12px; color: var(--muted); line-height: 1.6;
       border-top: 1px solid var(--border); padding-top: 10px;
     }
+    .signal-card .position-block {
+      border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px;
+    }
+    .signal-card .pos-row {
+      display: flex; justify-content: space-between; font-size: 12px;
+      margin-bottom: 5px;
+    }
+    .signal-card .pos-row .plabel { color: var(--muted); }
+    .signal-card .pos-row .pvalue { font-weight: 600; }
     .signal-card .sig-badge {
       display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
       text-transform: uppercase; letter-spacing: .4px; margin-left: 8px;
@@ -189,28 +198,6 @@
     <button class="danger" onclick="control('stop')">■ Stop</button>
   </div>
 
-  <section>
-    <h2>Open Positions</h2>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Pair</th>
-            <th>Entry Price</th>
-            <th>Amount</th>
-            <th>Value (EUR)</th>
-            <th>Break Even</th>
-            <th>DCA Trigger</th>
-            <th>Trailing Stop</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="positions-body">
-          <tr><td colspan="6" class="empty">No open positions</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
 
   <section>
     <h2>Recent Trades</h2>
@@ -323,6 +310,7 @@
   }
 
   const _prev = {};
+  let _positions = {};
 
   function arrow(cur, prev, colored = true) {
     if (prev === undefined || cur === prev) return '';
@@ -352,6 +340,46 @@
         const rsiPct      = Math.min(100, Math.max(0, d.rsi));
         const rsiBarColor = d.rsi < 30 ? 'var(--green)' : d.rsi > 65 ? 'var(--red)' : 'var(--blue)';
 
+        const pos = _positions[pair];
+        let posBlock = '';
+        if (pos) {
+          const beDiff = pos.current_price - pos.break_even;
+          const beCls  = beDiff >= 0 ? 'pos' : 'neg';
+          const beStr  = `<span class="${beCls}">${beDiff >= 0 ? '+' : '-'}€${Math.abs(beDiff).toFixed(2)}</span>`;
+          const pct    = ((pos.current_price - pos.entry_price) / pos.entry_price * 100);
+          const pctCls = pct >= 0 ? 'pos' : 'neg';
+          const dcaStr = pos.dca_trigger !== null
+            ? `€${pos.dca_trigger.toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+            : '<span style="color:var(--muted)">used</span>';
+          posBlock = `
+          <div class="position-block">
+            <div class="pos-row">
+              <span class="plabel">Entry</span>
+              <span class="pvalue">€${pos.entry_price.toLocaleString('fi-FI', {minimumFractionDigits: 2})} <span class="${pctCls}">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</span></span>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">Break-even gap</span>
+              <span class="pvalue">${beStr}</span>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">Trailing stop</span>
+              <span class="pvalue neg">€${pos.trailing_stop.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">Take profit</span>
+              <span class="pvalue pos">€${pos.take_profit.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">DCA trigger</span>
+              <span class="pvalue">${dcaStr}</span>
+            </div>
+            <div class="pos-row" style="margin-top:8px">
+              <span class="plabel">${pos.amount.toFixed(6)} units · €${pos.value_eur.toFixed(2)}</span>
+              <button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button>
+            </div>
+          </div>`;
+        }
+
         return `<div class="signal-card">
           <div class="pair-name">${pair} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
           <div class="metrics">
@@ -380,6 +408,7 @@
             <div class="mvalue ${trendCls}" style="font-size:12px">${trendLabel}</div>
           </div>
           <div class="commentary">${d.commentary}</div>
+          ${posBlock}
         </div>`;
       }).join('');
     } catch(e) {}
@@ -410,26 +439,8 @@
       const pnlEl = document.getElementById('pnl');
       pnlEl.innerHTML = fmtPnl(s.total_pnl);
 
-      // Positions
-      const pb = document.getElementById('positions-body');
-      const pairs = Object.keys(s.positions);
-      if (pairs.length === 0) {
-        pb.innerHTML = '<tr><td colspan="8" class="empty">No open positions</td></tr>';
-      } else {
-        pb.innerHTML = pairs.map(pair => {
-          const p = s.positions[pair];
-          return `<tr>
-            <td>${pair}</td>
-            <td>${fmt(p.entry_price)}</td>
-            <td>${Number(p.amount).toFixed(6)}</td>
-            <td>${fmt(p.value_eur)}</td>
-            <td>${(() => { const diff = p.current_price - p.break_even; const cls = diff >= 0 ? 'pos' : 'neg'; const sign = diff >= 0 ? '+' : '-'; return `<span class="${cls}">${sign}€${Math.abs(diff).toFixed(2)}</span>`; })()}</td>
-            <td>${p.dca_trigger !== null ? `<span class="neg">${fmt(p.dca_trigger)}</span>` : '<span style="color:var(--muted)">used</span>'}</td>
-            <td><span class="neg">${fmt(p.trailing_stop)}</span></td>
-            <td><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></td>
-          </tr>`;
-        }).join('');
-      }
+      // store positions for use in signal cards
+      _positions = s.positions;
 
       // Trades
       const tb = document.getElementById('trades-body');
