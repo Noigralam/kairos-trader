@@ -19,6 +19,7 @@ DCA_DROP_PCT      = float(os.getenv("DCA_DROP_PCT", "0.04"))
 DCA_SIZE_PCT      = float(os.getenv("DCA_SIZE_PCT", "0.50"))
 DCA_RSI_THRESHOLD = float(os.getenv("DCA_RSI_THRESHOLD", "38"))
 MIN_EXIT_PROFIT_PCT = float(os.getenv("MIN_EXIT_PROFIT_PCT", "0.02"))
+PROFIT_FLOOR_PCT    = float(os.getenv("PROFIT_FLOOR_PCT", "0.03"))
 
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8888"))

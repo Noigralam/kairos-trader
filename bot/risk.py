@@ -16,8 +16,7 @@ class Position:
         return self.highest_price if self.highest_price > 0 else self.entry_price
 
     def trailing_stop_level(self) -> float:
-        # floor guarantees at least 1% net profit after both fees
-        fee_plus_profit_floor = self.entry_price * (1 + config.BINANCE_FEE + 0.01) / (1 - config.BINANCE_FEE)
+        fee_plus_profit_floor = self.entry_price * (1 + config.BINANCE_FEE + config.PROFIT_FLOOR_PCT) / (1 - config.BINANCE_FEE)
         return max(fee_plus_profit_floor, self.peak() * (1 - config.TRAILING_STOP_PCT))
 
 
