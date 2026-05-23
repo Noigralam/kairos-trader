@@ -72,7 +72,7 @@ def api_signals():
         try:
             price = get_price(pair)
             result = compute_signal(get_df(pair, config.INTERVAL),
-                                    rsi_period=config.RSI_PERIOD,
+                                    rsi_period=config.rsi_period_for(pair),
                                     rsi_oversold=config.RSI_OVERSOLD,
                                     rsi_overbought=config.RSI_OVERBOUGHT)
             gap = price - result.ema_trend
@@ -131,7 +131,7 @@ def api_chart(pair):
     ema = close.ewm(span=200, adjust=False).mean()
 
     # RSI
-    _rp      = config.RSI_PERIOD
+    _rp      = config.rsi_period_for(pair.upper())
     delta    = close.diff()
     gain     = delta.clip(lower=0)
     loss     = -delta.clip(upper=0)
