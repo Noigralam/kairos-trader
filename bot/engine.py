@@ -162,13 +162,13 @@ def _loop():
                 has_position = pair in state.positions
                 if result.signal == Signal.BUY and not has_position:
                     open_position(pair, prices[pair])
-                elif result.signal == Signal.BUY and has_position:
+                elif has_position:
                     pos = state.positions[pair]
                     drop = (pos.entry_price - prices[pair]) / pos.entry_price
-                    if not pos.dca_done and drop >= config.DCA_DROP_PCT:
-                        notify(f"[DCA] {pair} down {drop*100:.1f}% from entry — averaging down", discord=False)
+                    if not pos.dca_done and drop >= config.DCA_DROP_PCT and result.rsi < config.DCA_RSI_THRESHOLD:
+                        notify(f"[DCA] {pair} down {drop*100:.1f}% from entry, RSI={result.rsi:.1f} — averaging down", discord=False)
                         dca_position(pair, prices[pair])
-                elif result.signal == Signal.SELL and has_position:
+                if result.signal == Signal.SELL and has_position:
                     pos = state.positions[pair]
                     min_exit = pos.entry_price * (1 + config.MIN_EXIT_PROFIT_PCT)
                     if prices[pair] >= min_exit:
