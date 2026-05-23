@@ -20,6 +20,8 @@ DCA_SIZE_PCT      = float(os.getenv("DCA_SIZE_PCT", "0.50"))
 DCA_RSI_THRESHOLD = float(os.getenv("DCA_RSI_THRESHOLD", "38"))
 MIN_EXIT_PROFIT_PCT = float(os.getenv("MIN_EXIT_PROFIT_PCT", "0.02"))
 PROFIT_FLOOR_PCT    = float(os.getenv("PROFIT_FLOOR_PCT", "0.03"))
+RSI_OVERSOLD        = int(os.getenv("RSI_OVERSOLD", "33"))
+RSI_OVERBOUGHT      = int(os.getenv("RSI_OVERBOUGHT", "70"))
 
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8888"))

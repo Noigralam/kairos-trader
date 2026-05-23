@@ -77,7 +77,10 @@ def _loop():
             )
 
             state = get_state()
-            results = {pair: compute_signal(get_df(pair, config.INTERVAL)) for pair in config.TRADING_PAIRS}
+            results = {pair: compute_signal(get_df(pair, config.INTERVAL),
+                                            rsi_oversold=config.RSI_OVERSOLD,
+                                            rsi_overbought=config.RSI_OVERBOUGHT)
+                       for pair in config.TRADING_PAIRS}
 
             # Per-pair detail: file + web buffer only
             for pair, result in results.items():

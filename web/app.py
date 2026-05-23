@@ -71,7 +71,9 @@ def api_signals():
     for pair in config.TRADING_PAIRS:
         try:
             price = get_price(pair)
-            result = compute_signal(get_df(pair, config.INTERVAL))
+            result = compute_signal(get_df(pair, config.INTERVAL),
+                                    rsi_oversold=config.RSI_OVERSOLD,
+                                    rsi_overbought=config.RSI_OVERBOUGHT)
             gap = price - result.ema_trend
             above_trend = gap >= 0
             has_position = pair in state.positions
