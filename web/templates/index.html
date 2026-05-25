@@ -129,6 +129,33 @@
     }
     .signal-card .pos-row .plabel { color: var(--muted); }
     .signal-card .pos-row .pvalue { font-weight: 600; }
+    .price-ladder {
+      position: relative; height: 36px; margin: 10px 0 6px;
+      border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+    }
+    .price-ladder .ladder-track {
+      position: absolute; top: 50%; left: 0; right: 0; height: 2px;
+      background: var(--border); transform: translateY(-50%);
+    }
+    .price-ladder .ladder-fill {
+      position: absolute; top: 50%; left: 0; height: 2px;
+      background: #3fb950; transform: translateY(-50%);
+    }
+    .price-ladder .ladder-pin {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+    }
+    .price-ladder .ladder-pin .pin-dot {
+      width: 8px; height: 8px; border-radius: 50%; border: 2px solid currentColor;
+      background: var(--bg);
+    }
+    .price-ladder .ladder-pin .pin-label {
+      font-size: 9px; white-space: nowrap; color: currentColor;
+      position: absolute; top: 18px; transform: translateX(-50%); left: 50%;
+    }
+    .price-ladder .ladder-pin.pin-top .pin-label {
+      top: auto; bottom: 18px;
+    }
     .signal-card .sig-badge {
       display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
       text-transform: uppercase; letter-spacing: .4px; margin-left: 8px;
@@ -357,7 +384,35 @@
           const pctCls  = pct >= 0 ? 'pos' : 'neg';
           const pnlEur  = (pos.current_price - pos.entry_price) * pos.amount;
           const pnlCls  = pnlEur >= 0 ? 'pos' : 'neg';
-          const peakPct = ((pos.highest_price - pos.entry_price) / pos.entry_price * 100);
+          const peakPct    = ((pos.highest_price - pos.entry_price) / pos.entry_price * 100);
+          const minExitPct = ((pos.trailing_stop  - pos.entry_price) / pos.entry_price * 100);
+          const tpPct      = ((pos.take_profit    - pos.entry_price) / pos.entry_price * 100);
+
+          // price ladder: scale from -1% to tpPct+1%
+          const ladderMin = -1, ladderMax = Math.max(tpPct + 1, peakPct + 1, pct + 1);
+          const ladderRange = ladderMax - ladderMin;
+          const lp = v => Math.min(100, Math.max(0, ((v - ladderMin) / ladderRange) * 100)).toFixed(1);
+          const ladder = `
+            <div class="price-ladder">
+              <div class="ladder-track"></div>
+              <div class="ladder-fill" style="width:${lp(Math.max(0, minExitPct))}%"></div>
+              <div class="ladder-pin pin-top" style="left:${lp(0)}%;color:#8b949e" title="Entry">
+                <div class="pin-dot"></div><div class="pin-label">Entry</div>
+              </div>
+              <div class="ladder-pin" style="left:${lp(minExitPct)}%;color:#f85149" title="Min exit (floor/trail)">
+                <div class="pin-dot"></div><div class="pin-label">exit ${minExitPct.toFixed(1)}%</div>
+              </div>
+              <div class="ladder-pin pin-top" style="left:${lp(pct)}%;color:#58a6ff" title="Current price">
+                <div class="pin-dot"></div><div class="pin-label">now ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</div>
+              </div>
+              <div class="ladder-pin" style="left:${lp(peakPct)}%;color:#3fb950" title="Peak">
+                <div class="pin-dot"></div><div class="pin-label">peak +${peakPct.toFixed(1)}%</div>
+              </div>
+              <div class="ladder-pin pin-top" style="left:${lp(tpPct)}%;color:#d29922;opacity:0.5" title="Take profit (spike catch)">
+                <div class="pin-dot"></div><div class="pin-label">TP +${tpPct.toFixed(1)}%</div>
+              </div>
+            </div>`;
+
           const dcaStr  = pos.dca_trigger !== null
             ? `€${pos.dca_trigger.toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
             : '<span style="color:var(--muted)">used</span>';
@@ -371,6 +426,7 @@
               <span class="plabel">Unrealised P&amp;L</span>
               <span class="pvalue ${pnlCls}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% (${pnlEur >= 0 ? '+' : ''}€${Math.abs(pnlEur).toFixed(2)})</span>
             </div>
+            ${ladder}
             <div class="pos-row">
               <span class="plabel">Peak</span>
               <span class="pvalue">€${pos.highest_price.toLocaleString('fi-FI', {minimumFractionDigits: 2})} <span style="color:var(--muted);font-size:11px">(+${peakPct.toFixed(2)}%)</span></span>
