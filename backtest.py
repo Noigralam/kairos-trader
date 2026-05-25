@@ -1,13 +1,19 @@
 """
-Backtest the current strategy against historical 15m candles from Binance.
+Unified backtest tool.
 
 Usage:
-    python backtest.py [days]          # default: 365
-    python backtest.py 90 BTCEUR       # single pair, 90 days
+    python backtest.py [days]               # pair comparison: solo vs combined
+    python backtest.py sweep exit  [days]   # sell RSI + take-profit sweep
+    python backtest.py sweep floor [days]   # profit floor sweep
+    python backtest.py sweep trail [days]   # trailing stop sweep
+    python backtest.py sweep buyrsi [days]  # buy RSI threshold sweep
+    python backtest.py sweep dca   [days]   # DCA parameters sweep
+    python backtest.py sweep all   [days]   # run every sweep
+
+Days can be one or multiple values: python backtest.py sweep exit 365 180 90
 """
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -15,279 +21,366 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from bot import config
-from bot.strategy import compute_signal, Signal
 from bot.candles import get_df, initial_sync
-from bot.risk import (
-    Position, create_position, apply_dca,
-    update_peak, check_trailing_stop, check_take_profit, calc_pnl,
-)
+from bot.risk import Position, apply_dca, update_peak, calc_pnl
 
-INTERVAL   = "15m"
-CANDLES_PER_REQUEST = 1000
-WARMUP     = 210          # candles needed before EMA200 is meaningful
-COOLDOWN_CANDLES = 16     # 4h re-entry cooldown (16 × 15m)
+INTERVAL = "15m"
+WARMUP   = 210
+PAIRS    = ["ETHEUR", "SOLEUR"]
 
 
-# ── data fetching ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
 
-def fetch_historical(pair: str, days: int) -> pd.DataFrame:
-    needed = days * 24 * 4 + WARMUP  # 15m candles per day + warmup
+def fetch(pair: str, days: int) -> pd.DataFrame:
+    needed = days * 24 * 4 + WARMUP
     df = get_df(pair, INTERVAL, limit=needed)
     if len(df) >= needed * 0.9:
-        print(f"  {pair}: {len(df):,} candles from local DB")
         return df
-    print(f"  {pair}: only {len(df)} candles locally — syncing {days}d from Binance…", flush=True)
+    print(f"  Syncing {pair}/{INTERVAL} {days}d…", flush=True)
     initial_sync(pair, INTERVAL, days=days)
-    df = get_df(pair, INTERVAL, limit=needed)
-    print(f"  {pair}: {len(df):,} candles ready")
-    return df
+    return get_df(pair, INTERVAL, limit=needed)
 
 
-# ── per-trade record ──────────────────────────────────────────────────────────
+def precompute(df: pd.DataFrame, rsi_period: int):
+    close = df["close"]
+    ema   = close.ewm(span=200, adjust=False).mean()
+    delta = close.diff()
+    gain  = delta.clip(lower=0)
+    loss  = -delta.clip(upper=0)
+    avg_g = gain.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
+    avg_l = loss.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
+    rsi   = 100 - (100 / (1 + avg_g / avg_l))
+    return rsi.values, ema.values, close.values, df["high"].values, df["low"].values
+
+
+# ---------------------------------------------------------------------------
+# Core simulator
+# ---------------------------------------------------------------------------
 
 @dataclass
 class Trade:
-    pair:        str
-    entry_time:  datetime
-    exit_time:   datetime
-    entry_price: float
-    exit_price:  float
-    amount:      float
     pnl:         float
     fees:        float
     exit_reason: str
+    dca_used:    bool = False
 
-
-# ── backtest engine ───────────────────────────────────────────────────────────
 
 def run_pair(
-    df: pd.DataFrame, pair: str, balance: float,
-    tp_pct: float = None, trail_pct: float = None,
-    cooldown: int = 0, profit_floor: float = 0.01,
-    ema_period: int = 200,
+    pair: str, df: pd.DataFrame, start_balance: float,
+    pos_pct:    float = None,
+    dca_pct:    float = None,
+    dca_drop:   float = None,
+    dca_rsi:    int   = None,
+    enable_dca: bool  = True,
+    tp_pct:     float = None,
+    trail_pct:  float = None,
+    floor_pct:  float = None,
+    rsi_buy:    int   = None,
+    rsi_sell:   int   = None,
+    rsi_period: int   = None,
 ) -> tuple[list[Trade], float]:
-    fee_rate  = config.BINANCE_FEE
-    pos_pct   = config.POSITION_SIZE_PCT
-    tp_pct    = tp_pct    if tp_pct    is not None else config.TAKE_PROFIT_PCT
-    trail_pct = trail_pct if trail_pct is not None else config.TRAILING_STOP_PCT
-    dca_drop  = config.DCA_DROP_PCT
-    dca_pct   = config.DCA_SIZE_PCT
-    min_exit  = config.MIN_EXIT_PROFIT_PCT
 
+    fee_rate   = config.BINANCE_FEE
+    pos_pct    = pos_pct    if pos_pct    is not None else config.POSITION_SIZE_PCT
+    dca_drop   = dca_drop   if dca_drop   is not None else config.DCA_DROP_PCT
+    dca_pct    = dca_pct    if dca_pct    is not None else config.DCA_SIZE_PCT
+    dca_rsi    = dca_rsi    if dca_rsi    is not None else config.DCA_RSI_THRESHOLD
+    tp_pct     = tp_pct     if tp_pct     is not None else config.TAKE_PROFIT_PCT
+    trail_pct  = trail_pct  if trail_pct  is not None else config.TRAILING_STOP_PCT
+    floor_pct  = floor_pct  if floor_pct  is not None else config.PROFIT_FLOOR_PCT
+    rsi_buy    = rsi_buy    if rsi_buy    is not None else config.RSI_OVERSOLD
+    rsi_sell   = rsi_sell   if rsi_sell   is not None else config.rsi_overbought_for(pair)
+    rsi_period = rsi_period if rsi_period is not None else config.rsi_period_for(pair)
+    min_exit   = config.MIN_EXIT_PROFIT_PCT
+
+    rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period)
+
+    balance  = start_balance
     position: Position | None = None
-    trades: list[Trade]       = []
-    cooldown_remaining        = 0
+    trades: list[Trade] = []
 
-    # Skip the first ema_period+10 candles so the EMA has enough history to
-    # produce a meaningful value — before this point it's calculated from too
-    # few data points and would generate false signals.
-    warmup = ema_period + 10
-    for i in range(warmup, len(df)):
-        window = df.iloc[: i + 1]
-        row    = df.iloc[i]
-        price  = float(row["close"])
-        ts     = row["open_time"].to_pydatetime()
+    for i in range(WARMUP, len(close_arr)):
+        price = float(close_arr[i])
+        rsi   = float(rsi_arr[i])
+        ema   = float(ema_arr[i])
+        hi    = float(hi_arr[i])
+        lo    = float(lo_arr[i])
 
-        if cooldown_remaining > 0:
-            cooldown_remaining -= 1
-
-        # stop checks first (use candle high/low for realism)
         if position is not None:
-            hi = float(row["high"])
-            lo = float(row["low"])
             update_peak(position, hi)
-
-            # override trailing stop level using backtest trail_pct + profit_floor
             stop_level = max(
-                position.entry_price * (1 + fee_rate + profit_floor) / (1 - fee_rate),
+                position.entry_price * (1 + fee_rate + floor_pct) / (1 - fee_rate),
                 position.peak() * (1 - trail_pct),
             )
+            take_profit_price = position.entry_price * (1 + tp_pct)
 
-            if check_take_profit(position, hi):
-                exit_price = position.take_profit_price
-                buy_fee    = position.value_eur * fee_rate
-                sell_fee   = position.amount * exit_price * fee_rate
-                pnl        = calc_pnl(position, exit_price, buy_fee, sell_fee)
-                balance   += position.amount * exit_price - sell_fee
-                trades.append(Trade(pair, position._entry_time, ts,
-                                    position.entry_price, exit_price,
-                                    position.amount, pnl, buy_fee + sell_fee, "take_profit"))
+            if hi >= take_profit_price:
+                ep = take_profit_price
+                bf = position.value_eur * fee_rate
+                sf = position.amount * ep * fee_rate
+                balance += position.amount * ep - sf
+                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "take_profit", position.dca_done))
                 position = None
-                cooldown_remaining = cooldown
                 continue
 
             if position.peak() > stop_level and lo <= stop_level:
-                exit_price = stop_level
-                buy_fee    = position.value_eur * fee_rate
-                sell_fee   = position.amount * exit_price * fee_rate
-                pnl        = calc_pnl(position, exit_price, buy_fee, sell_fee)
-                balance   += position.amount * exit_price - sell_fee
-                trades.append(Trade(pair, position._entry_time, ts,
-                                    position.entry_price, exit_price,
-                                    position.amount, pnl, buy_fee + sell_fee, "trailing_stop"))
+                ep = stop_level
+                bf = position.value_eur * fee_rate
+                sf = position.amount * ep * fee_rate
+                balance += position.amount * ep - sf
+                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "trailing_stop", position.dca_done))
                 position = None
-                cooldown_remaining = cooldown
                 continue
 
-        result = compute_signal(window, ema_trend=ema_period)
+        if position is None and rsi < rsi_buy and price > ema:
+            max_size = balance / (1 + fee_rate)
+            size = min(balance * pos_pct, max_size)
+            if size >= 1:
+                position = Position(pair, price, size / price, size,
+                                    price * (1 + tp_pct), price)
+                balance -= size + size * fee_rate
 
-        if result.signal == Signal.BUY and position is None and cooldown_remaining == 0:
-            size = balance * pos_pct
-            if size < 1:
-                continue
-            amount    = size / price
-            buy_fee   = size * fee_rate
-            tp_price  = price * (1 + tp_pct)
-            position  = Position(pair, price, amount, size, tp_price, price)
-            position._entry_time = ts
-            balance  -= size + buy_fee
-
-        elif result.signal == Signal.BUY and position is not None:
+        if enable_dca and position is not None and not position.dca_done:
             drop = (position.entry_price - price) / position.entry_price
-            if not position.dca_done and drop >= dca_drop:
-                dca_value = balance * dca_pct
+            if drop >= dca_drop and rsi < dca_rsi:
+                max_size  = balance / (1 + fee_rate)
+                dca_value = min(balance * dca_pct, max_size)
                 if dca_value >= 1:
-                    buy_fee = dca_value * fee_rate
                     apply_dca(position, price, dca_value)
-                    balance -= dca_value + buy_fee
+                    balance -= dca_value + dca_value * fee_rate
 
-        elif result.signal == Signal.SELL and position is not None:
-            min_exit_price = position.entry_price * (1 + min_exit)
-            if price >= min_exit_price:
-                buy_fee    = position.value_eur * fee_rate
-                sell_fee   = position.amount * price * fee_rate
-                pnl        = calc_pnl(position, price, buy_fee, sell_fee)
-                balance   += position.amount * price - sell_fee
-                trades.append(Trade(pair, position._entry_time, ts,
-                                    position.entry_price, price,
-                                    position.amount, pnl, buy_fee + sell_fee, "signal"))
+        if position is not None and rsi > rsi_sell:
+            if price >= position.entry_price * (1 + min_exit):
+                bf = position.value_eur * fee_rate
+                sf = position.amount * price * fee_rate
+                balance += position.amount * price - sf
+                trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "signal", position.dca_done))
                 position = None
-                cooldown_remaining = cooldown
 
-    # close any open position at last price
     if position is not None:
-        price    = float(df.iloc[-1]["close"])
-        buy_fee  = position.value_eur * fee_rate
-        sell_fee = position.amount * price * fee_rate
-        pnl      = calc_pnl(position, price, buy_fee, sell_fee)
-        balance += position.amount * price - sell_fee
-        trades.append(Trade(pair, position._entry_time, df.iloc[-1]["open_time"].to_pydatetime(),
-                            position.entry_price, price,
-                            position.amount, pnl, buy_fee + sell_fee, "end_of_data"))
+        price = float(close_arr[-1])
+        bf = position.value_eur * fee_rate
+        sf = position.amount * price * fee_rate
+        balance += position.amount * price - sf
+        trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "end_of_data", position.dca_done))
 
     return trades, balance
 
 
-# ── reporting ─────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
 
-def report(pair: str, trades: list[Trade], start_balance: float, end_balance: float):
-    print(f"\n{'─'*54}")
-    print(f"  {pair}")
-    print(f"{'─'*54}")
-    if not trades:
-        print("  No trades executed.")
+def summarise(label: str, trades: list[Trade], start: float, wide: bool = False):
+    realized = [t for t in trades if t.exit_reason != "end_of_data"]
+    open_eod = len(trades) - len(realized)
+    if not realized:
+        print(f"  {label:<44}  no closed trades")
         return
-
-    wins   = [t for t in trades if t.pnl > 0]
-    losses = [t for t in trades if t.pnl <= 0]
-    total_pnl  = sum(t.pnl  for t in trades)
-    total_fees = sum(t.fees for t in trades)
-
-    # max drawdown on cumulative pnl curve
-    cumulative = 0.0
-    peak_pnl   = 0.0
-    max_dd     = 0.0
-    for t in trades:
-        cumulative += t.pnl
-        if cumulative > peak_pnl:
-            peak_pnl = cumulative
-        dd = peak_pnl - cumulative
-        if dd > max_dd:
-            max_dd = dd
-
-    avg_hold = sum(
-        (t.exit_time - t.entry_time).total_seconds() / 3600
-        for t in trades
-    ) / len(trades)
-
+    pnl   = sum(t.pnl  for t in realized)
+    fees  = sum(t.fees for t in realized)
+    wins  = sum(1 for t in realized if t.pnl > 0)
+    n     = len(realized)
+    avg   = pnl / n
+    worst = min(t.pnl for t in realized)
+    best  = max(t.pnl for t in realized)
+    eod   = f"+{open_eod}" if open_eod else "  "
     reasons = {}
-    for t in trades:
+    for t in realized:
         reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
+    exits = "  ".join(f"{k}×{v}" for k, v in reasons.items())
 
-    # Finnish capital gains tax: 30% up to €30k, 34% above
-    taxable  = max(0.0, total_pnl)
-    tax      = min(taxable, 30000) * 0.30 + max(0.0, taxable - 30000) * 0.34
-    after_tax_pnl     = total_pnl - tax
-    after_tax_balance = start_balance + after_tax_pnl
-
-    print(f"  Trades        : {len(trades)}  (W {len(wins)} / L {len(losses)})  win rate {len(wins)/len(trades)*100:.0f}%")
-    print(f"  Total PnL     : €{total_pnl:+.2f}  (after tax: €{after_tax_pnl:+.2f})")
-    print(f"  Tax (FI)      : €{tax:.2f}  ({tax/taxable*100:.0f}% of gains)" if taxable > 0 else f"  Tax (FI)      : €0.00")
-    print(f"  Fees paid     : €{total_fees:.4f}")
-    print(f"  Max drawdown  : €{max_dd:.2f}")
-    print(f"  Avg hold time : {avg_hold:.1f}h")
-    print(f"  Best trade    : €{max(t.pnl for t in trades):+.2f}")
-    print(f"  Worst trade   : €{min(t.pnl for t in trades):+.2f}")
-    print(f"  Exit reasons  : {', '.join(f'{k} ×{v}' for k, v in reasons.items())}")
-    print(f"  Balance       : €{start_balance:.2f} → €{end_balance:.2f}  ({(end_balance/start_balance-1)*100:+.1f}%)  after tax: €{after_tax_balance:.2f}")
-
-    print(f"\n  {'Entry':19}  {'Exit':19}  {'PnL':>8}  Reason")
-    print(f"  {'─'*19}  {'─'*19}  {'─'*8}  {'─'*13}")
-    for t in trades[-20:]:   # last 20 trades
-        entry = t.entry_time.strftime("%Y-%m-%d %H:%M")
-        exit_ = t.exit_time.strftime("%Y-%m-%d %H:%M")
-        print(f"  {entry}  {exit_}  €{t.pnl:>+7.2f}  {t.exit_reason}")
-    if len(trades) > 20:
-        print(f"  … {len(trades)-20} earlier trades omitted")
+    if wide:
+        dca_n = sum(1 for t in realized if t.dca_used)
+        print(f"  {label:<44}  n={n:>3}{eod}  W/L={wins}/{n-wins}"
+              f"  PnL={pnl:>+7.2f}  avg={avg:>+5.2f}  worst={worst:>+6.2f}  best={best:>+5.2f}"
+              f"  fees={fees:.2f}  dca×{dca_n}  [{exits}]")
+    else:
+        tax   = min(max(pnl, 0), 30000) * 0.30 + max(max(pnl, 0) - 30000, 0) * 0.34
+        after = start + pnl - (tax if pnl > 0 else 0)
+        print(f"  {label:<36}  n={n:>3}  {eod:>4}  W/L={wins}/{n-wins}"
+              f"  PnL={pnl:>+7.2f}  after-tax={after:>7.2f}"
+              f"  worst={worst:>+7.2f}  fees={fees:.2f}  [{exits}]")
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+def _header(days: int, title: str, wide: bool = False):
+    width = 125 if wide else 105
+    print(f"\n{'━'*width}")
+    print(f"  {days}d — {title}")
+    print(f"{'━'*width}")
 
-SCENARIOS = [
-    {"label": "EMA200  floor=1.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.010, "ema": 200},
-    {"label": "EMA100  floor=1.0%", "tp": 0.10, "trail": 0.05, "cooldown": 0, "floor": 0.010, "ema": 100},
-]
 
-ALL_PAIRS = ["BTCEUR", "ETHEUR", "SOLEUR", "XRPEUR"]
+# ---------------------------------------------------------------------------
+# Sweep helpers
+# ---------------------------------------------------------------------------
+
+def _mark_current(scenarios: list[dict], **current):
+    for s in scenarios:
+        match = all(
+            abs(s.get(k, float("nan")) - v) < 1e-9 if isinstance(v, float) else s.get(k) == v
+            for k, v in current.items()
+        )
+        if match:
+            s["label"] += "  ◄ current"
+
+
+def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: list[str]):
+    start = config.SIMULATION_BALANCE
+    for days in days_list:
+        _header(days, title, wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in pairs:
+            df = fetch(pair, days)
+            print(f"\n  ── {pair} ──")
+            for s in scenarios:
+                kwargs = {k: v for k, v in s.items() if k != "label"}
+                trades, _ = run_pair(pair, df, start, **kwargs)
+                summarise(s["label"], trades, start, wide=True)
+        print()
+
+
+# ---------------------------------------------------------------------------
+# Sweep modes
+# ---------------------------------------------------------------------------
+
+def sweep_exit(days_list: list[int]):
+    scenarios = [
+        dict(rsi_sell=65, tp_pct=0.05, label="sell>65  TP=5%"),
+        dict(rsi_sell=65, tp_pct=0.07, label="sell>65  TP=7%"),
+        dict(rsi_sell=65, tp_pct=0.10, label="sell>65  TP=10%"),
+        dict(rsi_sell=70, tp_pct=0.05, label="sell>70  TP=5%"),
+        dict(rsi_sell=70, tp_pct=0.07, label="sell>70  TP=7%"),
+        dict(rsi_sell=70, tp_pct=0.10, label="sell>70  TP=10%"),
+        dict(rsi_sell=75, tp_pct=0.05, label="sell>75  TP=5%"),
+        dict(rsi_sell=75, tp_pct=0.07, label="sell>75  TP=7%"),
+        dict(rsi_sell=75, tp_pct=0.10, label="sell>75  TP=10%"),
+    ]
+    _mark_current(scenarios, tp_pct=config.TAKE_PROFIT_PCT)
+    _run_sweep(days_list, "Sell RSI + Take-profit sweep", scenarios, PAIRS)
+
+
+def sweep_floor(days_list: list[int]):
+    scenarios = [
+        dict(floor_pct=0.01, label="floor=1%"),
+        dict(floor_pct=0.02, label="floor=2%"),
+        dict(floor_pct=0.03, label="floor=3%"),
+        dict(floor_pct=0.04, label="floor=4%"),
+        dict(floor_pct=0.05, label="floor=5%"),
+    ]
+    _mark_current(scenarios, floor_pct=config.PROFIT_FLOOR_PCT)
+    _run_sweep(days_list, "Profit floor sweep", scenarios, PAIRS)
+
+
+def sweep_trail(days_list: list[int]):
+    scenarios = [
+        dict(trail_pct=0.02, label="trail=2%"),
+        dict(trail_pct=0.03, label="trail=3%"),
+        dict(trail_pct=0.04, label="trail=4%"),
+        dict(trail_pct=0.05, label="trail=5%"),
+        dict(trail_pct=0.06, label="trail=6%"),
+        dict(trail_pct=0.07, label="trail=7%"),
+    ]
+    _mark_current(scenarios, trail_pct=config.TRAILING_STOP_PCT)
+    _run_sweep(days_list, "Trailing stop sweep", scenarios, PAIRS)
+
+
+def sweep_buyrsi(days_list: list[int]):
+    scenarios = [
+        dict(rsi_buy=25, label="buy<25"),
+        dict(rsi_buy=27, label="buy<27"),
+        dict(rsi_buy=30, label="buy<30"),
+        dict(rsi_buy=32, label="buy<32"),
+        dict(rsi_buy=33, label="buy<33"),
+        dict(rsi_buy=35, label="buy<35"),
+    ]
+    _mark_current(scenarios, rsi_buy=config.RSI_OVERSOLD)
+    _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS)
+
+
+def sweep_dca(days_list: list[int]):
+    start = config.SIMULATION_BALANCE
+    for days in days_list:
+        _header(days, "DCA parameter sweep", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in PAIRS:
+            df = fetch(pair, days)
+            print(f"\n  ── {pair} ──")
+            base, _ = run_pair(pair, df, start, enable_dca=False)
+            summarise("no DCA  (baseline)", base, start, wide=True)
+            for drop in [0.01, 0.02, 0.03]:
+                for size in [0.50, 0.75]:
+                    cur = (abs(drop - config.DCA_DROP_PCT) < 1e-9 and
+                           abs(size - config.DCA_SIZE_PCT) < 1e-9)
+                    label = f"drop={drop*100:.0f}%  size={size*100:.0f}%{'  ◄ current' if cur else ''}"
+                    trades, _ = run_pair(pair, df, start, dca_drop=drop, dca_pct=size)
+                    summarise(label, trades, start, wide=True)
+        print()
+
+
+# ---------------------------------------------------------------------------
+# Default: pair comparison
+# ---------------------------------------------------------------------------
+
+def run_combined(days_list: list[int]):
+    start = config.SIMULATION_BALANCE
+    half  = start / 2
+
+    print(f"\nPair comparison — current settings")
+    print(f"ETHEUR RSI({config.rsi_period_for('ETHEUR')}) sell>{config.rsi_overbought_for('ETHEUR')}"
+          f"  SOLEUR RSI({config.rsi_period_for('SOLEUR')}) sell>{config.rsi_overbought_for('SOLEUR')}"
+          f"  buy<{config.RSI_OVERSOLD}  floor={config.PROFIT_FLOOR_PCT*100:.0f}%"
+          f"  pos={config.POSITION_SIZE_PCT*100:.0f}%  DCA drop={config.DCA_DROP_PCT*100:.0f}%")
+
+    for days in days_list:
+        _header(days, "solo vs combined")
+        print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'after-tax':>10}  {'worst':>8}  fees")
+        print(f"  {'─'*36}  {'─'*4}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*10}  {'─'*8}  {'─'*5}")
+        dfs = {p: fetch(p, days) for p in PAIRS}
+        for pos_pct in [0.50, 0.75]:
+            tag  = f"pos={int(pos_pct*100)}%"
+            eth_t, _ = run_pair("ETHEUR", dfs["ETHEUR"], start, pos_pct=pos_pct, dca_pct=pos_pct)
+            sol_t, _ = run_pair("SOLEUR", dfs["SOLEUR"], start, pos_pct=pos_pct, dca_pct=pos_pct)
+            eth2, _  = run_pair("ETHEUR", dfs["ETHEUR"], half,  pos_pct=pos_pct, dca_pct=pos_pct)
+            sol2, _  = run_pair("SOLEUR", dfs["SOLEUR"], half,  pos_pct=pos_pct, dca_pct=pos_pct)
+            summarise(f"ETHEUR only      [{tag}]", eth_t, start)
+            summarise(f"SOLEUR only      [{tag}]", sol_t, start)
+            summarise(f"ETH+SOL combined [{tag}]", eth2 + sol2, start)
+            print()
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    args  = sys.argv[1:]
-    days  = int(args[0]) if args and args[0].isdigit() else 365
-    pairs = [args[1].upper()] if len(args) > 1 else ALL_PAIRS
+    args     = sys.argv[1:]
+    day_args = [int(a) for a in args if a.isdigit()]
+    str_args = [a for a in args if not a.isdigit()]
 
-    print(f"\nBacktest  |  interval={INTERVAL}  days={days}  pairs={', '.join(pairs)}")
-    print(f"Strategy  |  RSI(7) oversold<30 / overbought>65\n")
-
-    # fetch data once per pair, reuse across scenarios
-    data = {}
-    for pair in pairs:
-        data[pair] = fetch_historical(pair, days)
-
-    start_balance = config.SIMULATION_BALANCE
-
-    for scenario in SCENARIOS:
-        label    = scenario["label"]
-        tp       = scenario["tp"]
-        trail    = scenario["trail"]
-        cooldown = scenario["cooldown"]
-        floor    = scenario["floor"]
-        ema      = scenario["ema"]
-
-        print(f"\n{'═'*54}")
-        print(f"  SCENARIO: {label}  |  TP={tp*100:.0f}%  trail={trail*100:.0f}%")
-        print(f"{'═'*54}")
-
-        total_pnl = 0.0
-        for pair in pairs:
-            trades, end_balance = run_pair(data[pair], pair, start_balance,
-                                           tp_pct=tp, trail_pct=trail, cooldown=cooldown,
-                                           profit_floor=floor, ema_period=ema)
-            report(pair, trades, start_balance, end_balance)
-            total_pnl += end_balance - start_balance
-
-        if len(pairs) > 1:
-            taxable_combined = max(0.0, total_pnl)
-            tax_combined     = min(taxable_combined, 30000) * 0.30 + max(0.0, taxable_combined - 30000) * 0.34
-            after_tax        = total_pnl - tax_combined
-            print(f"\n  Combined PnL : €{total_pnl:+.2f}  (after tax: €{after_tax:+.2f})")
-            print(f"  Tax (FI)     : €{tax_combined:.2f}")
+    if str_args and str_args[0] == "sweep":
+        mode      = str_args[1].lower() if len(str_args) > 1 else "all"
+        days_list = day_args or [365, 180]
+        sweeps = {
+            "exit":   sweep_exit,
+            "floor":  sweep_floor,
+            "trail":  sweep_trail,
+            "buyrsi": sweep_buyrsi,
+            "dca":    sweep_dca,
+        }
+        if mode == "all":
+            for fn in sweeps.values():
+                fn(days_list)
+        elif mode in sweeps:
+            sweeps[mode](days_list)
+        else:
+            print(f"Unknown sweep '{mode}'. Options: {', '.join(sweeps)}, all")
+            sys.exit(1)
+    else:
+        days_list = day_args or [365, 180]
+        run_combined(days_list)
