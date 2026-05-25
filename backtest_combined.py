@@ -60,7 +60,7 @@ def run_pair(pair: str, df: pd.DataFrame, start_balance: float,
     floor_pct = config.PROFIT_FLOOR_PCT
     min_exit  = config.MIN_EXIT_PROFIT_PCT
     rsi_buy   = config.RSI_OVERSOLD
-    rsi_sell  = config.RSI_OVERBOUGHT
+    rsi_sell  = config.rsi_overbought_for(pair)
     dca_rsi   = config.DCA_RSI_THRESHOLD
     rsi_p     = config.rsi_period_for(pair)
 
@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
     print(f"\nSolo vs combined — current settings")
     print(f"ETHEUR RSI({config.rsi_period_for('ETHEUR')})  SOLEUR RSI({config.rsi_period_for('SOLEUR')})"
-          f"  buy<{config.RSI_OVERSOLD}  sell>{config.RSI_OVERBOUGHT}"
+          f"  buy<{config.RSI_OVERSOLD}  ETHEUR sell>{config.rsi_overbought_for('ETHEUR')}  SOLEUR sell>{config.rsi_overbought_for('SOLEUR')}"
           f"  floor={config.PROFIT_FLOOR_PCT*100:.0f}%  pos={config.POSITION_SIZE_PCT*100:.0f}%\n")
 
     pos_sizes = [0.50, 0.75]
