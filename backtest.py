@@ -9,6 +9,7 @@ Usage:
     python backtest.py sweep buyrsi [days]  # buy RSI threshold sweep
     python backtest.py sweep dca   [days]   # DCA parameters sweep
     python backtest.py sweep all   [days]   # run every sweep
+    python backtest.py topup [start] [monthly] [days]  # monthly top-up simulation
 
 Days can be one or multiple values: python backtest.py sweep exit 365 180 90
 """
@@ -324,6 +325,139 @@ def sweep_dca(days_list: list[int]):
 
 
 # ---------------------------------------------------------------------------
+# Monthly top-up simulation
+# ---------------------------------------------------------------------------
+
+def run_topup(start: float, monthly: float, days: int):
+    from bot.strategy import compute_signal, Signal
+
+    fee       = config.BINANCE_FEE
+    pos_pct   = config.POSITION_SIZE_PCT
+    tp_pct    = config.TAKE_PROFIT_PCT
+    trail_pct = config.TRAILING_STOP_PCT
+    dca_drop  = config.DCA_DROP_PCT
+    floor_pct = config.PROFIT_FLOOR_PCT
+    min_exit  = config.MIN_EXIT_PROFIT_PCT
+
+    print(f"Loading candles…", flush=True)
+    dfs = {p: fetch(p, days) for p in PAIRS}
+
+    common_idx = None
+    for df in dfs.values():
+        idx = set(df["open_time"].astype(str))
+        common_idx = idx if common_idx is None else common_idx & idx
+    aligned = {p: df[df["open_time"].astype(str).isin(common_idx)].reset_index(drop=True)
+               for p, df in dfs.items()}
+    min_len = min(len(df) for df in aligned.values())
+    print(f"Running {min_len - WARMUP:,} candles…", flush=True)
+
+    balance    = start
+    positions  = {}
+    total_pnl  = total_fees = added = 0.0
+    trades     = 0
+    last_month = None
+    monthly_log = []
+
+    for i in range(WARMUP, min_len):
+        ts        = aligned[PAIRS[0]].iloc[i]["open_time"].to_pydatetime()
+        month_key = (ts.year, ts.month)
+        if last_month is not None and month_key != last_month:
+            balance += monthly
+            added   += monthly
+        last_month = month_key
+
+        for pair in PAIRS:
+            row   = aligned[pair].iloc[i]
+            price = float(row["close"])
+            hi    = float(row["high"])
+            lo    = float(row["low"])
+            pos   = positions.get(pair)
+
+            if pos:
+                update_peak(pos, hi)
+                stop_level = max(
+                    pos.entry_price * (1 + fee + floor_pct) / (1 - fee),
+                    pos.peak() * (1 - trail_pct),
+                )
+                if hi >= pos.take_profit_price:
+                    ep = pos.take_profit_price
+                    bf = pos.value_eur * fee;  sf = pos.amount * ep * fee
+                    balance += pos.amount * ep - sf
+                    total_pnl += calc_pnl(pos, ep, bf, sf);  total_fees += bf + sf;  trades += 1
+                    del positions[pair];  continue
+                if pos.peak() > stop_level and lo <= stop_level:
+                    ep = stop_level
+                    bf = pos.value_eur * fee;  sf = pos.amount * ep * fee
+                    balance += pos.amount * ep - sf
+                    total_pnl += calc_pnl(pos, ep, bf, sf);  total_fees += bf + sf;  trades += 1
+                    del positions[pair];  continue
+
+            result = compute_signal(aligned[pair].iloc[:i+1],
+                                    rsi_period=config.rsi_period_for(pair),
+                                    rsi_oversold=config.RSI_OVERSOLD,
+                                    rsi_overbought=config.rsi_overbought_for(pair))
+
+            if result.signal == Signal.BUY and pair not in positions:
+                size = balance * pos_pct
+                if size >= 1:
+                    bf = size * fee
+                    pos = Position(pair, price, size / price, size, price * (1 + tp_pct), price)
+                    positions[pair] = pos;  balance -= size + bf;  total_fees += bf
+
+            elif result.signal == Signal.BUY and pair in positions:
+                pos = positions[pair]
+                if not pos.dca_done and (pos.entry_price - price) / pos.entry_price >= dca_drop:
+                    dv = balance * pos_pct
+                    if dv >= 1:
+                        bf = dv * fee;  apply_dca(pos, price, dv)
+                        balance -= dv + bf;  total_fees += bf
+
+            elif result.signal == Signal.SELL and pair in positions:
+                pos = positions[pair]
+                if price >= pos.entry_price * (1 + min_exit):
+                    bf = pos.value_eur * fee;  sf = pos.amount * price * fee
+                    balance += pos.amount * price - sf
+                    total_pnl += calc_pnl(pos, price, bf, sf);  total_fees += bf + sf;  trades += 1
+                    del positions[pair]
+
+        pos_value = sum(p.amount * float(aligned[pr].iloc[i]["close"]) for pr, p in positions.items())
+        monthly_log.append((ts, balance + pos_value))
+
+    for pair, pos in list(positions.items()):
+        price = float(aligned[pair].iloc[-1]["close"])
+        bf = pos.value_eur * fee;  sf = pos.amount * price * fee
+        balance += pos.amount * price - sf
+        total_pnl += calc_pnl(pos, price, bf, sf);  total_fees += bf + sf
+
+    tax           = min(max(0, total_pnl), 30000) * 0.30 + max(0, total_pnl - 30000) * 0.34
+    after_tax_pnl = total_pnl - tax
+    total_invested = start + added
+
+    print(f"\n{'═'*54}")
+    print(f"  ETH + SOL  |  {days} days  |  +€{monthly:.0f}/month")
+    print(f"{'═'*54}")
+    print(f"  Total invested : €{total_invested:.2f}  (€{start:.0f} start + €{added:.0f} added)")
+    print(f"  Final balance  : €{balance:.2f}")
+    print(f"  Trading PnL    : €{total_pnl:+.2f}")
+    print(f"  Tax (FI 30%)   : €{tax:.2f}")
+    print(f"  After-tax PnL  : €{after_tax_pnl:+.2f}")
+    print(f"  After-tax bal  : €{start + added + after_tax_pnl:.2f}")
+    print(f"  ROI on invested: {(balance - total_invested) / total_invested * 100:+.1f}%")
+    print(f"  Trades         : {trades}  |  Fees: €{total_fees:.2f}")
+
+    print(f"\n  Month-by-month portfolio value (cash + open positions):")
+    print(f"  {'Month':<10}  {'Value':>8}  {'vs Invested':>12}")
+    print(f"  {'─'*10}  {'─'*8}  {'─'*12}")
+    seen = set();  cumulative = start
+    for ts, val in monthly_log:
+        key = (ts.year, ts.month)
+        if key not in seen:
+            seen.add(key)
+            print(f"  {ts.strftime('%Y-%m'):<10}  €{val:>7.2f}  {val - cumulative:>+11.2f}")
+            cumulative += monthly
+
+
+# ---------------------------------------------------------------------------
 # Default: pair comparison
 # ---------------------------------------------------------------------------
 
@@ -381,6 +515,14 @@ if __name__ == "__main__":
         else:
             print(f"Unknown sweep '{mode}'. Options: {', '.join(sweeps)}, all")
             sys.exit(1)
+    elif str_args and str_args[0] == "topup":
+        # positional floats after "topup": start monthly days
+        num_args = [float(a) for a in str_args[1:] if a.replace(".", "").isdigit()]
+        num_args += [float(a) for a in args if a.isdigit()]
+        start   = num_args[0] if len(num_args) > 0 else config.SIMULATION_BALANCE
+        monthly = num_args[1] if len(num_args) > 1 else 25.0
+        days    = int(num_args[2]) if len(num_args) > 2 else 365
+        run_topup(start, monthly, days)
     else:
         days_list = day_args or [365, 180]
         run_combined(days_list)
