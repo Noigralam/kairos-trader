@@ -90,10 +90,10 @@ def api_signals():
                     f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
                     f"No buys until price recovers above €{result.ema_trend:,.2f}."
                 )
-            elif result.rsi >= 30:
+            elif result.rsi >= config.RSI_OVERSOLD:
                 commentary = (
                     f"Trend is healthy (price above EMA200 by €{gap:,.2f}), "
-                    f"but RSI is {result.rsi:.1f} — waiting for a dip below 30."
+                    f"but RSI is {result.rsi:.1f} — waiting for a dip below {config.RSI_OVERSOLD}."
                 )
             else:
                 commentary = result.reason

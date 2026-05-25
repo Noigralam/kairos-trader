@@ -111,9 +111,9 @@ def _loop():
                 ema_arrow   = _arrow(result.ema_trend, prev.get("ema200"))
                 _prev_tick[pair] = {"price": price, "rsi": result.rsi, "ema200": result.ema_trend}
 
-                if result.rsi < 30:
+                if result.rsi < config.RSI_OVERSOLD:
                     rsi_zone = "oversold"
-                elif result.rsi > 65:
+                elif result.rsi > config.RSI_OVERBOUGHT:
                     rsi_zone = "overbought"
                 else:
                     rsi_zone = "neutral"
