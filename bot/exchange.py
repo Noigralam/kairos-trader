@@ -5,6 +5,7 @@ from . import config
 
 _client: Client = None
 _lot_step_cache: dict = {}
+_min_notional_cache: dict = {}
 
 
 def get_client() -> Client:
@@ -45,6 +46,19 @@ def get_lot_step(pair: str) -> float:
         else:
             _lot_step_cache[pair] = 1e-6  # fallback
     return _lot_step_cache[pair]
+
+
+def get_min_notional(pair: str) -> float:
+    """Return the minimum order value (in EUR) for a pair, cached after first fetch."""
+    if pair not in _min_notional_cache:
+        info = get_client().get_symbol_info(pair)
+        val = 10.0  # safe fallback
+        for f in info["filters"]:
+            if f["filterType"] in ("NOTIONAL", "MIN_NOTIONAL"):
+                val = float(f.get("minNotional", f.get("minValue", 10.0)))
+                break
+        _min_notional_cache[pair] = val
+    return _min_notional_cache[pair]
 
 
 def round_qty(pair: str, amount: float) -> float:

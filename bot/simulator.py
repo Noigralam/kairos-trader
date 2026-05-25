@@ -3,9 +3,9 @@ import os
 from dataclasses import dataclass, field
 from . import config
 from .risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
-from .notifier import trade_alert, trailing_stop_alert
+from .notifier import trade_alert, trailing_stop_alert, notify
 from .db import log_trade
-from .exchange import round_qty
+from .exchange import round_qty, get_min_notional
 
 BINANCE_FEE = config.BINANCE_FEE
 STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "state.json")
@@ -89,7 +89,9 @@ def open_position(pair: str, price: float, size_pct: float = None):
     pct = size_pct if size_pct is not None else config.POSITION_SIZE_PCT
     max_size = _state.balance / (1 + BINANCE_FEE)
     size = min(_state.balance * pct, max_size)
-    if size < 1:
+    min_notional = get_min_notional(pair)
+    if size < min_notional:
+        notify(f"[SKIP] {pair} buy signal — order size €{size:.2f} below minimum €{min_notional:.2f} (balance €{_state.balance:.2f})")
         return
 
     from .risk import Position
@@ -150,7 +152,9 @@ def dca_position(pair: str, price: float):
 
     max_size  = _state.balance / (1 + BINANCE_FEE)
     dca_value = min(_state.balance * config.DCA_SIZE_PCT, max_size)
-    if dca_value < 1:
+    min_notional = get_min_notional(pair)
+    if dca_value < min_notional:
+        notify(f"[SKIP] {pair} DCA — order size €{dca_value:.2f} below minimum €{min_notional:.2f} (balance €{_state.balance:.2f})")
         return
 
     buy_fee = dca_value * BINANCE_FEE
