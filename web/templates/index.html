@@ -566,8 +566,9 @@
       const pos = _positions[_chartPair] || null;
       const n   = data.labels.length;
       const posLines = {
-        breakEven:    pos ? Array(n).fill(pos.break_even)    : [],
-        trailingStop: pos ? Array(n).fill(pos.trailing_stop) : [],
+        breakEven: pos ? Array(n).fill(pos.break_even)      : [],
+        minExit:   pos ? Array(n).fill(pos.trailing_stop)   : [],
+        peak:      pos ? Array(n).fill(pos.highest_price)   : [],
       };
 
       // price chart
@@ -582,7 +583,8 @@
         _priceChart.data.datasets[6].data = data.actual_sells;
         _priceChart.data.datasets[7].data = data.actual_dcas;
         _priceChart.data.datasets[8].data = posLines.breakEven;
-        _priceChart.data.datasets[9].data = posLines.trailingStop;
+        _priceChart.data.datasets[9].data = posLines.minExit;
+        _priceChart.data.datasets[10].data = posLines.peak;
         _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
@@ -604,8 +606,9 @@
                 backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
                 backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
-              { type: 'line', label: 'Break-even',    data: posLines.breakEven,    borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
-              { type: 'line', label: 'Trailing stop', data: posLines.trailingStop, borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
+              { type: 'line', label: 'Break-even', data: posLines.breakEven, borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
+              { type: 'line', label: 'Min exit',   data: posLines.minExit,   borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
+              { type: 'line', label: 'Peak',       data: posLines.peak,      borderColor: '#3fb950', borderWidth: 1, borderDash: [2,3], pointRadius: 0 },
             ],
           },
           options: {
