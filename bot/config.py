@@ -27,5 +27,8 @@ RSI_OVERBOUGHT      = int(os.getenv("RSI_OVERBOUGHT", "65"))
 def rsi_period_for(pair: str) -> int:
     return int(os.getenv(f"RSI_PERIOD_{pair}", RSI_PERIOD))
 
+def rsi_overbought_for(pair: str) -> int:
+    return int(os.getenv(f"RSI_OVERBOUGHT_{pair}", RSI_OVERBOUGHT))
+
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8888"))

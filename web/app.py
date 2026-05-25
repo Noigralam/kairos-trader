@@ -74,7 +74,7 @@ def api_signals():
             result = compute_signal(get_df(pair, config.INTERVAL),
                                     rsi_period=config.rsi_period_for(pair),
                                     rsi_oversold=config.RSI_OVERSOLD,
-                                    rsi_overbought=config.RSI_OVERBOUGHT)
+                                    rsi_overbought=config.rsi_overbought_for(pair))
             gap = price - result.ema_trend
             above_trend = gap >= 0
             has_position = pair in state.positions
@@ -102,6 +102,7 @@ def api_signals():
                 "price": round(price, 2),
                 "rsi": round(result.rsi, 1),
                 "rsi_period": config.rsi_period_for(pair),
+                "rsi_overbought": config.rsi_overbought_for(pair),
                 "ema200": round(result.ema_trend, 2),
                 "above_trend": above_trend,
                 "gap": round(gap, 2),
@@ -153,7 +154,7 @@ def api_chart(pair):
             buy_prices[i] = round(p, 4)
         elif r < config.RSI_OVERSOLD and p <= e:
             blocked_buys[i] = round(p, 4)
-        elif r > config.RSI_OVERBOUGHT:
+        elif r > config.rsi_overbought_for(pair.upper()):
             sell_prices[i] = round(p, 4)
 
     # slice to requested span — convert to Helsinki time for display

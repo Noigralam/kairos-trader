@@ -80,7 +80,7 @@ def _loop():
             results = {pair: compute_signal(get_df(pair, config.INTERVAL),
                                             rsi_period=config.rsi_period_for(pair),
                                             rsi_oversold=config.RSI_OVERSOLD,
-                                            rsi_overbought=config.RSI_OVERBOUGHT)
+                                            rsi_overbought=config.rsi_overbought_for(pair))
                        for pair in config.TRADING_PAIRS}
 
             # Per-pair detail: file + web buffer only
@@ -113,7 +113,7 @@ def _loop():
 
                 if result.rsi < config.RSI_OVERSOLD:
                     rsi_zone = "oversold"
-                elif result.rsi > config.RSI_OVERBOUGHT:
+                elif result.rsi > config.rsi_overbought_for(pair):
                     rsi_zone = "overbought"
                 else:
                     rsi_zone = "neutral"
