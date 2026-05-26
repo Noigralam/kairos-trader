@@ -55,11 +55,16 @@ def log_trade(pair, side, price, amount, value_eur, fee, mode, pnl=None, notes=N
     conn.close()
 
 
-def get_trades(limit=50):
+def get_trades(limit=50, mode: str = None):
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute(
-        "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)
-    ).fetchall()
+    if mode:
+        rows = conn.execute(
+            "SELECT * FROM trades WHERE mode = ? ORDER BY timestamp DESC LIMIT ?", (mode, limit)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)
+        ).fetchall()
     conn.close()
     return rows
 

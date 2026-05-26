@@ -51,7 +51,7 @@ def api_status():
 def api_trades():
     cols = ["id", "timestamp", "pair", "side", "price", "amount",
             "value_eur", "fee", "mode", "pnl", "notes"]
-    rows = db.get_trades(50)
+    rows = db.get_trades(50, mode=config.MODE)
     return jsonify([dict(zip(cols, row)) for row in rows])
 
 
@@ -173,7 +173,7 @@ def api_chart(pair):
     actual_buys  = []
     actual_sells = []
     actual_dcas  = []
-    for row in db.get_trades(200):
+    for row in db.get_trades(200, mode=config.MODE):
         _, ts, tpair, side, price, *_ = row
         notes = row[-1] or ""
         if tpair != pair.upper():
