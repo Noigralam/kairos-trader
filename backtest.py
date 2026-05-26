@@ -8,6 +8,7 @@ Usage:
     python backtest.py sweep trail [days]   # trailing stop sweep
     python backtest.py sweep buyrsi [days]  # buy RSI threshold sweep
     python backtest.py sweep dca   [days]   # DCA parameters sweep
+    python backtest.py sweep ema   [days]   # EMA trend filter period sweep
     python backtest.py sweep all   [days]   # run every sweep
     python backtest.py topup [start] [monthly] [days]  # monthly top-up simulation
 
@@ -44,9 +45,9 @@ def fetch(pair: str, days: int) -> pd.DataFrame:
     return get_df(pair, INTERVAL, limit=needed)
 
 
-def precompute(df: pd.DataFrame, rsi_period: int):
+def precompute(df: pd.DataFrame, rsi_period: int, ema_span: int = 200):
     close = df["close"]
-    ema   = close.ewm(span=200, adjust=False).mean()
+    ema   = close.ewm(span=ema_span, adjust=False).mean()
     delta = close.diff()
     gain  = delta.clip(lower=0)
     loss  = -delta.clip(upper=0)
@@ -81,6 +82,7 @@ def run_pair(
     rsi_buy:    int   = None,
     rsi_sell:   int   = None,
     rsi_period: int   = None,
+    ema_span:   int   = 200,
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -96,7 +98,7 @@ def run_pair(
     rsi_period = rsi_period if rsi_period is not None else config.rsi_period_for(pair)
     min_exit   = config.MIN_EXIT_PROFIT_PCT
 
-    rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period)
+    rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period, ema_span)
 
     balance  = start_balance
     position: Position | None = None
@@ -300,6 +302,18 @@ def sweep_buyrsi(days_list: list[int]):
     ]
     _mark_current(scenarios, rsi_buy=config.RSI_OVERSOLD)
     _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS)
+
+
+def sweep_ema(days_list: list[int]):
+    scenarios = [
+        dict(ema_span=50,  label="EMA50"),
+        dict(ema_span=100, label="EMA100"),
+        dict(ema_span=150, label="EMA150"),
+        dict(ema_span=200, label="EMA200  ◄ current"),
+        dict(ema_span=250, label="EMA250"),
+        dict(ema_span=300, label="EMA300"),
+    ]
+    _run_sweep(days_list, "EMA trend filter sweep", scenarios, PAIRS)
 
 
 def sweep_dca(days_list: list[int]):
@@ -506,6 +520,7 @@ if __name__ == "__main__":
             "trail":  sweep_trail,
             "buyrsi": sweep_buyrsi,
             "dca":    sweep_dca,
+            "ema":    sweep_ema,
         }
         if mode == "all":
             for fn in sweeps.values():
