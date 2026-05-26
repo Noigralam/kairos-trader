@@ -83,6 +83,7 @@ def run_pair(
     rsi_sell:   int   = None,
     rsi_period: int   = None,
     ema_span:   int   = 200,
+    min_exit:   float = None,
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -96,7 +97,7 @@ def run_pair(
     rsi_buy    = rsi_buy    if rsi_buy    is not None else config.RSI_OVERSOLD
     rsi_sell   = rsi_sell   if rsi_sell   is not None else config.rsi_overbought_for(pair)
     rsi_period = rsi_period if rsi_period is not None else config.rsi_period_for(pair)
-    min_exit   = config.MIN_EXIT_PROFIT_PCT
+    min_exit   = min_exit   if min_exit   is not None else config.MIN_EXIT_PROFIT_PCT
 
     rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period, ema_span)
 
@@ -302,6 +303,21 @@ def sweep_buyrsi(days_list: list[int]):
     ]
     _mark_current(scenarios, rsi_buy=config.RSI_OVERSOLD)
     _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS)
+
+
+def sweep_min_exit(days_list: list[int]):
+    scenarios = [
+        dict(min_exit=0.000, label="min_exit=0%   (no gate)"),
+        dict(min_exit=0.005, label="min_exit=0.5%"),
+        dict(min_exit=0.010, label="min_exit=1%"),
+        dict(min_exit=0.015, label="min_exit=1.5%"),
+        dict(min_exit=0.020, label="min_exit=2%"),
+        dict(min_exit=0.025, label="min_exit=2.5%"),
+        dict(min_exit=0.030, label="min_exit=3%"),
+        dict(min_exit=0.040, label="min_exit=4%"),
+    ]
+    _mark_current(scenarios, min_exit=config.MIN_EXIT_PROFIT_PCT)
+    _run_sweep(days_list, "Min exit profit sweep", scenarios, PAIRS)
 
 
 def sweep_ema(days_list: list[int]):
@@ -515,12 +531,13 @@ if __name__ == "__main__":
         mode      = str_args[1].lower() if len(str_args) > 1 else "all"
         days_list = day_args or [365, 180]
         sweeps = {
-            "exit":   sweep_exit,
-            "floor":  sweep_floor,
-            "trail":  sweep_trail,
-            "buyrsi": sweep_buyrsi,
-            "dca":    sweep_dca,
-            "ema":    sweep_ema,
+            "exit":    sweep_exit,
+            "floor":   sweep_floor,
+            "trail":   sweep_trail,
+            "buyrsi":  sweep_buyrsi,
+            "dca":     sweep_dca,
+            "ema":     sweep_ema,
+            "minexit": sweep_min_exit,
         }
         if mode == "all":
             for fn in sweeps.values():
