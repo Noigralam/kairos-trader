@@ -84,6 +84,7 @@ def run_pair(
     rsi_period: int   = None,
     ema_span:   int   = 200,
     min_exit:   float = None,
+    ema_filter: bool  = True,
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -138,7 +139,7 @@ def run_pair(
                 position = None
                 continue
 
-        if position is None and rsi < rsi_buy and price > ema:
+        if position is None and rsi < rsi_buy and (not ema_filter or price > ema):
             max_size = balance / (1 + fee_rate)
             size = min(balance * pos_pct, max_size)
             if size >= 1:
