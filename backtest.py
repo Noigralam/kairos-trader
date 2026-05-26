@@ -320,6 +320,35 @@ def sweep_min_exit(days_list: list[int]):
     _run_sweep(days_list, "Min exit profit sweep", scenarios, PAIRS)
 
 
+def sweep_rsiperiod(days_list: list[int]):
+    scenarios = [
+        dict(rsi_period=5,  label="RSI(5)"),
+        dict(rsi_period=6,  label="RSI(6)"),
+        dict(rsi_period=7,  label="RSI(7)"),
+        dict(rsi_period=8,  label="RSI(8)"),
+        dict(rsi_period=9,  label="RSI(9)"),
+        dict(rsi_period=10, label="RSI(10)"),
+        dict(rsi_period=12, label="RSI(12)"),
+        dict(rsi_period=14, label="RSI(14)"),
+        dict(rsi_period=21, label="RSI(21)"),
+    ]
+    start = config.SIMULATION_BALANCE
+    for days in days_list:
+        _header(days, "RSI period sweep", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in PAIRS:
+            df = fetch(pair, days)
+            cur_period = config.rsi_period_for(pair)
+            print(f"\n  ── {pair} (current: RSI({cur_period})) ──")
+            for s in scenarios:
+                label = s["label"] + ("  ◄ current" if s["rsi_period"] == cur_period else "")
+                trades, _ = run_pair(pair, df, start, rsi_period=s["rsi_period"])
+                summarise(label, trades, start, wide=True)
+        print()
+
+
 def sweep_ema(days_list: list[int]):
     scenarios = [
         dict(ema_span=50,  label="EMA50"),
@@ -538,6 +567,7 @@ if __name__ == "__main__":
             "dca":     sweep_dca,
             "ema":     sweep_ema,
             "minexit": sweep_min_exit,
+            "rsiper":  sweep_rsiperiod,
         }
         if mode == "all":
             for fn in sweeps.values():
