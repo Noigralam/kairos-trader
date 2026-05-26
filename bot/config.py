@@ -30,5 +30,8 @@ def rsi_period_for(pair: str) -> int:
 def rsi_overbought_for(pair: str) -> int:
     return int(os.getenv(f"RSI_OVERBOUGHT_{pair}", RSI_OVERBOUGHT))
 
+def min_exit_for(pair: str) -> float:
+    return float(os.getenv(f"MIN_EXIT_PROFIT_PCT_{pair}", MIN_EXIT_PROFIT_PCT))
+
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")
 WEB_PORT = int(os.getenv("WEB_PORT", "8888"))
