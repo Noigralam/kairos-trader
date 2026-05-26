@@ -23,6 +23,7 @@ config.json
 *.log
 logs/
 data/state.json
+data/state_live.json
 data/trades.db
 
 # IDE
