@@ -389,19 +389,17 @@ def sweep_dca(days_list: list[int]):
 # ---------------------------------------------------------------------------
 
 def run_topup(start: float, monthly: float, days: int):
-    from bot.strategy import compute_signal, Signal
-
     fee       = config.BINANCE_FEE
     pos_pct   = config.POSITION_SIZE_PCT
     tp_pct    = config.TAKE_PROFIT_PCT
     trail_pct = config.TRAILING_STOP_PCT
     dca_drop  = config.DCA_DROP_PCT
     floor_pct = config.PROFIT_FLOOR_PCT
-    min_exit  = config.MIN_EXIT_PROFIT_PCT
 
     print(f"Loading candles…", flush=True)
     dfs = {p: fetch(p, days) for p in PAIRS}
 
+    # Align candles to common timestamps
     common_idx = None
     for df in dfs.values():
         idx = set(df["open_time"].astype(str))
@@ -409,6 +407,9 @@ def run_topup(start: float, monthly: float, days: int):
     aligned = {p: df[df["open_time"].astype(str).isin(common_idx)].reset_index(drop=True)
                for p, df in dfs.items()}
     min_len = min(len(df) for df in aligned.values())
+
+    # Precompute RSI/EMA for each pair over the full dataset (same as run_pair)
+    precomp = {p: precompute(aligned[p], config.rsi_period_for(p)) for p in PAIRS}
     print(f"Running {min_len - WARMUP:,} candles…", flush=True)
 
     balance    = start
@@ -427,10 +428,12 @@ def run_topup(start: float, monthly: float, days: int):
         last_month = month_key
 
         for pair in PAIRS:
-            row   = aligned[pair].iloc[i]
-            price = float(row["close"])
-            hi    = float(row["high"])
-            lo    = float(row["low"])
+            rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precomp[pair]
+            price = float(close_arr[i])
+            hi    = float(hi_arr[i])
+            lo    = float(lo_arr[i])
+            rsi   = float(rsi_arr[i])
+            ema   = float(ema_arr[i])
             pos   = positions.get(pair)
 
             if pos:
@@ -452,27 +455,26 @@ def run_topup(start: float, monthly: float, days: int):
                     total_pnl += calc_pnl(pos, ep, bf, sf);  total_fees += bf + sf;  trades += 1
                     del positions[pair];  continue
 
-            result = compute_signal(aligned[pair].iloc[:i+1],
-                                    rsi_period=config.rsi_period_for(pair),
-                                    rsi_oversold=config.RSI_OVERSOLD,
-                                    rsi_overbought=config.rsi_overbought_for(pair))
+            rsi_buy  = config.RSI_OVERSOLD
+            rsi_sell = config.rsi_overbought_for(pair)
+            min_exit = config.min_exit_for(pair)
 
-            if result.signal == Signal.BUY and pair not in positions:
+            if pair not in positions and rsi < rsi_buy and price > ema:
                 size = balance * pos_pct
                 if size >= 1:
                     bf = size * fee
                     pos = Position(pair, price, size / price, size, price * (1 + tp_pct), price)
                     positions[pair] = pos;  balance -= size + bf;  total_fees += bf
 
-            elif result.signal == Signal.BUY and pair in positions:
+            if pair in positions:
                 pos = positions[pair]
-                if not pos.dca_done and (pos.entry_price - price) / pos.entry_price >= dca_drop:
+                if not pos.dca_done and (pos.entry_price - price) / pos.entry_price >= dca_drop and rsi < config.DCA_RSI_THRESHOLD:
                     dv = balance * pos_pct
                     if dv >= 1:
                         bf = dv * fee;  apply_dca(pos, price, dv)
                         balance -= dv + bf;  total_fees += bf
 
-            elif result.signal == Signal.SELL and pair in positions:
+            if pair in positions and rsi > rsi_sell:
                 pos = positions[pair]
                 if price >= pos.entry_price * (1 + min_exit):
                     bf = pos.value_eur * fee;  sf = pos.amount * price * fee
@@ -483,27 +485,51 @@ def run_topup(start: float, monthly: float, days: int):
         pos_value = sum(p.amount * float(aligned[pr].iloc[i]["close"]) for pr, p in positions.items())
         monthly_log.append((ts, balance + pos_value))
 
+    # Mark open positions to market at end — track separately from realized PnL
+    open_pnl = 0.0
+    open_pairs = []
     for pair, pos in list(positions.items()):
         price = float(aligned[pair].iloc[-1]["close"])
         bf = pos.value_eur * fee;  sf = pos.amount * price * fee
         balance += pos.amount * price - sf
-        total_pnl += calc_pnl(pos, price, bf, sf);  total_fees += bf + sf
+        pnl = calc_pnl(pos, price, bf, sf)
+        open_pnl   += pnl
+        total_fees += bf + sf
+        open_pairs.append(f"{pair} {pnl:+.2f}")
 
-    tax           = min(max(0, total_pnl), 30000) * 0.30 + max(0, total_pnl - 30000) * 0.34
-    after_tax_pnl = total_pnl - tax
+    realized_pnl  = total_pnl
+    combined_pnl  = realized_pnl + open_pnl
+    tax           = min(max(0, realized_pnl), 30000) * 0.30 + max(0, realized_pnl - 30000) * 0.34
+    after_tax_pnl = realized_pnl - tax
     total_invested = start + added
+
+    # --- pair performance table ---
+    half = start / 2
+    dfs_full = {p: fetch(p, days) for p in PAIRS}
+    print(f"\nPair comparison — {days}d  (start=€{start:.0f})")
+    print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'after-tax':>10}  {'worst':>8}  fees")
+    print(f"  {'─'*36}  {'─'*4}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*10}  {'─'*8}  {'─'*5}")
+    eth_t, _ = run_pair("ETHEUR", dfs_full["ETHEUR"], start)
+    sol_t, _ = run_pair("SOLEUR", dfs_full["SOLEUR"], start)
+    eth2, _  = run_pair("ETHEUR", dfs_full["ETHEUR"], half)
+    sol2, _  = run_pair("SOLEUR", dfs_full["SOLEUR"], half)
+    summarise("ETHEUR only      [pos=75%]", eth_t,       start)
+    summarise("SOLEUR only      [pos=75%]", sol_t,       start)
+    summarise("ETH+SOL combined [pos=75%]", eth2 + sol2, start)
 
     print(f"\n{'═'*54}")
     print(f"  ETH + SOL  |  {days} days  |  +€{monthly:.0f}/month")
     print(f"{'═'*54}")
-    print(f"  Total invested : €{total_invested:.2f}  (€{start:.0f} start + €{added:.0f} added)")
-    print(f"  Final balance  : €{balance:.2f}")
-    print(f"  Trading PnL    : €{total_pnl:+.2f}")
-    print(f"  Tax (FI 30%)   : €{tax:.2f}")
-    print(f"  After-tax PnL  : €{after_tax_pnl:+.2f}")
-    print(f"  After-tax bal  : €{start + added + after_tax_pnl:.2f}")
-    print(f"  ROI on invested: {(balance - total_invested) / total_invested * 100:+.1f}%")
-    print(f"  Trades         : {trades}  |  Fees: €{total_fees:.2f}")
+    print(f"  Total invested   : €{total_invested:.2f}  (€{start:.0f} start + €{added:.0f} added)")
+    print(f"  Final balance    : €{balance:.2f}")
+    print(f"  Realized PnL     : €{realized_pnl:+.2f}  ({trades} closed trades)")
+    if open_pnl != 0:
+        print(f"  Open pos. PnL    : €{open_pnl:+.2f}  ({', '.join(open_pairs)})")
+    print(f"  Tax (FI 30%)     : €{tax:.2f}")
+    print(f"  After-tax PnL    : €{after_tax_pnl:+.2f}")
+    print(f"  After-tax bal    : €{start + added + after_tax_pnl:.2f}")
+    print(f"  ROI on invested  : {(balance - total_invested) / total_invested * 100:+.1f}%")
+    print(f"  Fees             : €{total_fees:.2f}")
 
     print(f"\n  Month-by-month portfolio value (cash + open positions):")
     print(f"  {'Month':<10}  {'Value':>8}  {'vs Invested':>12}")
