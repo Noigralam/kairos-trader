@@ -97,17 +97,21 @@ def notify_tick(message: str, chart_buf: io.BytesIO | None = None):
 
 def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: float,
                 pnl: float = None, fee: float = None):
-    tag = side
-    msg = f"**[{tag}]** {pair} @ €{price:.2f} | {amount:.6f} units | €{value_eur:.2f}"
+    msg = f"**[{side}]** {pair} @ €{price:.2f} | {amount:.6f} units | €{value_eur:.2f}"
     if fee is not None:
         msg += f" | fee: €{fee:.3f}"
     if pnl is not None:
         msg += f" | PnL: €{pnl:+.2f}"
+    if config.MODE == "live":
+        msg = f"@everyone {msg}"
     notify(msg)
 
 
 def trailing_stop_alert(pair: str, price: float, pnl: float):
-    notify(f"**[TRAILING STOP]** {pair} exited @ €{price:.2f} | PnL: €{pnl:+.2f}")
+    msg = f"**[TRAILING STOP]** {pair} exited @ €{price:.2f} | PnL: €{pnl:+.2f}"
+    if config.MODE == "live":
+        msg = f"@everyone {msg}"
+    notify(msg)
 
 
 def bot_status_alert(status: str):
