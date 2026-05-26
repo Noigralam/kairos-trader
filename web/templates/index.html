@@ -182,6 +182,9 @@
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 8px; padding: 16px;
     }
+    .chart-box { position: relative; width: 100%; }
+    .chart-box.price-box { height: 240px; }
+    .chart-box.rsi-box   { height: 100px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -270,8 +273,8 @@
       </div>
     </div>
     <div class="chart-wrap">
-      <canvas id="price-chart" height="240" style="width:100%;display:block"></canvas>
-      <canvas id="rsi-chart"   height="100" style="width:100%;display:block;margin-top:8px"></canvas>
+      <div class="chart-box price-box"><canvas id="price-chart"></canvas></div>
+      <div class="chart-box rsi-box"><canvas id="rsi-chart"></canvas></div>
     </div>
   </section>
 
@@ -582,7 +585,7 @@
   let _rsiChart   = null;
 
   const CHART_OPTS = {
-    responsive: false, maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
     animation: false,
     plugins: {
