@@ -86,19 +86,11 @@ def api_balance_history():
     return jsonify(out)
 
 
-_fng_cache = {"value": None, "label": None, "fetched": 0}
-
 @app.route("/api/fng")
 def api_fng():
-    import time, urllib.request, json as _json
-    if time.time() - _fng_cache["fetched"] > 3600:
-        try:
-            with urllib.request.urlopen("https://api.alternative.me/fng/", timeout=5) as r:
-                d = _json.loads(r.read())["data"][0]
-            _fng_cache.update({"value": int(d["value"]), "label": d["value_classification"], "fetched": time.time()})
-        except Exception:
-            pass
-    return jsonify({"value": _fng_cache["value"], "label": _fng_cache["label"]})
+    from bot.notifier import get_fng
+    value, label = get_fng()
+    return jsonify({"value": value, "label": label})
 
 
 @app.route("/api/signals")

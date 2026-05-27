@@ -9,7 +9,7 @@ from .exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
 from .simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add
-from .notifier import notify, notify_tick, bot_status_alert, build_chart
+from .notifier import notify, notify_tick, bot_status_alert, build_chart, extreme_alert, daily_summary
 from . import db as _db
 
 INTERVAL_SECONDS = {
@@ -28,7 +28,8 @@ _status = BotStatus.STOPPED
 _thread: threading.Thread = None
 _lock = threading.Lock()
 _last_tick: str = None
-_prev_tick: dict = {}   # pair -> {price, rsi, ema200}
+_prev_tick: dict = {}          # pair -> {price, rsi, ema200, above_ema}
+_last_summary_date = None      # date of last daily summary
 
 
 def _arrow(cur: float, prev: float | None) -> str:
@@ -96,10 +97,10 @@ def _loop():
                                             rsi_overbought=config.rsi_overbought_for(pair))
                        for pair in config.TRADING_PAIRS}
 
-            # Per-pair detail: file + web buffer only
+            # Per-pair detail: log + web buffer only
             for pair, result in results.items():
-                pos_flag = "IN" if pair in state.positions else "OUT"
-                trend_flag = "↑" if float(get_price(pair)) > result.ema_trend else "↓"
+                pos_flag   = "IN" if pair in state.positions else "OUT"
+                trend_flag = "↑" if prices[pair] > result.ema_trend else "↓"
                 notify(
                     f"[TICK] {pair} ({pos_flag})  RSI={result.rsi:.1f}  "
                     f"EMA200={result.ema_trend:.2f} {trend_flag}  "
@@ -107,69 +108,37 @@ def _loop():
                     discord=False,
                 )
 
-            # Discord summary — one message per tick
-            import datetime as _dt, zoneinfo as _zi
-            tick_time = _dt.datetime.now(tz=_zi.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
-
-            pair_blocks = []
+            # Extreme condition alerts (not deleted from channel)
             for pair, result in results.items():
-                price   = prices[pair]
-                gap     = price - result.ema_trend
-                has_pos = pair in state.positions
-                pos     = state.positions.get(pair)
-                prev    = _prev_tick.get(pair, {})
+                price    = prices[pair]
+                prev     = _prev_tick.get(pair, {})
+                above    = price > result.ema_trend
+                was_above = prev.get("above_ema")
 
-                price_arrow = _arrow(price,            prev.get("price"))
-                rsi_arrow   = _arrow(result.rsi,       prev.get("rsi"))
-                ema_arrow   = _arrow(result.ema_trend, prev.get("ema200"))
-                _prev_tick[pair] = {"price": price, "rsi": result.rsi, "ema200": result.ema_trend}
+                if result.rsi < 20:
+                    extreme_alert(pair, f"RSI extremely oversold at {result.rsi:.1f}", result.rsi, price, result.ema_trend)
+                elif result.rsi > 85:
+                    extreme_alert(pair, f"RSI extremely overbought at {result.rsi:.1f}", result.rsi, price, result.ema_trend)
 
-                if result.rsi < config.RSI_OVERSOLD:
-                    rsi_zone = "oversold"
-                elif result.rsi > config.rsi_overbought_for(pair):
-                    rsi_zone = "overbought"
-                else:
-                    rsi_zone = "neutral"
+                if was_above is not None:
+                    if not was_above and above:
+                        extreme_alert(pair, "Price crossed ABOVE EMA200 — bullish trend change", result.rsi, price, result.ema_trend)
+                    elif was_above and not above:
+                        extreme_alert(pair, "Price crossed BELOW EMA200 — bearish trend change", result.rsi, price, result.ema_trend)
 
-                trend_line = (f"↑ €{gap:,.2f} above EMA200{ema_arrow}"
-                              if gap >= 0 else f"↓ €{abs(gap):,.2f} below EMA200{ema_arrow}")
+                _prev_tick[pair] = {"price": price, "rsi": result.rsi, "ema200": result.ema_trend, "above_ema": above}
 
-                if result.signal.value == "BUY" and not has_pos:
-                    action = "**BUYING**"
-                elif result.signal.value == "SELL" and has_pos:
-                    action = "**SELLING**"
-                elif result.signal.value == "SELL" and not has_pos:
-                    action = "HOLD — overbought, no position"
-                elif gap < 0:
-                    action = "HOLD — waiting for price above EMA200"
-                else:
-                    action = "HOLD — waiting for RSI below 30"
+            # Daily summary at first tick of a new day
+            import datetime as _dt
+            global _last_summary_date
+            today = _dt.date.today()
+            if _last_summary_date is not None and today != _last_summary_date:
+                daily_summary(state, config.TRADING_PAIRS, prices, results)
+            _last_summary_date = today
 
-                block = (
-                    f"**{pair}**  {'`IN`' if has_pos else '`—`'}\n"
-                    f"Price  : €{price:,.2f}{price_arrow}\n"
-                    f"Trend  : {trend_line}\n"
-                    f"RSI    : {result.rsi:.1f}{rsi_arrow}  ({rsi_zone})\n"
-                )
-                if pos:
-                    pct = (price - pos.entry_price) / pos.entry_price * 100
-                    block += (
-                        f"Entry  : €{pos.entry_price:,.2f}  ({pct:+.1f}%)\n"
-                        f"Stop   : €{pos.trailing_stop_level():,.2f}\n"
-                        f"TP     : €{pos.take_profit_price:,.2f}\n"
-                    )
-                block += f"→ {action}"
-                pair_blocks.append(block)
-
-            footer = (f"```\n"
-                      f"PnL    : €{state.total_pnl:+.2f}\n"
-                      f"Fees   : €{state.total_fees:.4f}\n"
-                      f"Trades : {state.total_trades}\n"
-                      f"```")
-
-            message = f"**[TICK]** {tick_time}\n\n" + "\n\n".join(pair_blocks) + "\n\n" + footer
+            # Discord tick embed
             chart_buf = build_chart(config.TRADING_PAIRS, prices, results)
-            notify_tick(message, chart_buf)
+            notify_tick(config.TRADING_PAIRS, prices, results, state, chart_buf)
 
             # Check stop-loss and take-profit on every tick
             check_stops(prices)
