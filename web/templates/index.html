@@ -630,14 +630,6 @@
         peak:      pos ? Array(n).fill(pos.highest_price)   : [],
       };
 
-      // span min/max price lines
-      const validPrices = data.prices.filter(v => v != null);
-      const spanMin = validPrices.length ? Math.min(...validPrices) : null;
-      const spanMax = validPrices.length ? Math.max(...validPrices) : null;
-      const spanLines = {
-        low:  spanMin != null ? Array(n).fill(spanMin) : [],
-        high: spanMax != null ? Array(n).fill(spanMax) : [],
-      };
 
       // price chart
       if (_priceChart) {
@@ -653,10 +645,8 @@
         _priceChart.data.datasets[8].data = posLines.breakEven;
         _priceChart.data.datasets[9].data = posLines.minExit;
         _priceChart.data.datasets[10].data = posLines.peak;
-        _priceChart.data.datasets[11].data  = spanLines.low;
-        _priceChart.data.datasets[11].label = `Low €${spanMin != null ? Number(spanMin).toLocaleString('fi-FI', {minimumFractionDigits: 2}) : ''}`;
-        _priceChart.data.datasets[12].data  = spanLines.high;
-        _priceChart.data.datasets[12].label = `High €${spanMax != null ? Number(spanMax).toLocaleString('fi-FI', {minimumFractionDigits: 2}) : ''}`;
+        _priceChart.data.datasets[11].data = data.bb_upper;
+        _priceChart.data.datasets[12].data = data.bb_lower;
         _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
@@ -681,15 +671,15 @@
               { type: 'line', label: 'Break-even', data: posLines.breakEven, borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Min exit',   data: posLines.minExit,   borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Peak',       data: posLines.peak,      borderColor: '#3fb950', borderWidth: 1, borderDash: [2,3], pointRadius: 0 },
-              { type: 'line', label: `Low €${spanMin != null ? Number(spanMin).toLocaleString('fi-FI', {minimumFractionDigits: 2}) : ''}`,  data: spanLines.low,  borderColor: '#6e7681', borderWidth: 1, borderDash: [2,4], pointRadius: 0 },
-              { type: 'line', label: `High €${spanMax != null ? Number(spanMax).toLocaleString('fi-FI', {minimumFractionDigits: 2}) : ''}`, data: spanLines.high, borderColor: '#6e7681', borderWidth: 1, borderDash: [2,4], pointRadius: 0 },
+              { type: 'line', label: 'BB Upper', data: data.bb_upper, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '+1', backgroundColor: '#8b949e18' },
+              { type: 'line', label: 'BB Lower', data: data.bb_lower, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1 },
             ],
           },
           options: {
             ...CHART_OPTS,
             plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
               callbacks: { label: c => {
-                if (c.dataset.label.startsWith('Low') || c.dataset.label.startsWith('High')) return ` ${c.dataset.label}`;
+                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
                 return c.dataset.type === 'scatter'
                   ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
                   : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;

@@ -132,6 +132,13 @@ def api_chart(pair):
     # EMA200
     ema = close.ewm(span=200, adjust=False).mean()
 
+    # Bollinger Bands (20-period SMA ± 2σ)
+    _bb_period = 20
+    bb_mid   = close.rolling(_bb_period).mean()
+    bb_std   = close.rolling(_bb_period).std()
+    bb_upper = bb_mid + 2 * bb_std
+    bb_lower = bb_mid - 2 * bb_std
+
     # RSI
     _rp      = config.rsi_period_for(pair.upper())
     delta    = close.diff()
@@ -199,6 +206,8 @@ def api_chart(pair):
         "labels":        labels,
         "prices":        close.iloc[sl].round(4).tolist(),
         "ema200":        ema.iloc[sl].round(4).tolist(),
+        "bb_upper":      bb_upper.iloc[sl].round(4).tolist(),
+        "bb_lower":      bb_lower.iloc[sl].round(4).tolist(),
         "rsi":           rsi.iloc[sl].round(2).tolist(),
         "buys":          buy_prices[-limit:],
         "sells":         sell_prices[-limit:],
