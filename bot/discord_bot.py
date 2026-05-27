@@ -10,6 +10,7 @@ from . import config, engine
 from .exchange import get_price
 from .simulator import get_state, manual_add
 from .notifier import daily_summary
+import bot.notifier as _notifier
 
 log = logging.getLogger("cryptobot")
 
@@ -243,6 +244,9 @@ async def cmd_clear(interaction: discord.Interaction):
                         pass
                 if not recent and not old:
                     break
+            # reset tracked tick message IDs — channel is now empty
+            _notifier._tick_ids.clear()
+            _notifier._save_ids(_notifier._tick_ids)
             await inter.followup.send(f"🗑️ Deleted {deleted} messages.", ephemeral=True)
 
         @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
