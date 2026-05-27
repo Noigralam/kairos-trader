@@ -103,24 +103,24 @@ def _status_embed() -> discord.Embed:
 
 # ── commands ───────────────────────────────────────────────────────────────────
 
-@tree.command(name="status", description="Show bot status, balance and open positions")
+@tree.command(name="crp_status", description="Show bot status, balance and open positions")
 async def cmd_status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=_status_embed(), ephemeral=True)
 
 
-@tree.command(name="pause", description="Pause trading (bot keeps running, no new trades)")
+@tree.command(name="crp_pause", description="Pause trading (bot keeps running, no new trades)")
 async def cmd_pause(interaction: discord.Interaction):
     engine.pause()
     await interaction.response.send_message("⏸ Bot paused.", ephemeral=True)
 
 
-@tree.command(name="resume", description="Resume trading after a pause")
+@tree.command(name="crp_resume", description="Resume trading after a pause")
 async def cmd_resume(interaction: discord.Interaction):
     engine.resume()
     await interaction.response.send_message("▶️ Bot resumed.", ephemeral=True)
 
 
-@tree.command(name="summary", description="Send a performance summary to this channel")
+@tree.command(name="crp_summary", description="Send a performance summary to this channel")
 async def cmd_summary(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     state   = get_state()
@@ -135,7 +135,7 @@ async def cmd_summary(interaction: discord.Interaction):
     await interaction.followup.send("📅 Summary sent to channel.", ephemeral=True)
 
 
-@tree.command(name="config", description="Show current bot configuration")
+@tree.command(name="crp_config", description="Show current bot configuration")
 async def cmd_config(interaction: discord.Interaction):
     embed = discord.Embed(title="⚙️ Configuration", color=discord.Color.blurple())
     embed.add_field(name="Interval",       value=config.INTERVAL,                    inline=True)
@@ -155,7 +155,7 @@ async def cmd_config(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@tree.command(name="close", description="Manually close an open position")
+@tree.command(name="crp_close", description="Manually close an open position")
 @app_commands.describe(pair="Trading pair to close")
 @app_commands.choices(pair=_pair_choices())
 async def cmd_close(interaction: discord.Interaction, pair: str):
@@ -180,7 +180,7 @@ async def cmd_close(interaction: discord.Interaction, pair: str):
     )
 
 
-@tree.command(name="buy", description="Manually open a position")
+@tree.command(name="crp_buy", description="Manually open a position")
 @app_commands.describe(pair="Trading pair to buy", size="Position size as % of balance (default: 75)")
 @app_commands.choices(pair=_pair_choices())
 async def cmd_buy(interaction: discord.Interaction, pair: str, size: int = 75):
@@ -208,7 +208,7 @@ async def cmd_buy(interaction: discord.Interaction, pair: str, size: int = 75):
     )
 
 
-@tree.command(name="clear", description="Delete all messages in this channel (keeps pinned messages)")
+@tree.command(name="crp_clear", description="Delete all messages in this channel (keeps pinned messages)")
 async def cmd_clear(interaction: discord.Interaction):
     class ClearView(discord.ui.View):
         def __init__(self):
