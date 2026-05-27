@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import threading
 
@@ -220,16 +221,28 @@ async def cmd_clear(interaction: discord.Interaction):
             await inter.response.defer(ephemeral=True)
             channel = inter.channel
             deleted = 0
+            cutoff  = discord.utils.utcnow() - datetime.timedelta(days=13, hours=23)
             while True:
                 msgs = [m async for m in channel.history(limit=100) if not m.pinned]
                 if not msgs:
                     break
-                if len(msgs) == 1:
-                    await msgs[0].delete()
-                    deleted += 1
-                else:
-                    await channel.delete_messages(msgs)
-                    deleted += len(msgs)
+                recent = [m for m in msgs if m.created_at > cutoff]
+                old    = [m for m in msgs if m.created_at <= cutoff]
+                if recent:
+                    if len(recent) == 1:
+                        await recent[0].delete()
+                    else:
+                        await channel.delete_messages(recent)
+                    deleted += len(recent)
+                for m in old:
+                    try:
+                        await m.delete()
+                        deleted += 1
+                        await asyncio.sleep(0.75)  # avoid rate limit on individual deletes
+                    except Exception:
+                        pass
+                if not recent and not old:
+                    break
             await inter.followup.send(f"🗑️ Deleted {deleted} messages.", ephemeral=True)
 
         @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
