@@ -183,8 +183,9 @@
       border-radius: 8px; padding: 16px;
     }
     .chart-box { position: relative; width: 100%; }
-    .chart-box.price-box { height: 240px; }
-    .chart-box.rsi-box   { height: 100px; margin-top: 8px; }
+    .chart-box.price-box  { height: 240px; }
+    .chart-box.candle-box { height: 160px; margin-top: 8px; }
+    .chart-box.rsi-box    { height: 100px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -261,7 +262,7 @@
 
   <section class="chart-section">
     <div class="chart-controls">
-      <h2>Price vs EMA200</h2>
+      <h2>Price chart</h2>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <div class="btn-group" id="pair-btns"></div>
         <div class="btn-group" id="span-btns">
@@ -274,6 +275,7 @@
     </div>
     <div class="chart-wrap">
       <div class="chart-box price-box"><canvas id="price-chart"></canvas></div>
+      <div class="chart-box candle-box"><canvas id="candle-chart"></canvas></div>
       <div class="chart-box rsi-box"><canvas id="rsi-chart"></canvas></div>
     </div>
   </section>
@@ -578,11 +580,42 @@
   setInterval(refresh, 60000);
   setInterval(refreshSignals, 60000);
 
+  // ── candlestick plugin ─────────────────────────────────────────────────────
+  Chart.register({
+    id: 'candlesticks',
+    afterDatasetsDraw(chart) {
+      const ohlc = chart.data._ohlc;
+      if (!ohlc || !ohlc.length) return;
+      const { ctx, scales: { x: xs, y: ys } } = chart;
+      const step = ohlc.length > 1 ? xs.getPixelForValue(1) - xs.getPixelForValue(0) : 8;
+      const barW = Math.max(2, Math.abs(step) * 0.6);
+      ohlc.forEach((d, i) => {
+        const px   = xs.getPixelForValue(i);
+        const isUp = d.c >= d.o;
+        const hY   = ys.getPixelForValue(d.h);
+        const lY   = ys.getPixelForValue(d.l);
+        const oY   = ys.getPixelForValue(d.o);
+        const cY   = ys.getPixelForValue(d.c);
+        const top  = Math.min(oY, cY);
+        const bH   = Math.max(Math.abs(cY - oY), 1);
+        ctx.save();
+        ctx.strokeStyle = isUp ? '#3fb950' : '#f85149';
+        ctx.fillStyle   = isUp ? '#3fb95055' : '#f8514955';
+        ctx.lineWidth   = 1;
+        ctx.beginPath(); ctx.moveTo(px, hY); ctx.lineTo(px, lY); ctx.stroke();
+        ctx.fillRect(px - barW / 2, top, barW, bH);
+        ctx.strokeRect(px - barW / 2, top, barW, bH);
+        ctx.restore();
+      });
+    }
+  });
+
   // ── chart ──────────────────────────────────────────────────────────────────
-  let _chartPair  = null;
-  let _chartSpan  = '1d';
-  let _priceChart = null;
-  let _rsiChart   = null;
+  let _chartPair    = null;
+  let _chartSpan    = '1d';
+  let _priceChart   = null;
+  let _candleChart  = null;
+  let _rsiChart     = null;
 
   const CHART_OPTS = {
     responsive: true, maintainAspectRatio: false,
@@ -645,8 +678,10 @@
         _priceChart.data.datasets[8].data = posLines.breakEven;
         _priceChart.data.datasets[9].data = posLines.minExit;
         _priceChart.data.datasets[10].data = posLines.peak;
-        _priceChart.data.datasets[11].data = data.bb_upper;
-        _priceChart.data.datasets[12].data = data.bb_lower;
+        _priceChart.data.datasets[11].data                 = data.bb_upper;
+        _priceChart.data.datasets[12].data                 = data.bb_lower;
+        _priceChart.data.datasets[13].data                 = data.volume;
+        _priceChart.data.datasets[13].backgroundColor      = data.vol_colors;
         _priceChart.update('none');
       } else {
         const ctx = document.getElementById('price-chart').getContext('2d');
@@ -673,13 +708,15 @@
               { type: 'line', label: 'Peak',       data: posLines.peak,      borderColor: '#3fb950', borderWidth: 1, borderDash: [2,3], pointRadius: 0 },
               { type: 'line', label: 'BB Upper', data: data.bb_upper, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '+1', backgroundColor: '#8b949e18' },
               { type: 'line', label: 'BB Lower', data: data.bb_lower, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1 },
+              { type: 'bar',  label: 'Volume', data: data.volume, backgroundColor: data.vol_colors, yAxisID: 'y1', borderWidth: 0 },
             ],
           },
           options: {
             ...CHART_OPTS,
             plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
               callbacks: { label: c => {
-                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                if (c.dataset.label === 'Volume')  return ` Vol: ${Number(c.raw).toLocaleString('fi-FI', {maximumFractionDigits: 2})}`;
+if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
                 return c.dataset.type === 'scatter'
                   ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
                   : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
@@ -687,7 +724,41 @@
             }},
             scales: {
               x: CHART_OPTS.scales.x,
-              y: { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') } },
+              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') } },
+              y1: { display: false, position: 'right', grid: { drawOnChartArea: false },
+                    afterDataLimits: axis => { axis.max = axis.max * 4; } },
+            },
+          },
+        });
+      }
+
+      // candlestick chart
+      const ohlcMin = Math.min(...data.ohlc.map(d => d.l));
+      const ohlcMax = Math.max(...data.ohlc.map(d => d.h));
+      const ohlcPad = (ohlcMax - ohlcMin) * 0.05;
+      if (_candleChart) {
+        _candleChart.data.labels    = data.labels;
+        _candleChart.data._ohlc     = data.ohlc;
+        _candleChart.options.scales.y.min = ohlcMin - ohlcPad;
+        _candleChart.options.scales.y.max = ohlcMax + ohlcPad;
+        _candleChart.update('none');
+      } else {
+        const ctx3 = document.getElementById('candle-chart').getContext('2d');
+        _candleChart = new Chart(ctx3, {
+          type: 'line',
+          data: { labels: data.labels, _ohlc: data.ohlc, datasets: [] },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { display: false },
+              tooltip: { enabled: false },
+            },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y,
+                min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad,
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') },
+              },
             },
           },
         });

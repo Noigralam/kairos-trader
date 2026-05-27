@@ -202,12 +202,28 @@ def api_chart(pair):
         elif side == "SELL":
             actual_sells.append(pt)
 
+    volume   = df["volume"]
+    vol_up   = (close >= df["open"]).iloc[sl]
+    vol_colors = ['#3fb95066' if u else '#f8514966' for u in vol_up]
+
+    ohlc = [{"x": lbl, "o": round(o, 4), "h": round(h, 4), "l": round(l, 4), "c": round(c, 4)}
+            for lbl, o, h, l, c in zip(
+                labels,
+                df["open"].iloc[sl].tolist(),
+                df["high"].iloc[sl].tolist(),
+                df["low"].iloc[sl].tolist(),
+                close.iloc[sl].tolist()
+            )]
+
     return jsonify({
         "labels":        labels,
         "prices":        close.iloc[sl].round(4).tolist(),
         "ema200":        ema.iloc[sl].round(4).tolist(),
         "bb_upper":      bb_upper.iloc[sl].round(4).tolist(),
         "bb_lower":      bb_lower.iloc[sl].round(4).tolist(),
+        "ohlc":          ohlc,
+        "volume":        volume.iloc[sl].round(4).tolist(),
+        "vol_colors":    vol_colors,
         "rsi":           rsi.iloc[sl].round(2).tolist(),
         "buys":          buy_prices[-limit:],
         "sells":         sell_prices[-limit:],
