@@ -55,7 +55,7 @@ def _seconds_until_next_candle(sleep_sec: int) -> int:
     import datetime
     now = datetime.datetime.now()
     elapsed = (now.minute * 60 + now.second) % sleep_sec
-    return sleep_sec - elapsed
+    return sleep_sec - elapsed + 15
 
 
 def _loop():
