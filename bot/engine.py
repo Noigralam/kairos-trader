@@ -10,6 +10,7 @@ from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
 from .simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add
 from .notifier import notify, notify_tick, bot_status_alert, build_chart
+from . import db as _db
 
 INTERVAL_SECONDS = {
     "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
@@ -193,6 +194,11 @@ def _loop():
                         close_position(pair, prices[pair], reason="signal")
                     else:
                         notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below min exit €{min_exit:,.2f} (entry €{pos.entry_price:,.2f} +{min_exit_pct*100:.1f}%)", discord=False)
+
+            # snapshot portfolio value (cash + open position mark-to-market)
+            snap_state = get_state()
+            open_val   = sum(prices[p] * pos.amount for p, pos in snap_state.positions.items() if p in prices)
+            _db.log_balance(round(snap_state.balance + open_val, 2), config.MODE)
 
         except Exception as e:
             log.error(e, exc_info=True)

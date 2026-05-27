@@ -64,6 +64,43 @@ def api_tax():
     ])
 
 
+@app.route("/api/stats")
+def api_stats():
+    return jsonify(db.get_trade_stats(config.MODE))
+
+
+@app.route("/api/balance_history")
+def api_balance_history():
+    days = int(request.args.get("days", 30))
+    rows = db.get_balance_history(config.MODE, days)
+    import zoneinfo as _zi
+    tz = _zi.ZoneInfo("Europe/Helsinki")
+    import datetime as _dt
+    out = []
+    for ts, bal in rows:
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+        except Exception:
+            t = ts
+        out.append({"t": t, "balance": bal})
+    return jsonify(out)
+
+
+_fng_cache = {"value": None, "label": None, "fetched": 0}
+
+@app.route("/api/fng")
+def api_fng():
+    import time, urllib.request, json as _json
+    if time.time() - _fng_cache["fetched"] > 3600:
+        try:
+            with urllib.request.urlopen("https://api.alternative.me/fng/", timeout=5) as r:
+                d = _json.loads(r.read())["data"][0]
+            _fng_cache.update({"value": int(d["value"]), "label": d["value_classification"], "fetched": time.time()})
+        except Exception:
+            pass
+    return jsonify({"value": _fng_cache["value"], "label": _fng_cache["label"]})
+
+
 @app.route("/api/signals")
 def api_signals():
     out = {}

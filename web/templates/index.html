@@ -196,6 +196,7 @@
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
       <span id="refresh-indicator">Refreshing…</span>
       <span id="last-tick">Last tick: —</span>
+      <span id="next-tick" style="color:var(--muted);font-size:12px;">Next tick: —</span>
     </div>
     <span id="status-badge" class="badge stopped">stopped</span>
   </div>
@@ -229,6 +230,27 @@
     <button class="danger" onclick="control('stop')">■ Stop</button>
   </div>
 
+
+  <section>
+    <h2>Performance</h2>
+    <div class="stats" id="perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+      <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="stat-winrate">—</div></div>
+      <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="stat-avgpnl">—</div></div>
+      <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="stat-best">—</div></div>
+      <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="stat-worst">—</div></div>
+      <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="stat-hold">—</div></div>
+      <div class="stat-card">
+        <div class="label">Fear &amp; Greed</div>
+        <div class="value" id="fng-value">—</div>
+        <div style="font-size:11px;color:var(--muted)" id="fng-label"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Portfolio Value</h2>
+    <div class="chart-box" style="height:160px"><canvas id="balance-chart"></canvas></div>
+  </section>
 
   <section>
     <h2>Recent Trades</h2>
@@ -817,6 +839,107 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
 
   initChart();
   setInterval(loadChart, 60000);
+
+  // ── next tick countdown ────────────────────────────────────────────────────
+  function updateCountdown() {
+    const now     = new Date();
+    const elapsed = (now.getMinutes() * 60 + now.getSeconds()) % 900;
+    const secs    = 900 - elapsed + 15;  // 15s buffer matches engine
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    document.getElementById('next-tick').textContent =
+      `Next tick: ${m}m ${String(s).padStart(2,'0')}s`;
+  }
+  updateCountdown();
+  setInterval(updateCountdown, 1000);
+
+  // ── trade stats ───────────────────────────────────────────────────────────
+  async function loadStats() {
+    try {
+      const s = await fetch('/api/stats').then(r => r.json());
+      if (!s) return;
+      document.getElementById('stat-winrate').textContent = `${s.win_rate}%  (${s.wins}W / ${s.losses}L)`;
+      document.getElementById('stat-winrate').style.color = s.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('stat-avgpnl').textContent  = `€${s.avg_pnl > 0 ? '+' : ''}${s.avg_pnl.toFixed(2)}`;
+      document.getElementById('stat-avgpnl').style.color  = s.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('stat-best').textContent    = `€+${s.best.toFixed(2)}`;
+      document.getElementById('stat-best').style.color    = 'var(--green)';
+      document.getElementById('stat-worst').textContent   = `€${s.worst.toFixed(2)}`;
+      document.getElementById('stat-worst').style.color   = s.worst >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('stat-hold').textContent    = s.avg_hold_h != null ? `${s.avg_hold_h}h` : '—';
+    } catch(e) { console.error(e); }
+  }
+  loadStats();
+  setInterval(loadStats, 60000);
+
+  // ── fear & greed ──────────────────────────────────────────────────────────
+  async function loadFng() {
+    try {
+      const d = await fetch('/api/fng').then(r => r.json());
+      if (d.value == null) return;
+      const el = document.getElementById('fng-value');
+      el.textContent = d.value;
+      el.style.color = d.value <= 25 ? '#f85149'
+                     : d.value <= 45 ? '#e3b341'
+                     : d.value <= 55 ? '#8b949e'
+                     : d.value <= 75 ? '#3fb950'
+                     :                 '#58a6ff';
+      document.getElementById('fng-label').textContent = d.label;
+    } catch(e) { console.error(e); }
+  }
+  loadFng();
+  setInterval(loadFng, 3600000);
+
+  // ── balance history chart ─────────────────────────────────────────────────
+  let _balanceChart = null;
+  async function loadBalanceChart() {
+    try {
+      const rows = await fetch('/api/balance_history?days=30').then(r => r.json());
+      if (!rows.length) return;
+      const labels = rows.map(r => r.t);
+      const values = rows.map(r => r.balance);
+      if (_balanceChart) {
+        _balanceChart.data.labels           = labels;
+        _balanceChart.data.datasets[0].data = values;
+        _balanceChart.update('none');
+      } else {
+        const ctx = document.getElementById('balance-chart').getContext('2d');
+        _balanceChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Portfolio value',
+              data: values,
+              borderColor: '#58a6ff',
+              borderWidth: 1.5,
+              pointRadius: 0,
+              tension: 0.1,
+              fill: true,
+              backgroundColor: '#58a6ff18',
+            }],
+          },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { display: false },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => ` €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}` }
+              },
+            },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y,
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') }
+              },
+            },
+          },
+        });
+      }
+    } catch(e) { console.error(e); }
+  }
+  loadBalanceChart();
+  setInterval(loadBalanceChart, 60000);
 </script>
 </body>
 </html>
