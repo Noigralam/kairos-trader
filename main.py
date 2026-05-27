@@ -36,6 +36,8 @@ if __name__ == "__main__":
     init_db()
     from bot.simulator import init as init_state
     from bot.engine import start as start_engine
+    from bot.discord_bot import start as start_discord
     init_state()
     start_engine()
+    start_discord()
     run()

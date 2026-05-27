@@ -6,6 +6,8 @@ load_dotenv()
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+DISCORD_BOT_TOKEN   = os.getenv("DISCORD_BOT_TOKEN", "")
+DISCORD_GUILD_ID    = os.getenv("DISCORD_GUILD_ID", "")
 
 MODE = os.getenv("MODE", "simulation")  # simulation | live
 TRADING_PAIRS = ["ETHEUR", "SOLEUR"]
