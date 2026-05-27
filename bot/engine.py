@@ -51,12 +51,24 @@ def _set_status(new_status: BotStatus):
     bot_status_alert(new_status.value)
 
 
+def _seconds_until_next_candle(sleep_sec: int) -> int:
+    import datetime
+    now = datetime.datetime.now()
+    elapsed = (now.minute * 60 + now.second) % sleep_sec
+    return sleep_sec - elapsed
+
+
 def _loop():
     notify(f"Bot started | mode={config.MODE} | pairs={', '.join(config.TRADING_PAIRS)} | interval={config.INTERVAL}")
     sleep_sec = INTERVAL_SECONDS.get(config.INTERVAL, 3600)
 
     for pair in config.TRADING_PAIRS:
         initial_sync(pair, config.INTERVAL)
+
+    # align to the next candle boundary before first tick
+    wait = _seconds_until_next_candle(sleep_sec)
+    log.info(f"Waiting {wait}s to align to next {config.INTERVAL} candle boundary")
+    time.sleep(wait)
 
     while _status != BotStatus.STOPPED:
         if _status == BotStatus.PAUSED:
@@ -186,7 +198,7 @@ def _loop():
             log.error(e, exc_info=True)
             notify(f"[ERROR] {e}", discord=False)
 
-        time.sleep(sleep_sec)
+        time.sleep(_seconds_until_next_candle(sleep_sec))
 
 
 def start():
