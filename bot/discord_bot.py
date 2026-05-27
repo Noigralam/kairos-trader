@@ -208,6 +208,42 @@ async def cmd_buy(interaction: discord.Interaction, pair: str, size: int = 75):
     )
 
 
+@tree.command(name="clear", description="Delete all messages in this channel (keeps pinned messages)")
+async def cmd_clear(interaction: discord.Interaction):
+    class ClearView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=30)
+
+        @discord.ui.button(label="✅ Yes, clear channel", style=discord.ButtonStyle.danger)
+        async def confirm(self, inter: discord.Interaction, button: discord.ui.Button):
+            self.stop()
+            await inter.response.defer(ephemeral=True)
+            channel = inter.channel
+            deleted = 0
+            while True:
+                msgs = [m async for m in channel.history(limit=100) if not m.pinned]
+                if not msgs:
+                    break
+                if len(msgs) == 1:
+                    await msgs[0].delete()
+                    deleted += 1
+                else:
+                    await channel.delete_messages(msgs)
+                    deleted += len(msgs)
+            await inter.followup.send(f"🗑️ Deleted {deleted} messages.", ephemeral=True)
+
+        @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
+        async def cancel(self, inter: discord.Interaction, button: discord.ui.Button):
+            self.stop()
+            await inter.response.send_message("Cancelled.", ephemeral=True)
+
+    await interaction.response.send_message(
+        "⚠️ Delete **all messages** in this channel?",
+        view=ClearView(),
+        ephemeral=True,
+    )
+
+
 # ── background thread ──────────────────────────────────────────────────────────
 
 def start():
