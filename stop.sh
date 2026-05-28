@@ -8,7 +8,7 @@ if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
     if kill -0 "$PID" 2>/dev/null; then
         kill "$PID"
-        echo "Crypto_Bot stopped (PID $PID)"
+        echo "Kairos stopped (PID $PID)"
     else
         echo "Stale PID $PID in pid file"
     fi

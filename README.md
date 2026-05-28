@@ -1,4 +1,4 @@
-# Crypto_Bot
+# Kairos
 
 RSI + EMA200 trend-following bot for Binance EUR pairs. Runs in simulation or live mode. Includes a web dashboard and unified backtest tool.
 
