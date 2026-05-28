@@ -25,6 +25,9 @@ logs/
 data/state.json
 data/state_live.json
 data/trades.db
+data/candles.db
+data/bot.pid
+data/discord_ids.json
 
 # IDE
 .vscode/
