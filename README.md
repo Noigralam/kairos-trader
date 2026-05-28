@@ -20,6 +20,21 @@ pip install -r requirements.txt
 cp .env.example .env   # fill in API keys and settings
 ```
 
+### Binance API keys (live mode only)
+
+Simulation mode requires no API keys. For live trading:
+
+1. Log in to Binance → Profile → API Management → Create API
+2. Choose **System generated**
+3. Enable exactly these permissions:
+   - ✅ Enable Reading
+   - ✅ Enable Spot & Margin Trading
+   - ❌ Everything else (no withdrawals, no transfers, no futures)
+4. Restrict access to your server's IP address for extra safety
+5. Copy the key and secret into `.env` as `BINANCE_API_KEY` and `BINANCE_SECRET_KEY`
+
+> The bot only places spot market orders and reads balances — it never touches withdrawals or futures.
+
 ## Running
 
 ```bash
