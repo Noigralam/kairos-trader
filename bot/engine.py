@@ -30,6 +30,7 @@ _lock = threading.Lock()
 _last_tick: str = None
 _prev_tick: dict = {}          # pair -> {price, rsi, ema200, above_ema}
 _last_summary_date = None      # date of last daily summary
+_start_time: float = None      # epoch time when bot last started
 
 
 def _arrow(cur: float, prev: float | None) -> str:
@@ -176,10 +177,17 @@ def _loop():
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
 
+def get_uptime() -> int | None:
+    if _start_time is None:
+        return None
+    return int(time.time() - _start_time)
+
+
 def start():
-    global _thread
+    global _thread, _start_time
     if _status == BotStatus.RUNNING:
         return
+    _start_time = time.time()
     _set_status(BotStatus.RUNNING)
     _thread = threading.Thread(target=_loop, daemon=True)
     _thread.start()

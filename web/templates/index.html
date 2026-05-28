@@ -197,6 +197,7 @@
       <span id="refresh-indicator">Refreshing…</span>
       <span id="last-tick">Last tick: —</span>
       <span id="next-tick" style="color:var(--muted);font-size:12px;">Next tick: —</span>
+      <span id="uptime" style="color:var(--muted);font-size:12px;">Uptime: —</span>
     </div>
     <span id="status-badge" class="badge stopped">stopped</span>
   </div>
@@ -591,6 +592,12 @@
         'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki', hour: '2-digit', minute: '2-digit' });
       document.getElementById('last-tick').textContent =
         'Last tick: ' + (s.last_tick || '—');
+      if (s.uptime != null) {
+        const h = Math.floor(s.uptime / 3600);
+        const m = Math.floor((s.uptime % 3600) / 60);
+        document.getElementById('uptime').textContent =
+          `Uptime (${s.mode}): ${h}h ${String(m).padStart(2,'0')}m`;
+      }
 
     } catch (e) {
       document.getElementById('refresh-indicator').textContent = 'Connection error';
