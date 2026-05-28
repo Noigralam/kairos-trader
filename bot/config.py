@@ -10,7 +10,7 @@ DISCORD_BOT_TOKEN   = os.getenv("DISCORD_BOT_TOKEN", "")
 DISCORD_GUILD_ID    = os.getenv("DISCORD_GUILD_ID", "")
 
 MODE = os.getenv("MODE", "simulation")  # simulation | live
-TRADING_PAIRS = ["ETHEUR", "SOLEUR"]
+TRADING_PAIRS = [p.strip() for p in os.getenv("TRADING_PAIRS", "ETHEUR,SOLEUR").split(",") if p.strip()]
 SIMULATION_BALANCE = float(os.getenv("SIMULATION_BALANCE", "200.0"))
 BINANCE_FEE = float(os.getenv("BINANCE_FEE", "0.001"))
 TAKE_PROFIT_PCT = float(os.getenv("TAKE_PROFIT_PCT", "0.10"))

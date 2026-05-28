@@ -11,6 +11,11 @@ RSI + EMA200 trend-following bot for Binance EUR pairs. Runs in simulation or li
 - **Take-profit** at +5% acts as a spike catcher
 - Per-pair RSI periods and overbought thresholds: ETHEUR uses RSI(7)/sell>65, SOLEUR uses RSI(7)/sell>80
 
+## Requirements
+
+- Python 3.10+
+- Dependencies: `flask`, `python-binance`, `pandas`, `python-dotenv`, `requests`, `discord.py`
+
 ## Setup
 
 ```bash
@@ -59,6 +64,7 @@ Switching modes never touches the other mode's state file. Trade history is tagg
 | Variable | Default | Description |
 |---|---|---|
 | `MODE` | `simulation` | `simulation` or `live` |
+| `TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs |
 | `SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (EUR) |
 | `INTERVAL` | `15m` | Candle interval |
 | `POSITION_SIZE_PCT` | `0.75` | Fraction of balance per trade |
@@ -76,12 +82,23 @@ Switching modes never touches the other mode's state file. Trade history is tagg
 | `DISCORD_WEBHOOK_URL` | | Trade alerts and tick embeds |
 | `DISCORD_BOT_TOKEN` | | Slash command bot (optional) |
 | `DISCORD_GUILD_ID` | | Guild ID for instant slash command sync (optional) |
+| `WEB_HOST` | `127.0.0.1` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
+| `WEB_PORT` | `8888` | Dashboard port |
 
 Per-pair overrides are supported for `RSI_PERIOD`, `RSI_OVERBOUGHT`, and `MIN_EXIT_PROFIT_PCT` by appending the pair name (e.g. `RSI_PERIOD_ETHEUR=7`).
+
+Trading pairs are set via `TRADING_PAIRS` in `.env` as a comma-separated list. Any Binance EUR spot pair works (e.g. `TRADING_PAIRS=ETHEUR,SOLEUR,BTCEUR`).
 
 ## Discord
 
 When `DISCORD_WEBHOOK_URL` is set, the bot posts tick embeds, trade alerts, extreme condition alerts (RSI < 20 / > 85, EMA200 crossovers), and a daily summary.
+
+### Adding the bot to your server
+
+1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → your application → OAuth2 → URL Generator
+2. Scopes: `bot` + `applications.commands`
+3. Bot permissions: `Send Messages`, `Read Message History`, `Manage Messages`
+4. Open the generated URL and invite the bot to your server
 
 When `DISCORD_BOT_TOKEN` is set, the following slash commands are available:
 
