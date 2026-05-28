@@ -198,6 +198,7 @@
       <span id="last-tick">Last tick: —</span>
       <span id="next-tick" style="color:var(--muted);font-size:12px;">Next tick: —</span>
       <span id="uptime" style="color:var(--muted);font-size:12px;">Uptime: —</span>
+      <span id="live-since" style="color:var(--muted);font-size:12px;"></span>
     </div>
     <span id="status-badge" class="badge stopped">stopped</span>
   </div>
@@ -596,7 +597,20 @@
         const h = Math.floor(s.uptime / 3600);
         const m = Math.floor((s.uptime % 3600) / 60);
         document.getElementById('uptime').textContent =
-          `Uptime (${s.mode}): ${h}h ${String(m).padStart(2,'0')}m`;
+          `Session: ${h}h ${String(m).padStart(2,'0')}m`;
+      }
+      if (s.live_since) {
+        const since = new Date(s.live_since);
+        const diff  = Math.floor((Date.now() - since) / 1000);
+        const days  = Math.floor(diff / 86400);
+        const hours = Math.floor((diff % 86400) / 3600);
+        const mins  = Math.floor((diff % 3600) / 60);
+        const parts = [];
+        if (days)  parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        parts.push(`${String(mins).padStart(2,'0')}m`);
+        document.getElementById('live-since').textContent =
+          `Live for: ${parts.join(' ')}`;
       }
 
     } catch (e) {

@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from enum import Enum
@@ -177,6 +178,25 @@ def _loop():
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
 
+_LIVE_SINCE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "live_since.txt")
+
+
+def _ensure_live_since():
+    if config.MODE == "live" and not os.path.exists(_LIVE_SINCE_PATH):
+        import datetime, zoneinfo
+        ts = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+        with open(_LIVE_SINCE_PATH, "w") as f:
+            f.write(ts)
+
+
+def get_live_since() -> str | None:
+    try:
+        with open(_LIVE_SINCE_PATH) as f:
+            return f.read().strip()
+    except Exception:
+        return None
+
+
 def get_uptime() -> int | None:
     if _start_time is None:
         return None
@@ -187,6 +207,7 @@ def start():
     global _thread, _start_time
     if _status == BotStatus.RUNNING:
         return
+    _ensure_live_since()
     _start_time = time.time()
     _set_status(BotStatus.RUNNING)
     _thread = threading.Thread(target=_loop, daemon=True)

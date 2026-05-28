@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from bot import engine, simulator, db, config
-from bot.engine import get_last_tick, get_uptime, manual_buy
+from bot.engine import get_last_tick, get_uptime, get_live_since, manual_buy
 from bot.notifier import get_recent_logs
 from bot.exchange import get_price
 from bot.candles import get_df
@@ -26,6 +26,7 @@ def api_status():
         "status": engine.get_status(),
         "last_tick": get_last_tick(),
         "uptime": get_uptime(),
+        "live_since": get_live_since(),
         "mode": config.MODE,
         "balance": round(state.balance, 2),
         "total_trades": state.total_trades,
