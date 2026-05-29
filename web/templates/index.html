@@ -201,6 +201,7 @@
       <span id="live-since" style="color:var(--muted);font-size:12px;"></span>
     </div>
     <span id="status-badge" class="badge stopped">stopped</span>
+    <span id="mode-badge" class="badge" style="background:#1c2128;color:var(--muted);">—</span>
   </div>
 </header>
 
@@ -212,16 +213,16 @@
       <div class="value" id="balance">—</div>
     </div>
     <div class="stat-card">
+      <div class="label">Portfolio Value</div>
+      <div class="value" id="portfolio-value">—</div>
+    </div>
+    <div class="stat-card">
       <div class="label">Total P&L</div>
       <div class="value" id="pnl">—</div>
     </div>
     <div class="stat-card">
       <div class="label">Total Trades</div>
       <div class="value" id="total-trades">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Mode</div>
-      <div class="value" id="mode" style="font-size:16px;">—</div>
     </div>
   </div>
 
@@ -542,15 +543,20 @@
       const tax = await taxRes.json();
       const logs = await logRes.json();
 
-      // Badge
+      // Badges
       const badge = document.getElementById('status-badge');
       badge.textContent = s.status;
       badge.className = 'badge ' + s.status;
+      const modeBadge = document.getElementById('mode-badge');
+      modeBadge.textContent = s.mode;
+      modeBadge.style.background = s.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+      modeBadge.style.color = s.mode === 'live' ? '#58a6ff' : '#bc8cff';
 
       // Stats
       document.getElementById('balance').textContent = fmt(s.balance);
-      document.getElementById('mode').textContent = s.mode;
       document.getElementById('total-trades').textContent = s.total_trades;
+      const openVal = Object.values(s.positions).reduce((sum, p) => sum + p.value_eur, 0);
+      document.getElementById('portfolio-value').textContent = fmt(s.balance + openVal);
       const pnlEl = document.getElementById('pnl');
       pnlEl.innerHTML = fmtPnl(s.total_pnl);
 
