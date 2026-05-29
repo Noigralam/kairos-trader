@@ -250,7 +250,15 @@
   </section>
 
   <section>
-    <h2>Portfolio Value</h2>
+    <div class="chart-controls">
+      <h2>Portfolio Value</h2>
+      <div class="btn-group" id="balance-span-btns">
+        <button onclick="setBalanceDays(7)"   data-days="7">7d</button>
+        <button onclick="setBalanceDays(30)"  data-days="30" class="active">30d</button>
+        <button onclick="setBalanceDays(90)"  data-days="90">90d</button>
+        <button onclick="setBalanceDays(0)"   data-days="0">All</button>
+      </div>
+    </div>
     <div class="chart-box" style="height:160px"><canvas id="balance-chart"></canvas></div>
   </section>
 
@@ -913,9 +921,20 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
 
   // ── balance history chart ─────────────────────────────────────────────────
   let _balanceChart = null;
+  let _balanceDays  = 30;
+
+  function setBalanceDays(days) {
+    _balanceDays = days;
+    document.querySelectorAll('#balance-span-btns button').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.days) === days);
+    });
+    loadBalanceChart();
+  }
+
   async function loadBalanceChart() {
     try {
-      const rows = await fetch('/api/balance_history?days=30').then(r => r.json());
+      const qs   = _balanceDays > 0 ? `?days=${_balanceDays}` : '';
+      const rows = await fetch(`/api/balance_history${qs}`).then(r => r.json());
       if (!rows.length) return;
       const labels = rows.map(r => r.t);
       const values = rows.map(r => r.balance);

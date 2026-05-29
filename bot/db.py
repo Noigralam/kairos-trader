@@ -89,12 +89,17 @@ def log_balance(balance: float, mode: str):
 
 def get_balance_history(mode: str, days: int = 30):
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("""
-        SELECT timestamp, balance FROM balance_history
-        WHERE mode = ?
-          AND timestamp >= datetime('now', ?)
-        ORDER BY timestamp ASC
-    """, (mode, f'-{days} days')).fetchall()
+    if days > 0:
+        rows = conn.execute("""
+            SELECT timestamp, balance FROM balance_history
+            WHERE mode = ? AND timestamp >= datetime('now', ?)
+            ORDER BY timestamp ASC
+        """, (mode, f'-{days} days')).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT timestamp, balance FROM balance_history
+            WHERE mode = ? ORDER BY timestamp ASC
+        """, (mode,)).fetchall()
     conn.close()
     return rows
 
