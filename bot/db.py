@@ -87,14 +87,16 @@ def log_balance(balance: float, mode: str):
     conn.close()
 
 
-def get_balance_history(mode: str, days: int = 30):
+def get_balance_history(mode: str, days: float = 30):
     conn = sqlite3.connect(DB_PATH)
     if days > 0:
+        hours = days * 24
+        modifier = f'-{hours} hours'
         rows = conn.execute("""
             SELECT timestamp, balance FROM balance_history
             WHERE mode = ? AND timestamp >= datetime('now', ?)
             ORDER BY timestamp ASC
-        """, (mode, f'-{days} days')).fetchall()
+        """, (mode, modifier)).fetchall()
     else:
         rows = conn.execute("""
             SELECT timestamp, balance FROM balance_history

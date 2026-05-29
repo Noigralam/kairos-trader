@@ -73,7 +73,7 @@ def api_stats():
 
 @app.route("/api/balance_history")
 def api_balance_history():
-    days = int(request.args.get("days", 30))
+    days = float(request.args.get("days", 30))
     rows = db.get_balance_history(config.MODE, max(days, 0))
     import zoneinfo as _zi
     tz = _zi.ZoneInfo("Europe/Helsinki")
