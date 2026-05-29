@@ -220,6 +220,10 @@
       <div class="value" id="portfolio-value">—</div>
     </div>
     <div class="stat-card">
+      <div class="label">Starting Balance</div>
+      <div class="value" id="starting-balance">—</div>
+    </div>
+    <div class="stat-card">
       <div class="label">Total P&L</div>
       <div class="value" id="pnl">—</div>
     </div>
@@ -560,6 +564,8 @@
       document.getElementById('total-trades').textContent = s.total_trades;
       const openVal = Object.values(s.positions).reduce((sum, p) => sum + p.value_eur, 0);
       document.getElementById('portfolio-value').textContent = fmt(s.balance + openVal);
+      if (s.starting_balance != null)
+        document.getElementById('starting-balance').textContent = fmt(s.starting_balance);
       const pnlEl = document.getElementById('pnl');
       pnlEl.innerHTML = fmtPnl(s.total_pnl);
 

@@ -87,6 +87,15 @@ def log_balance(balance: float, mode: str):
     conn.close()
 
 
+def get_starting_balance(mode: str) -> float | None:
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        "SELECT balance FROM balance_history WHERE mode=? ORDER BY timestamp ASC LIMIT 1", (mode,)
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
 def get_balance_history(mode: str, days: float = 30):
     conn = sqlite3.connect(DB_PATH)
     if days > 0:
