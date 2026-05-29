@@ -213,15 +213,11 @@
   <div class="stats">
     <div class="stat-card">
       <div class="label">Balance</div>
-      <div class="value" id="balance">—</div>
+      <div class="value"><span id="balance">—</span><span id="starting-balance" style="font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
     </div>
     <div class="stat-card">
       <div class="label">Portfolio Value</div>
-      <div class="value" id="portfolio-value">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Starting Balance</div>
-      <div class="value" id="starting-balance">—</div>
+      <div class="value"><span id="portfolio-value">—</span><span id="portfolio-pct" style="font-size:13px;font-weight:400;margin-left:6px;"></span></div>
     </div>
     <div class="stat-card">
       <div class="label">Total P&L</div>
@@ -563,9 +559,15 @@
       document.getElementById('balance').textContent = fmt(s.balance);
       document.getElementById('total-trades').textContent = s.total_trades;
       const openVal = Object.values(s.positions).reduce((sum, p) => sum + p.value_eur, 0);
-      document.getElementById('portfolio-value').textContent = fmt(s.balance + openVal);
-      if (s.starting_balance != null)
-        document.getElementById('starting-balance').textContent = fmt(s.starting_balance);
+      const portVal = s.balance + openVal;
+      document.getElementById('portfolio-value').textContent = fmt(portVal);
+      if (s.starting_balance != null) {
+        document.getElementById('starting-balance').textContent = `· from ${fmt(s.starting_balance)}`;
+        const pct = (portVal - s.starting_balance) / s.starting_balance * 100;
+        const pctEl = document.getElementById('portfolio-pct');
+        pctEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+        pctEl.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+      }
       const pnlEl = document.getElementById('pnl');
       pnlEl.innerHTML = fmtPnl(s.total_pnl);
 
