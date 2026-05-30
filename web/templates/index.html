@@ -430,6 +430,7 @@
           const peakPct    = ((pos.highest_price - pos.entry_price) / pos.entry_price * 100);
           const minExitPct = ((pos.trailing_stop  - pos.entry_price) / pos.entry_price * 100);
           const tpPct      = ((pos.take_profit    - pos.entry_price) / pos.entry_price * 100);
+          const bePct      = ((pos.break_even     - pos.entry_price) / pos.entry_price * 100);
 
           // price ladder: scale from -1% to tpPct+1%
           const ladderMin = -1, ladderMax = Math.max(tpPct + 1, peakPct + 1, pct + 1);
@@ -444,6 +445,9 @@
               </div>
               <div class="ladder-pin" style="left:${lp(minExitPct)}%;color:#f85149" title="Min exit (floor/trail)">
                 <div class="pin-dot"></div><div class="pin-label">exit ${minExitPct.toFixed(1)}%</div>
+              </div>
+              <div class="ladder-pin" style="left:${lp(bePct)}%;color:#e3b341" title="Break even">
+                <div class="pin-dot"></div><div class="pin-label">BE +${bePct.toFixed(2)}%</div>
               </div>
               <div class="ladder-pin pin-top" style="left:${lp(pct)}%;color:#58a6ff" title="Current price">
                 <div class="pin-dot"></div><div class="pin-label">now ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</div>
