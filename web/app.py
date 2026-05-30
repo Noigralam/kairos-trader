@@ -118,15 +118,27 @@ def api_signals():
             elif result.signal == Signal.SELL and not has_position:
                 commentary = f"RSI overbought ({result.rsi:.1f}) but no position held — nothing to sell."
             elif not above_trend:
-                commentary = (
-                    f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
-                    f"No buys until price recovers above €{result.ema_trend:,.2f}."
-                )
+                if has_position:
+                    commentary = (
+                        f"Price is €{abs(gap):,.2f} below EMA200 — holding position, "
+                        f"watching for RSI to reach {config.rsi_overbought_for(pair)} for exit."
+                    )
+                else:
+                    commentary = (
+                        f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
+                        f"No buys until price recovers above €{result.ema_trend:,.2f}."
+                    )
             elif result.rsi >= config.RSI_OVERSOLD:
-                commentary = (
-                    f"Trend is healthy (price above EMA200 by €{gap:,.2f}), "
-                    f"but RSI is {result.rsi:.1f} — waiting for a dip below {config.RSI_OVERSOLD}."
-                )
+                if has_position:
+                    commentary = (
+                        f"Holding — RSI is {result.rsi:.1f}, watching for recovery above "
+                        f"{config.rsi_overbought_for(pair)} to trigger sell."
+                    )
+                else:
+                    commentary = (
+                        f"Trend is healthy (price above EMA200 by €{gap:,.2f}), "
+                        f"but RSI is {result.rsi:.1f} — waiting for a dip below {config.RSI_OVERSOLD}."
+                    )
             else:
                 commentary = result.reason
 
