@@ -342,15 +342,16 @@
 </div>
 
 <script>
+  const _fi = (n, decimals=2) =>
+    Number(n).toLocaleString('fi-FI', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
   function fmt(n, decimals=2) {
     if (n === null || n === undefined) return '—';
-    return '€' + Number(n).toFixed(decimals);
+    return _fi(n, decimals) + ' €';
   }
   function fmtPnl(n) {
     if (n === null || n === undefined) return '—';
-    const v = Number(n).toFixed(2);
     const cls = n >= 0 ? 'pos' : 'neg';
-    return `<span class="${cls}">${n >= 0 ? '+' : ''}€${v}</span>`;
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}${_fi(n)} €</span>`;
   }
 
   async function control(action, pair) {
@@ -461,26 +462,26 @@
             </div>`;
 
           const dcaStr  = pos.dca_trigger !== null
-            ? `€${pos.dca_trigger.toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+            ? `${_fi(pos.dca_trigger)} €`
             : '<span style="color:var(--muted)">used</span>';
           posBlock = `
           <div class="position-block">
             <div class="pos-row">
               <span class="plabel">Entry</span>
-              <span class="pvalue">€${pos.entry_price.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+              <span class="pvalue">${_fi(pos.entry_price)} €</span>
             </div>
             ${ladder}
             <div class="pos-row">
               <span class="plabel">Peak</span>
-              <span class="pvalue">€${pos.highest_price.toLocaleString('fi-FI', {minimumFractionDigits: 2})} <span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span>
+              <span class="pvalue">${_fi(pos.highest_price)} € <span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span>
             </div>
             <div class="pos-row">
               <span class="plabel">Break even</span>
-              <span class="pvalue">€${pos.break_even.toLocaleString('fi-FI', {minimumFractionDigits: 2})} <span class="${pnlCls}" style="font-size:12px">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · ${pnlEur >= 0 ? '+' : ''}€${Math.abs(pnlEur).toFixed(2)})</span></span>
+              <span class="pvalue">${_fi(pos.break_even)} € <span class="${pnlCls}" style="font-size:12px">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · ${pnlEur >= 0 ? '+' : ''}${_fi(Math.abs(pnlEur))} €)</span></span>
             </div>
             <div class="pos-row">
               <span class="plabel">Min exit</span>
-              <span class="pvalue">€${pos.trailing_stop.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+              <span class="pvalue">${_fi(pos.trailing_stop)} €</span>
             </div>
             <div class="pos-row">
               <span class="plabel">DCA trigger</span>
@@ -488,10 +489,10 @@
             </div>
             <div class="pos-row" style="opacity:0.45;font-size:12px">
               <span class="plabel">TP (spike catch)</span>
-              <span class="pvalue">€${pos.take_profit.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+              <span class="pvalue">${_fi(pos.take_profit)} €</span>
             </div>
             <div class="pos-row" style="margin-top:8px">
-              <span class="plabel">${pos.amount.toFixed(6)} units · €${pos.value_eur.toFixed(2)}</span>
+              <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
               <button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button>
             </div>
           </div>`;
@@ -804,7 +805,7 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
             }},
             scales: {
               x: CHART_OPTS.scales.x,
-              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') } },
+              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' } },
               y1: { display: false, position: 'right', grid: { drawOnChartArea: false },
                     afterDataLimits: axis => { axis.max = axis.max * 4; } },
             },
@@ -837,7 +838,7 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
               x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y,
                 min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') },
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' },
               },
             },
           },
@@ -917,11 +918,11 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
       if (!s) return;
       document.getElementById('stat-winrate').textContent = `${s.win_rate}%  (${s.wins}W / ${s.losses}L)`;
       document.getElementById('stat-winrate').style.color = s.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('stat-avgpnl').textContent  = `€${s.avg_pnl > 0 ? '+' : ''}${s.avg_pnl.toFixed(2)}`;
+      document.getElementById('stat-avgpnl').textContent  = `${s.avg_pnl > 0 ? '+' : ''}${_fi(s.avg_pnl)} €`;
       document.getElementById('stat-avgpnl').style.color  = s.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('stat-best').textContent    = `€+${s.best.toFixed(2)}`;
+      document.getElementById('stat-best').textContent    = `+${_fi(s.best)} €`;
       document.getElementById('stat-best').style.color    = 'var(--green)';
-      document.getElementById('stat-worst').textContent   = `€${s.worst.toFixed(2)}`;
+      document.getElementById('stat-worst').textContent   = `${s.worst >= 0 ? '+' : ''}${_fi(s.worst)} €`;
       document.getElementById('stat-worst').style.color   = s.worst >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('stat-hold').textContent    = s.avg_hold_h != null ? `${s.avg_hold_h}h` : '—';
     } catch(e) { console.error(e); }
@@ -997,7 +998,7 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
             scales: {
               x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => '€' + Number(v).toLocaleString('fi-FI') }
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' }
               },
             },
           },
