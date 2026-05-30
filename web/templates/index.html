@@ -558,7 +558,7 @@
       // Stats
       document.getElementById('balance').textContent = fmt(s.balance);
       document.getElementById('total-trades').textContent = s.total_trades;
-      const openVal = Object.values(s.positions).reduce((sum, p) => sum + p.value_eur, 0);
+      const openVal = Object.values(s.positions).reduce((sum, p) => sum + p.current_price * p.amount, 0);
       const portVal = s.balance + openVal;
       document.getElementById('portfolio-value').textContent = fmt(portVal);
       if (s.starting_balance != null) {
