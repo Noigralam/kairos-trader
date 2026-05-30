@@ -465,10 +465,6 @@
               <span class="plabel">Entry</span>
               <span class="pvalue">€${pos.entry_price.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
             </div>
-            <div class="pos-row">
-              <span class="plabel">Unrealised P&amp;L</span>
-              <span class="pvalue ${pnlCls}">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% (${pnlEur >= 0 ? '+' : ''}€${Math.abs(pnlEur).toFixed(2)})</span>
-            </div>
             ${ladder}
             <div class="pos-row">
               <span class="plabel">Peak</span>
@@ -476,7 +472,7 @@
             </div>
             <div class="pos-row">
               <span class="plabel">Break even</span>
-              <span class="pvalue">€${pos.break_even.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+              <span class="pvalue">€${pos.break_even.toLocaleString('fi-FI', {minimumFractionDigits: 2})} <span class="${pnlCls}" style="font-size:12px">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · ${pnlEur >= 0 ? '+' : ''}€${Math.abs(pnlEur).toFixed(2)})</span></span>
             </div>
             <div class="pos-row">
               <span class="plabel">Min exit</span>
