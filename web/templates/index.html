@@ -622,7 +622,9 @@
         'Last tick: ' + (s.last_tick || '—');
       if (s.last_tick && s.last_tick !== _lastKnownTick) {
         _lastKnownTick = s.last_tick;
+        loadChart();
         loadBalanceChart();
+        loadStats();
       }
       if (s.uptime != null) {
         const h = Math.floor(s.uptime / 3600);
@@ -890,7 +892,6 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
   }
 
   initChart();
-  setInterval(loadChart, 60000);
 
   // ── next tick countdown ────────────────────────────────────────────────────
   function updateCountdown() {
@@ -922,7 +923,6 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
     } catch(e) { console.error(e); }
   }
   loadStats();
-  setInterval(loadStats, 60000);
 
   // ── fear & greed ──────────────────────────────────────────────────────────
   async function loadFng() {
