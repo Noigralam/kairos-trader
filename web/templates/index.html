@@ -620,6 +620,10 @@
         'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki', hour: '2-digit', minute: '2-digit' });
       document.getElementById('last-tick').textContent =
         'Last tick: ' + (s.last_tick || '—');
+      if (s.last_tick && s.last_tick !== _lastKnownTick) {
+        _lastKnownTick = s.last_tick;
+        loadBalanceChart();
+      }
       if (s.uptime != null) {
         const h = Math.floor(s.uptime / 3600);
         const m = Math.floor((s.uptime % 3600) / 60);
@@ -997,8 +1001,8 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
       }
     } catch(e) { console.error(e); }
   }
+  let _lastKnownTick = null;
   loadBalanceChart();
-  setInterval(loadBalanceChart, 60000);
 </script>
 </body>
 </html>
