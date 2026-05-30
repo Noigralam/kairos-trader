@@ -959,16 +959,72 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
     loadBalanceChart();
   }
 
+  function _tradeLabel(ts) {
+    try {
+      const dt = new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z');
+      if (isNaN(dt)) return null;
+      const p = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Helsinki', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      }).formatToParts(dt);
+      const g = t => p.find(x => x.type === t)?.value || '00';
+      return `${g('month')}-${g('day')} ${g('hour')}:${g('minute')}`;
+    } catch { return null; }
+  }
+
+  const _tradeLinesPlugin = {
+    id: 'tradeLines',
+    afterDraw(chart) {
+      const lines = chart._tradeLines;
+      if (!lines?.length) return;
+      const {ctx, chartArea: {top, bottom}, scales: {x}} = chart;
+      lines.forEach(({idx, color, side}) => {
+        const xPos = x.getPixelForIndex(idx);
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(xPos, top);
+        ctx.lineTo(xPos, bottom);
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+  };
+
   async function loadBalanceChart() {
     try {
       const qs   = _balanceDays > 0 ? `?days=${_balanceDays}` : '';
-      const rows = await fetch(`/api/balance_history${qs}`).then(r => r.json());
+      const [rows, trades] = await Promise.all([
+        fetch(`/api/balance_history${qs}`).then(r => r.json()),
+        fetch('/api/trades').then(r => r.json()),
+      ]);
       if (!rows.length) return;
       const labels = rows.map(r => r.t);
       const values = rows.map(r => r.balance);
+
+      // map trades to chart label positions
+      const tradeLines = [];
+      const seen = new Set();
+      for (const t of trades) {
+        const tl = _tradeLabel(t.timestamp);
+        if (!tl || seen.has(tl)) continue;
+        // find nearest label at or after trade time
+        const idx = labels.findIndex(l => l >= tl);
+        if (idx < 0) continue;
+        seen.add(tl);
+        const notes = (t.notes || '').toLowerCase();
+        const color = t.side === 'SELL' ? '#f85149'
+                    : notes.includes('dca') ? '#e3b341'
+                    : '#3fb950';
+        tradeLines.push({idx, color, side: t.side});
+      }
+
       if (_balanceChart) {
         _balanceChart.data.labels           = labels;
         _balanceChart.data.datasets[0].data = values;
+        _balanceChart._tradeLines           = tradeLines;
         _balanceChart.update('none');
       } else {
         const ctx = document.getElementById('balance-chart').getContext('2d');
@@ -992,7 +1048,7 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
             plugins: { ...CHART_OPTS.plugins,
               legend: { display: false },
               tooltip: { ...CHART_OPTS.plugins.tooltip,
-                callbacks: { label: c => ` €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}` }
+                callbacks: { label: c => ` ${_fi(c.raw)} €` }
               },
             },
             scales: {
@@ -1002,7 +1058,9 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
               },
             },
           },
+          plugins: [_tradeLinesPlugin],
         });
+        _balanceChart._tradeLines = tradeLines;
       }
     } catch(e) { console.error(e); }
   }
