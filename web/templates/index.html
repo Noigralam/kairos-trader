@@ -416,8 +416,8 @@
 
         const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
         const trendLabel = d.above_trend
-          ? `↑ €${Math.abs(d.gap).toFixed(2)} above EMA200`
-          : `↓ €${Math.abs(d.gap).toFixed(2)} below EMA200`;
+          ? `↑ ${_fi(Math.abs(d.gap))} € above EMA200`
+          : `↓ ${_fi(Math.abs(d.gap))} € below EMA200`;
         const rsiPct      = Math.min(100, Math.max(0, d.rsi));
         const rsiBarColor = d.rsi < 30 ? 'var(--green)' : d.rsi > (d.rsi_overbought ?? 75) ? 'var(--red)' : 'var(--blue)';
 
@@ -503,7 +503,7 @@
           <div class="metrics">
             <div class="metric">
               <div class="mlabel">Price</div>
-              <div class="mvalue">€${Number(d.price).toLocaleString('fi-FI', {minimumFractionDigits: 2})}${priceArrow}</div>
+              <div class="mvalue">${_fi(d.price)} €${priceArrow}</div>
             </div>
             <div class="metric">
               <div class="mlabel">RSI (${d.rsi_period})</div>
@@ -511,7 +511,7 @@
             </div>
             <div class="metric">
               <div class="mlabel">EMA200</div>
-              <div class="mvalue">€${Number(d.ema200).toLocaleString('fi-FI', {minimumFractionDigits: 2})}${emaArrow}</div>
+              <div class="mvalue">${_fi(d.ema200)} €${emaArrow}</div>
             </div>
           </div>
           <div class="rsi-bar-wrap">
