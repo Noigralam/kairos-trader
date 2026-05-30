@@ -475,6 +475,10 @@
               <span class="pvalue">€${pos.highest_price.toLocaleString('fi-FI', {minimumFractionDigits: 2})} <span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span>
             </div>
             <div class="pos-row">
+              <span class="plabel">Break even</span>
+              <span class="pvalue">€${pos.break_even.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
+            </div>
+            <div class="pos-row">
               <span class="plabel">Min exit</span>
               <span class="pvalue">€${pos.trailing_stop.toLocaleString('fi-FI', {minimumFractionDigits: 2})}</span>
             </div>
