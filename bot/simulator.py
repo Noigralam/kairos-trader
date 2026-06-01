@@ -110,8 +110,10 @@ def open_position(pair: str, price: float, size_pct: float = None):
         balance = _state.balance
 
     max_size = balance / (1 + BINANCE_FEE)
-    size = min(balance * pct, max_size)
     min_notional = get_min_notional(pair)
+    size = min(balance * pct, max_size)
+    if balance - size < min_notional:
+        size = min(balance, max_size)
     if size < min_notional:
         notify(f"[SKIP] {pair} buy signal — order size €{size:.2f} below minimum €{min_notional:.2f} (balance €{balance:.2f})")
         return
@@ -227,8 +229,11 @@ def dca_position(pair: str, price: float):
         balance = _state.balance
 
     max_size  = balance / (1 + BINANCE_FEE)
-    dca_value = min(balance * config.DCA_SIZE_PCT, max_size)
     min_notional = get_min_notional(pair)
+    dca_value = min(balance * config.DCA_SIZE_PCT, max_size)
+    # if leftover after DCA would be below minimum tradeable, use all available balance
+    if balance - dca_value < min_notional:
+        dca_value = min(balance, max_size)
     if dca_value < min_notional:
         notify(f"[SKIP] {pair} DCA — order size €{dca_value:.2f} below minimum €{min_notional:.2f} (balance €{balance:.2f})")
         return
