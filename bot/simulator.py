@@ -256,7 +256,7 @@ def dca_position(pair: str, price: float):
         _state.balance = get_eur_balance()
         _save()
         trade_alert("DCA", pair, avg_price, bought, dca_value, fee=buy_fee)
-        log_trade(pair, "DCA", avg_price, bought, dca_value, buy_fee, mode="live")
+        log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
     else:
         buy_fee = dca_value * BINANCE_FEE
         bought  = dca_value / price
@@ -265,7 +265,7 @@ def dca_position(pair: str, price: float):
         _state.total_fees += buy_fee
         _save()
         trade_alert("DCA", pair, price, bought, dca_value, fee=buy_fee)
-        log_trade(pair, "DCA", price, bought, dca_value, buy_fee, mode="simulation")
+        log_trade(pair, "BUY", price, bought, dca_value, buy_fee, mode="simulation", notes="dca")
 
 
 def close_position(pair: str, price: float, reason: str = "signal"):

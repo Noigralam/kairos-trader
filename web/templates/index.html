@@ -592,7 +592,7 @@
           <td>${Number(t.amount).toFixed(6)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
-          <td style="color:var(--muted)">${t.notes || '—'}</td>
+          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
 
