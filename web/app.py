@@ -163,7 +163,7 @@ def api_signals():
 @app.route("/api/chart/<pair>")
 def api_chart(pair):
     import pandas as pd
-    span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672}
+    span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672, "2w": 1344, "1m": 2880}
     span  = request.args.get("span", "1d")
     limit = span_candles.get(span, 96)
 
