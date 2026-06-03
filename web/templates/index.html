@@ -437,6 +437,20 @@
     </section>
 
     <section>
+      <div class="chart-controls">
+        <h2>Portfolio Value</h2>
+        <div class="btn-group" id="f-balance-span-btns">
+          <button onclick="setFBalanceDays(0.167)" data-days="0.167">4h</button>
+          <button onclick="setFBalanceDays(1)"     data-days="1">1d</button>
+          <button onclick="setFBalanceDays(7)"     data-days="7">7d</button>
+          <button onclick="setFBalanceDays(30)"    data-days="30" class="active">30d</button>
+          <button onclick="setFBalanceDays(0)"     data-days="0">All</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:160px"><canvas id="f-balance-chart"></canvas></div>
+    </section>
+
+    <section>
       <h2>Recent Trades</h2>
       <div class="tbl-wrap">
         <table>
@@ -460,17 +474,10 @@
     </section>
 
     <section>
-      <div class="chart-controls">
-        <h2>Portfolio Value</h2>
-        <div class="btn-group" id="f-balance-span-btns">
-          <button onclick="setFBalanceDays(0.167)" data-days="0.167">4h</button>
-          <button onclick="setFBalanceDays(1)"     data-days="1">1d</button>
-          <button onclick="setFBalanceDays(7)"     data-days="7">7d</button>
-          <button onclick="setFBalanceDays(30)"    data-days="30" class="active">30d</button>
-          <button onclick="setFBalanceDays(0)"     data-days="0">All</button>
-        </div>
+      <h2>Market Conditions</h2>
+      <div class="signals-grid" id="f-signals-grid">
+        <div class="signal-card"><div class="commentary">Loading…</div></div>
       </div>
-      <div class="chart-box" style="height:160px"><canvas id="f-balance-chart"></canvas></div>
     </section>
 
     <section>
@@ -1242,6 +1249,116 @@
     loadFuturesBalanceChart();
   }
 
+  const _fPrev = {};
+  let _fPositions = {};
+
+  async function refreshFuturesSignals() {
+    try {
+      const res     = await fetch('/api/futures/signals');
+      const signals = await res.json();
+      const grid    = document.getElementById('f-signals-grid');
+      grid.innerHTML = Object.entries(signals).map(([sym, d]) => {
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${sym}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+
+        const p          = _fPrev[sym] || {};
+        const priceArrow = arrow(d.price, p.price);
+        const rsiArrow   = arrow(d.rsi,   p.rsi, false);
+        const emaArrow   = arrow(d.ema200, p.ema200, false);
+        _fPrev[sym] = { price: d.price, rsi: d.rsi, ema200: d.ema200 };
+
+        const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
+        const trendLabel = d.above_trend
+          ? `↑ $${Math.abs(d.gap).toLocaleString('fi-FI', {minimumFractionDigits: 2})} above EMA200`
+          : `↓ $${Math.abs(d.gap).toLocaleString('fi-FI', {minimumFractionDigits: 2})} below EMA200`;
+        const rsiPct      = Math.min(100, Math.max(0, d.rsi));
+        const rsiBarColor = d.rsi < d.rsi_oversold ? 'var(--green)' : d.rsi > d.rsi_overbought ? 'var(--red)' : 'var(--blue)';
+
+        const pos = d.position;
+        let posBlock = '';
+        if (pos) {
+          const pnlCls  = pos.unrealized_pnl >= 0 ? 'pos' : 'neg';
+          const pnlSign = pos.unrealized_pnl >= 0 ? '+' : '';
+          const pctSign = pos.pnl_pct >= 0 ? '+' : '';
+          const pct     = pos.pnl_pct;
+
+          const rangeMin = pos.liquidation_price;
+          const rangeMax = pos.entry_price * (1 + 1 / pos.leverage);
+          const range    = rangeMax - rangeMin;
+          const pin = v => range > 0 ? Math.min(100, Math.max(0, (v - rangeMin) / range * 100)).toFixed(1) : 50;
+
+          const liqDist  = ((pos.mark_price - pos.liquidation_price) / pos.mark_price * 100).toFixed(1);
+          const liqColor = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
+
+          posBlock = `
+          <div class="position-block">
+            <div class="pos-row">
+              <span class="plabel">Entry</span>
+              <span class="pvalue">${fmtUsdt(pos.entry_price, 4)} <span class="lev-badge" style="margin-left:4px">${pos.leverage}x</span></span>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">Unrealised PnL</span>
+              <span class="pvalue ${pnlCls}">${pnlSign}${fmtUsdt(Math.abs(pos.unrealized_pnl))} (${pctSign}${pct}%)</span>
+            </div>
+            <div style="margin:8px 0 4px">
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+                <span style="color:${liqColor}">Liq ${fmtUsdt(pos.liquidation_price, 4)} (${liqDist}% away)</span>
+                <span>Trail ${fmtUsdt(pos.trailing_stop, 4)}</span>
+              </div>
+              <div class="liq-bar-wrap">
+                <div class="liq-bar-pin" style="left:${pin(pos.entry_price)}%" title="Entry"></div>
+                <div class="liq-bar-pin" style="left:${pin(pos.trailing_stop)}%;background:var(--red)" title="Trail stop"></div>
+                <div class="liq-bar-pin" style="left:${pin(pos.mark_price)}%;background:#fff;width:3px;height:14px;top:-5px" title="Mark price"></div>
+              </div>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">Peak</span>
+              <span class="pvalue">${fmtUsdt(pos.highest_price, 4)}</span>
+            </div>
+            <div class="pos-row">
+              <span class="plabel">Margin</span>
+              <span class="pvalue">${fmtUsdt(pos.margin)}</span>
+            </div>
+            <div class="pos-row" style="margin-top:8px">
+              <span class="plabel">${Number(pos.amount).toFixed(4)} units</span>
+              <button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button>
+            </div>
+          </div>`;
+        }
+
+        return `<div class="signal-card">
+          <div class="pair-name">${sym} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
+          <div class="metrics">
+            <div class="metric">
+              <div class="mlabel">Mark Price</div>
+              <div class="mvalue">${fmtUsdt(d.price, 4)}${priceArrow}</div>
+            </div>
+            <div class="metric">
+              <div class="mlabel">RSI (${d.rsi_period})</div>
+              <div class="mvalue" style="color:${rsiColor(d.rsi, d.rsi_overbought)}">${d.rsi}${rsiArrow}</div>
+            </div>
+            <div class="metric">
+              <div class="mlabel">EMA200</div>
+              <div class="mvalue">${fmtUsdt(d.ema200, 2)}${emaArrow}</div>
+            </div>
+          </div>
+          <div class="rsi-bar-wrap">
+            <div class="fill" style="width:${rsiPct}%;background:${rsiBarColor}"></div>
+            <div class="marker" style="left:${d.rsi_oversold}%"></div>
+            <div class="marker-label" style="left:${d.rsi_oversold}%">${d.rsi_oversold}</div>
+            <div class="marker" style="left:${d.rsi_overbought}%"></div>
+            <div class="marker-label" style="left:${d.rsi_overbought}%">${d.rsi_overbought}</div>
+          </div>
+          <div class="metric" style="margin-bottom:10px">
+            <div class="mlabel">Trend</div>
+            <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
+          </div>
+          <div class="commentary">${d.commentary}</div>
+          ${posBlock}
+        </div>`;
+      }).join('');
+    } catch(e) { console.error(e); }
+  }
+
   async function loadFuturesBalanceChart() {
     try {
       const qs   = _fBalanceDays > 0 ? `?days=${_fBalanceDays}` : '';
@@ -1439,7 +1556,9 @@
   }
 
   refreshFutures();
+  refreshFuturesSignals();
   setInterval(refreshFutures, 30000);
+  setInterval(refreshFuturesSignals, 60000);
 </script>
 </body>
 </html>

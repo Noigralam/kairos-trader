@@ -182,6 +182,104 @@ def api_signals():
     return jsonify(out)
 
 
+@app.route("/api/futures/signals")
+def api_futures_signals():
+    if not config.FUTURES_ENABLED:
+        return jsonify({})
+    from bot.futures_exchange import get_klines as f_klines, get_mark_price
+    from bot.futures_simulator import get_state as fget_state
+    out = {}
+    state = fget_state()
+    for sym in config.FUTURES_TRADING_PAIRS:
+        try:
+            price  = get_mark_price(sym)
+            df     = f_klines(sym, limit=250)
+            result = compute_signal(
+                df,
+                rsi_period=config.futures_rsi_period_for(sym),
+                rsi_oversold=config.futures_rsi_oversold_for(sym),
+                rsi_overbought=config.futures_rsi_overbought_for(sym),
+                ema_gap=config.futures_ema_gap_for(sym),
+            )
+            gap           = price - result.ema_trend
+            ema_threshold = result.ema_trend * (1 + config.futures_ema_gap_for(sym))
+            above_trend   = price >= ema_threshold
+            has_position  = sym in state.positions
+
+            if result.signal == Signal.BUY and not has_position:
+                commentary = f"RSI hit oversold ({result.rsi:.1f}) and price is above EMA200 — long signal firing."
+            elif result.signal == Signal.SELL and has_position:
+                commentary = f"RSI recovered ({result.rsi:.1f}) — trailing stop will manage exit."
+            elif result.signal == Signal.SELL and not has_position:
+                commentary = f"RSI overbought ({result.rsi:.1f}) but no position — nothing to do."
+            elif not above_trend:
+                if has_position:
+                    commentary = (
+                        f"Price is ${abs(gap):,.2f} below EMA200 — holding, "
+                        f"watching for RSI to reach {config.futures_rsi_overbought_for(sym)} for exit."
+                    )
+                elif price >= result.ema_trend:
+                    commentary = (
+                        f"Price above EMA200 but within {config.futures_ema_gap_for(sym)*100:.0f}% gap filter "
+                        f"(need ${ema_threshold:,.2f}, currently ${price:,.2f})."
+                    )
+                else:
+                    commentary = (
+                        f"Price is ${abs(gap):,.2f} below EMA200 — downtrend guard active. "
+                        f"No longs until price recovers above ${ema_threshold:,.2f}."
+                    )
+            elif result.rsi >= config.futures_rsi_oversold_for(sym):
+                if has_position:
+                    commentary = (
+                        f"Holding long — RSI {result.rsi:.1f}, watching for recovery above "
+                        f"{config.futures_rsi_overbought_for(sym)} to arm trailing stop exit."
+                    )
+                else:
+                    commentary = (
+                        f"Trend healthy (${gap:,.2f} above EMA200), "
+                        f"RSI {result.rsi:.1f} — waiting for dip below {config.futures_rsi_oversold_for(sym)}."
+                    )
+            else:
+                commentary = result.reason
+
+            pos = state.positions.get(sym)
+            pos_data = None
+            if pos:
+                pos_data = {
+                    "entry_price":       round(pos.entry_price, 4),
+                    "mark_price":        round(price, 4),
+                    "amount":            pos.amount,
+                    "margin":            round(pos.margin, 2),
+                    "leverage":          pos.leverage,
+                    "unrealized_pnl":    round(pos.unrealized_pnl(price), 4),
+                    "pnl_pct":           round(pos.pnl_pct(price) * 100, 2),
+                    "liquidation_price": round(pos.liquidation_price(), 4),
+                    "trailing_stop":     round(pos.trailing_stop_level(), 4),
+                    "take_profit_price": round(pos.take_profit_price, 4),
+                    "highest_price":     round(pos.highest_price, 4),
+                    "dca_done":          pos.dca_done,
+                }
+
+            out[sym] = {
+                "price":         round(price, 4),
+                "rsi":           round(result.rsi, 1),
+                "rsi_period":    config.futures_rsi_period_for(sym),
+                "rsi_oversold":  config.futures_rsi_oversold_for(sym),
+                "rsi_overbought":config.futures_rsi_overbought_for(sym),
+                "ema200":        round(result.ema_trend, 4),
+                "ema_threshold": round(ema_threshold, 4),
+                "above_trend":   above_trend,
+                "gap":           round(gap, 4),
+                "signal":        result.signal.value,
+                "commentary":    commentary,
+                "has_position":  has_position,
+                "position":      pos_data,
+            }
+        except Exception as e:
+            out[sym] = {"error": str(e)}
+    return jsonify(out)
+
+
 @app.route("/api/chart/<pair>")
 def api_chart(pair):
     import pandas as pd
