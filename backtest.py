@@ -109,6 +109,23 @@ def precompute(df: pd.DataFrame, rsi_period: int, ema_span: int = 200):
     return rsi.values, ema.values, close.values, df["high"].values, df["low"].values
 
 
+def _bullish_divergence(close_arr, rsi_arr, i: int, lookback: int, rsi_oversold: int) -> bool:
+    """
+    Bullish RSI divergence: price makes a lower low while RSI makes a higher low
+    vs the most recent prior oversold candle within `lookback` bars.
+    Requires at least 5 candles separation to avoid same-dip comparisons.
+    """
+    search_start = max(0, i - lookback)
+    prev_j = None
+    for j in range(i - 5, search_start - 1, -1):
+        if rsi_arr[j] < rsi_oversold:
+            prev_j = j
+            break
+    if prev_j is None:
+        return False
+    return close_arr[i] < close_arr[prev_j] and rsi_arr[i] > rsi_arr[prev_j]
+
+
 # ---------------------------------------------------------------------------
 # Core simulator
 # ---------------------------------------------------------------------------
@@ -148,6 +165,9 @@ def run_pair(
     htf_rsi_arr:      np.ndarray = None,  # higher-TF RSI aligned to df index; None = disabled
     htf_rsi_threshold: float     = 40,   # HTF RSI must be below this to allow a buy
     interval:         str = INTERVAL,    # candle interval (used for time_stop_days calc)
+    vol_period:       int   = 0,         # 0 = disabled; N = require volume > vol_mult * N-period average
+    vol_mult:         float = 1.0,       # volume must exceed this multiple of the rolling average
+    div_lookback:     int   = 0,         # 0 = disabled; N = require bullish RSI divergence within N bars
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -163,6 +183,10 @@ def run_pair(
     min_exit   = min_exit   if min_exit   is not None else config.MIN_EXIT_PROFIT_PCT
 
     rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period, ema_span)
+
+    vol_arr    = df["volume"].values
+    vol_ma_arr = (df["volume"].rolling(vol_period).mean().values
+                  if vol_period > 0 else None)
 
     balance        = start_balance
     portfolio_peak = start_balance
@@ -233,7 +257,14 @@ def run_pair(
         daily_ema_val = float(daily_ema_arr[i]) if daily_ema_arr is not None else None
         htf_rsi_val   = float(htf_rsi_arr[i])  if htf_rsi_arr  is not None else None
 
-        if position is None and rsi < rsi_buy \
+        vol_ok = (vol_ma_arr is None
+                  or np.isnan(vol_ma_arr[i])
+                  or vol_arr[i] > vol_ma_arr[i] * vol_mult)
+
+        div_ok = (div_lookback == 0
+                  or _bullish_divergence(close_arr, rsi_arr, i, div_lookback, rsi_buy))
+
+        if position is None and rsi < rsi_buy and vol_ok and div_ok \
                 and (not ema_filter or price > ema * (1 + ema_gap)) \
                 and (daily_ema_val is None or np.isnan(daily_ema_val) or price > daily_ema_val) \
                 and (htf_rsi_val   is None or np.isnan(htf_rsi_val)  or htf_rsi_val < htf_rsi_threshold):
@@ -496,6 +527,31 @@ def sweep_ema_gap(days_list: list[int]):
     ]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
 
+
+
+def sweep_volume(days_list: list[int]):
+    scenarios = [
+        dict(vol_period=0,  vol_mult=1.0, label="off  (baseline)"),
+        dict(vol_period=10, vol_mult=1.0, label="vol > 10-bar avg"),
+        dict(vol_period=20, vol_mult=1.0, label="vol > 20-bar avg"),
+        dict(vol_period=30, vol_mult=1.0, label="vol > 30-bar avg"),
+        dict(vol_period=20, vol_mult=1.5, label="vol > 1.5× 20-bar avg"),
+        dict(vol_period=20, vol_mult=2.0, label="vol > 2.0× 20-bar avg"),
+    ]
+    _run_sweep(days_list, "Volume filter sweep (buy only on above-average volume)", scenarios, PAIRS)
+
+
+def sweep_divergence(days_list: list[int]):
+    scenarios = [
+        dict(div_lookback=0,   label="off  (baseline — any RSI<30 dip)"),
+        dict(div_lookback=20,  label="div lookback=20 bars  (~5h)"),
+        dict(div_lookback=40,  label="div lookback=40 bars  (~10h)"),
+        dict(div_lookback=60,  label="div lookback=60 bars  (~15h)"),
+        dict(div_lookback=80,  label="div lookback=80 bars  (~20h)"),
+        dict(div_lookback=120, label="div lookback=120 bars (~30h)"),
+        dict(div_lookback=192, label="div lookback=192 bars (~2d)"),
+    ]
+    _run_sweep(days_list, "RSI divergence sweep (price LL + RSI HL = stronger entry)", scenarios, PAIRS)
 
 
 def sweep_htf_rsi(days_list: list[int]):
@@ -896,6 +952,8 @@ if __name__ == "__main__":
             "dailyema":    sweep_daily_ema,
             "interval":    sweep_interval,
             "htfrsi":      sweep_htf_rsi,
+            "volume":      sweep_volume,
+            "divergence":  sweep_divergence,
         }
         if mode == "all":
             for fn in sweeps.values():
