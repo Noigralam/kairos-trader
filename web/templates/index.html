@@ -41,7 +41,7 @@
     /* ── tabs ─────────────────────────────────────────────────────────────── */
     .tab-bar {
       display: flex; gap: 4px; margin-bottom: 28px;
-      background: var(--surface); border: 1px solid var(--border);
+      background: #0d1117; border: 1px solid var(--border);
       border-radius: 8px; padding: 4px; width: fit-content;
     }
     .tab-bar button {
@@ -253,14 +253,26 @@
 <body>
 
 <header>
-  <h1>Kairos</h1>
+  <div style="display:flex;align-items:center;gap:20px;">
+    <h1>Kairos</h1>
+    <div class="tab-bar" style="margin-bottom:0">
+      <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
+        <span class="tab-dot" style="background:var(--blue)"></span>Spot
+      </button>
+      <button class="tab" data-tab="futures" onclick="switchTab('futures')" id="futures-tab-btn" style="display:none">
+        <span class="tab-dot" id="futures-tab-dot" style="background:var(--muted)"></span>Futures
+      </button>
+    </div>
+  </div>
   <div style="display:flex;align-items:center;gap:16px;">
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
       <span id="refresh-indicator">Refreshing…</span>
-      <span id="last-tick">Last tick: —</span>
+      <span id="last-tick" style="font-size:11px;color:var(--muted);">Last tick: —</span>
       <span id="next-tick" style="color:var(--muted);font-size:12px;">Next tick: —</span>
-      <span id="uptime" style="color:var(--muted);font-size:12px;">Uptime: —</span>
+      <span id="uptime"    style="color:var(--muted);font-size:12px;">Uptime: —</span>
       <span id="live-since" style="color:var(--muted);font-size:12px;"></span>
+      <span id="f-header-tick"    style="color:var(--muted);font-size:12px;display:none">Last tick: —</span>
+      <span id="f-header-stopchk" style="color:var(--muted);font-size:12px;display:none">Stop-check: 60s</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
       <span id="status-badge" class="badge stopped">stopped</span>
@@ -270,15 +282,6 @@
 </header>
 
 <div class="container">
-
-  <div class="tab-bar">
-    <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
-      <span class="tab-dot" style="background:var(--blue)"></span>Spot
-    </button>
-    <button class="tab" data-tab="futures" onclick="switchTab('futures')" id="futures-tab-btn" style="display:none">
-      <span class="tab-dot" id="futures-tab-dot" style="background:var(--muted)"></span>Futures
-    </button>
-  </div>
 
   <!-- ═══════════════════════════ SPOT TAB ══════════════════════════════ -->
   <div id="tab-spot">
@@ -520,11 +523,31 @@
     document.getElementById('tab-futures').style.display = name === 'futures' ? '' : 'none';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
-    // sync header badges to active engine
-    const spotBadges    = document.getElementById('spot-header-badges');
-    const futuresBadges = document.getElementById('futures-header-badges');
-    if (spotBadges)    spotBadges.style.display    = name === 'spot'    ? '' : 'none';
-    if (futuresBadges) futuresBadges.style.display = name === 'futures' ? '' : 'none';
+
+    const onFutures = name === 'futures';
+    // spot-only header rows
+    document.getElementById('last-tick').style.display  = onFutures ? 'none' : '';
+    document.getElementById('uptime').style.display     = onFutures ? 'none' : '';
+    document.getElementById('live-since').style.display = onFutures ? 'none' : '';
+    // futures-only header rows
+    document.getElementById('f-header-tick').style.display    = onFutures ? '' : 'none';
+    document.getElementById('f-header-stopchk').style.display = onFutures ? '' : 'none';
+    // next-tick countdown stays (same 15m boundary for both)
+
+    if (onFutures) _syncFuturesHeader();
+  }
+
+  function _syncFuturesHeader() {
+    if (_fLastStatus) {
+      const fStatus = !_fLastStatus.running ? 'stopped' : _fLastStatus.paused ? 'paused' : 'running';
+      document.getElementById('status-badge').textContent = fStatus;
+      document.getElementById('status-badge').className   = 'badge ' + fStatus;
+      document.getElementById('mode-badge').textContent   = _fLastStatus.mode || '—';
+      document.getElementById('mode-badge').style.background = _fLastStatus.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+      document.getElementById('mode-badge').style.color      = _fLastStatus.mode === 'live' ? '#58a6ff' : '#bc8cff';
+      document.getElementById('f-header-tick').textContent    = 'Last tick: ' + (_fLastStatus.last_tick || '—');
+      document.getElementById('f-header-stopchk').textContent = `Stop-check: ${_fLastStatus.stop_check_interval ?? 60}s`;
+    }
   }
 
   async function control(action, pair) {
@@ -1452,15 +1475,18 @@
     await refreshFutures();
   }
 
+  let _fLastStatus = null;
+
   async function refreshFutures() {
     try {
       const res = await fetch('/api/futures/status');
       const d   = await res.json();
       if (!d.enabled) return;
 
+      _fLastStatus = d;
+
       // Reveal futures tab button
-      const tabBtn = document.getElementById('futures-tab-btn');
-      tabBtn.style.display = '';
+      document.getElementById('futures-tab-btn').style.display = '';
 
       // Update status dot colour
       const dot = document.getElementById('futures-tab-dot');
@@ -1468,14 +1494,7 @@
 
       const fStatus = !d.running ? 'stopped' : d.paused ? 'paused' : 'running';
 
-      // If on futures tab, sync header badges
-      if (_activeTab === 'futures') {
-        document.getElementById('status-badge').textContent = fStatus;
-        document.getElementById('status-badge').className   = 'badge ' + fStatus;
-        document.getElementById('mode-badge').textContent   = d.mode || '—';
-        document.getElementById('mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-        document.getElementById('mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
-      }
+      if (_activeTab === 'futures') _syncFuturesHeader();
 
       // Summary stats
       document.getElementById('f-balance').textContent = fmtUsdt(d.balance);

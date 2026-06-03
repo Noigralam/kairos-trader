@@ -468,10 +468,11 @@ def api_futures_status():
             "funding_paid":      round(pos.funding_paid, 4),
         }
     return jsonify({
-        "enabled":       True,
-        "running":       f_running(),
-        "paused":        f_paused(),
-        "mode":          config.FUTURES_MODE,
+        "enabled":              True,
+        "running":              f_running(),
+        "paused":               f_paused(),
+        "mode":                 config.FUTURES_MODE,
+        "stop_check_interval":  config.FUTURES_STOP_CHECK_INTERVAL,
         "last_tick":     f_last_tick(),
         "balance":       round(state.balance, 2),
         "total_trades":  state.total_trades,
