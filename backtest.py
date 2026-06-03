@@ -60,6 +60,31 @@ def fetch_daily_ema(pair: str, days: int, ema_span: int = 200) -> pd.Series:
     return df[["open_time"]].assign(daily_ema=ema.values).set_index("open_time")["daily_ema"]
 
 
+def fetch_htf_rsi(pair: str, days: int, interval: str, rsi_period: int) -> pd.Series:
+    """RSI series on a higher timeframe, indexed by open_time."""
+    df = fetch(pair, days, interval=interval)
+    close = df["close"]
+    delta = close.diff()
+    gain  = delta.clip(lower=0)
+    loss  = -delta.clip(upper=0)
+    avg_g = gain.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
+    avg_l = loss.ewm(com=rsi_period - 1, min_periods=rsi_period).mean()
+    rsi   = 100 - (100 / (1 + avg_g / avg_l))
+    return df[["open_time"]].assign(rsi=rsi.values).set_index("open_time")["rsi"]
+
+
+def align_htf(df_base: pd.DataFrame, htf_series: pd.Series, col: str = "value") -> np.ndarray:
+    """Forward-fill a higher-timeframe series onto the base (lower-tf) candle index."""
+    htf_df = htf_series.reset_index()
+    htf_df.columns = ["open_time", col]
+    merged = pd.merge_asof(
+        df_base[["open_time"]].sort_values("open_time"),
+        htf_df.sort_values("open_time"),
+        on="open_time",
+    )
+    return merged[col].values
+
+
 def align_daily_ema(df_15m: pd.DataFrame, daily_ema: pd.Series) -> np.ndarray:
     """For each 15m candle return the most recent daily EMA value (forward-filled)."""
     daily_df = daily_ema.reset_index()
@@ -120,8 +145,10 @@ def run_pair(
     weak_pct:        float = None,       # reduced size for borderline entries (between ema_gap and strong_gap)
     max_dca:         int   = 1,          # max number of DCA tranches (1 = current behaviour)
     dca_step:        float = None,       # additional drop % per DCA level; defaults to dca_drop
-    daily_ema_arr:   np.ndarray = None,  # daily EMA200 aligned to df index; None = disabled
-    interval:        str = INTERVAL,     # candle interval (used for time_stop_days calc)
+    daily_ema_arr:    np.ndarray = None,  # daily EMA200 aligned to df index; None = disabled
+    htf_rsi_arr:      np.ndarray = None,  # higher-TF RSI aligned to df index; None = disabled
+    htf_rsi_threshold: float     = 40,   # HTF RSI must be below this to allow a buy
+    interval:         str = INTERVAL,    # candle interval (used for time_stop_days calc)
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -206,9 +233,12 @@ def run_pair(
         portfolio_peak = max(portfolio_peak, balance + pos_val)
 
         daily_ema_val = float(daily_ema_arr[i]) if daily_ema_arr is not None else None
+        htf_rsi_val   = float(htf_rsi_arr[i])  if htf_rsi_arr  is not None else None
 
-        if position is None and rsi < rsi_buy and (not ema_filter or price > ema * (1 + ema_gap)) \
-                and (daily_ema_val is None or np.isnan(daily_ema_val) or price > daily_ema_val):
+        if position is None and rsi < rsi_buy \
+                and (not ema_filter or price > ema * (1 + ema_gap)) \
+                and (daily_ema_val is None or np.isnan(daily_ema_val) or price > daily_ema_val) \
+                and (htf_rsi_val   is None or np.isnan(htf_rsi_val)  or htf_rsi_val < htf_rsi_threshold):
             if max_drawdown > 0 and portfolio_peak > 0:
                 drawdown = (portfolio_peak - balance) / portfolio_peak
                 if drawdown > max_drawdown:
@@ -467,6 +497,35 @@ def sweep_ema_gap(days_list: list[int]):
         dict(ema_gap=0.15, label="gap=15%  above EMA"),
     ]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
+
+
+def sweep_htf_rsi(days_list: list[int]):
+    start = config.SIMULATION_BALANCE
+    for days in days_list:
+        _header(days, "Multi-timeframe RSI sweep (15m signal + HTF confirmation)", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in PAIRS:
+            df = fetch(pair, days)
+            rp  = config.rsi_period_for(pair)
+            print(f"\n  ── {pair} (RSI({rp})) ──")
+
+            # baseline
+            trades, _ = run_pair(pair, df, start, ema_gap=config.EMA_GAP_PCT)
+            summarise("no HTF filter  (current)", trades, start, wide=True)
+
+            for htf_ivl in ["1h", "4h"]:
+                htf_rsi = fetch_htf_rsi(pair, days, htf_ivl, rp)
+                arr = align_htf(df, htf_rsi)
+                for thresh in [30, 35, 40, 50]:
+                    label = f"+ {htf_ivl} RSI({rp}) < {thresh}"
+                    trades, _ = run_pair(pair, df, start,
+                                         ema_gap=config.EMA_GAP_PCT,
+                                         htf_rsi_arr=arr,
+                                         htf_rsi_threshold=thresh)
+                    summarise(label, trades, start, wide=True)
+        print()
 
 
 def sweep_interval(days_list: list[int]):
@@ -837,6 +896,7 @@ if __name__ == "__main__":
             "multidca":    sweep_multidca,
             "dailyema":    sweep_daily_ema,
             "interval":    sweep_interval,
+            "htfrsi":      sweep_htf_rsi,
         }
         if mode == "all":
             for fn in sweeps.values():
