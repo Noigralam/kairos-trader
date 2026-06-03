@@ -168,6 +168,7 @@ def run_pair(
     vol_period:       int   = 0,         # 0 = disabled; N = require volume > vol_mult * N-period average
     vol_mult:         float = 1.0,       # volume must exceed this multiple of the rolling average
     div_lookback:     int   = 0,         # 0 = disabled; N = require bullish RSI divergence within N bars
+    stop_cooldown:    int   = 0,         # 0 = disabled; N = block re-entry for N candles after trailing stop
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -193,6 +194,7 @@ def run_pair(
     position: Position | None = None
     entry_candle:  int = 0
     dca_count:     int = 0
+    cooldown_until: int = 0
     trades: list[Trade] = []
     _dca_step = dca_step if dca_step is not None else dca_drop
 
@@ -229,6 +231,8 @@ def run_pair(
                 balance += position.amount * ep - sf
                 trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "trailing_stop", position.dca_done))
                 position = None
+                if stop_cooldown > 0:
+                    cooldown_until = i + stop_cooldown
                 continue
 
             if hard_stop is not None and lo <= position.entry_price * (1 - hard_stop):
@@ -264,7 +268,7 @@ def run_pair(
         div_ok = (div_lookback == 0
                   or _bullish_divergence(close_arr, rsi_arr, i, div_lookback, rsi_buy))
 
-        if position is None and rsi < rsi_buy and vol_ok and div_ok \
+        if position is None and i >= cooldown_until and rsi < rsi_buy and vol_ok and div_ok \
                 and (not ema_filter or price > ema * (1 + ema_gap)) \
                 and (daily_ema_val is None or np.isnan(daily_ema_val) or price > daily_ema_val) \
                 and (htf_rsi_val   is None or np.isnan(htf_rsi_val)  or htf_rsi_val < htf_rsi_threshold):
@@ -539,6 +543,19 @@ def sweep_volume(days_list: list[int]):
         dict(vol_period=20, vol_mult=2.0, label="vol > 2.0× 20-bar avg"),
     ]
     _run_sweep(days_list, "Volume filter sweep (buy only on above-average volume)", scenarios, PAIRS)
+
+
+def sweep_cooldown(days_list: list[int]):
+    scenarios = [
+        dict(stop_cooldown=0,   label="off  (baseline)"),
+        dict(stop_cooldown=4,   label="cooldown=4 bars   (~1h)"),
+        dict(stop_cooldown=8,   label="cooldown=8 bars   (~2h)"),
+        dict(stop_cooldown=16,  label="cooldown=16 bars  (~4h)"),
+        dict(stop_cooldown=32,  label="cooldown=32 bars  (~8h)"),
+        dict(stop_cooldown=96,  label="cooldown=96 bars  (~1d)"),
+        dict(stop_cooldown=192, label="cooldown=192 bars (~2d)"),
+    ]
+    _run_sweep(days_list, "Stop cooldown sweep (block re-entry N candles after trailing stop)", scenarios, PAIRS)
 
 
 def sweep_divergence(days_list: list[int]):
@@ -953,6 +970,7 @@ if __name__ == "__main__":
             "interval":    sweep_interval,
             "htfrsi":      sweep_htf_rsi,
             "volume":      sweep_volume,
+            "cooldown":    sweep_cooldown,
             "divergence":  sweep_divergence,
         }
         if mode == "all":
