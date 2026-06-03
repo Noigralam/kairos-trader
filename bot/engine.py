@@ -165,7 +165,7 @@ def _loop():
                 elif has_position:
                     pos = state.positions[pair]
                     drop = (pos.entry_price - prices[pair]) / pos.entry_price
-                    if not pos.dca_done and drop >= config.DCA_DROP_PCT and result.rsi < config.DCA_RSI_THRESHOLD:
+                    if not pos.dca_done and drop >= config.DCA_DROP_PCT:
                         dca_position(pair, prices[pair])
                         if pos.dca_done:
                             notify(f"[DCA] {pair} down {drop*100:.1f}% from entry, RSI={result.rsi:.1f} — averaged down", discord=False)

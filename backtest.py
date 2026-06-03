@@ -126,7 +126,6 @@ def run_pair(
     pos_pct:    float = None,
     dca_pct:    float = None,
     dca_drop:   float = None,
-    dca_rsi:    int   = None,
     enable_dca: bool  = True,
     tp_pct:     float = None,
     trail_pct:  float = None,
@@ -155,7 +154,6 @@ def run_pair(
     pos_pct    = pos_pct    if pos_pct    is not None else config.POSITION_SIZE_PCT
     dca_drop   = dca_drop   if dca_drop   is not None else config.DCA_DROP_PCT
     dca_pct    = dca_pct    if dca_pct    is not None else config.DCA_SIZE_PCT
-    dca_rsi    = dca_rsi    if dca_rsi    is not None else config.DCA_RSI_THRESHOLD
     tp_pct     = tp_pct     if tp_pct     is not None else config.TAKE_PROFIT_PCT
     trail_pct  = trail_pct  if trail_pct  is not None else config.TRAILING_STOP_PCT
     floor_pct  = floor_pct  if floor_pct  is not None else config.PROFIT_FLOOR_PCT
@@ -258,7 +256,7 @@ def run_pair(
         if enable_dca and position is not None and dca_count < max_dca:
             next_drop = dca_drop + dca_count * _dca_step
             drop = (position.entry_price - price) / position.entry_price
-            if drop >= next_drop and rsi < dca_rsi:
+            if drop >= next_drop:
                 max_size  = balance / (1 + fee_rate)
                 dca_value = min(balance * dca_pct, max_size)
                 if dca_value >= 1:
@@ -498,20 +496,6 @@ def sweep_ema_gap(days_list: list[int]):
     ]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
 
-
-def sweep_dca_rsi(days_list: list[int]):
-    scenarios = [
-        dict(dca_rsi=30,  label="DCA RSI < 30"),
-        dict(dca_rsi=33,  label="DCA RSI < 33"),
-        dict(dca_rsi=35,  label="DCA RSI < 35"),
-        dict(dca_rsi=38,  label="DCA RSI < 38  ◄ current"),
-        dict(dca_rsi=40,  label="DCA RSI < 40"),
-        dict(dca_rsi=45,  label="DCA RSI < 45"),
-        dict(dca_rsi=50,  label="DCA RSI < 50"),
-        dict(dca_rsi=60,  label="DCA RSI < 60"),
-        dict(dca_rsi=100, label="DCA RSI < 100  (always fire)"),
-    ]
-    _run_sweep(days_list, "DCA RSI threshold sweep", scenarios, PAIRS)
 
 
 def sweep_htf_rsi(days_list: list[int]):
@@ -776,7 +760,7 @@ def run_topup(start: float, monthly: float, days: int):
 
             if pair in positions:
                 pos = positions[pair]
-                if not pos.dca_done and (pos.entry_price - price) / pos.entry_price >= dca_drop and rsi < config.DCA_RSI_THRESHOLD:
+                if not pos.dca_done and (pos.entry_price - price) / pos.entry_price >= dca_drop:
                     dv = balance * pos_pct
                     if dv >= 1:
                         bf = dv * fee;  apply_dca(pos, price, dv)
@@ -912,7 +896,6 @@ if __name__ == "__main__":
             "dailyema":    sweep_daily_ema,
             "interval":    sweep_interval,
             "htfrsi":      sweep_htf_rsi,
-            "dcarsi":      sweep_dca_rsi,
         }
         if mode == "all":
             for fn in sweeps.values():
