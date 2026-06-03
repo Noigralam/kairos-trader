@@ -1,5 +1,6 @@
 import json
 import os
+import time as _time
 from dataclasses import dataclass, field
 from . import config
 from .risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
@@ -21,6 +22,7 @@ class SimState:
     total_trades: int = 0
     total_pnl: float = 0.0
     total_fees: float = 0.0
+    portfolio_peak: float = 0.0
 
 
 _state = SimState()
@@ -34,6 +36,7 @@ def _save():
         "total_trades": _state.total_trades,
         "total_pnl": _state.total_pnl,
         "total_fees": _state.total_fees,
+        "portfolio_peak": _state.portfolio_peak,
         "positions": {
             pair: {
                 "pair": pos.pair,
@@ -43,6 +46,7 @@ def _save():
                 "take_profit_price": pos.take_profit_price,
                 "highest_price": pos.highest_price,
                 "dca_done": pos.dca_done,
+                "opened_at": pos.opened_at,
             }
             for pair, pos in _state.positions.items()
         },
@@ -62,6 +66,7 @@ def _load():
         _state.total_trades = data.get("total_trades", 0)
         _state.total_pnl = data.get("total_pnl", 0.0)
         _state.total_fees = data.get("total_fees", 0.0)
+        _state.portfolio_peak = data.get("portfolio_peak", 0.0)
         _state.positions = {}
         for pair, pos in data.get("positions", {}).items():
             pos.pop("stop_cooldown", None)
@@ -109,6 +114,12 @@ def open_position(pair: str, price: float, size_pct: float = None):
     else:
         balance = _state.balance
 
+    if config.MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
+        drawdown = (_state.portfolio_peak - balance) / _state.portfolio_peak
+        if drawdown > config.MAX_DRAWDOWN_PCT:
+            notify(f"[SKIP] {pair} buy blocked — portfolio drawdown {drawdown*100:.1f}% exceeds limit {config.MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
+            return
+
     max_size = balance / (1 + BINANCE_FEE)
     min_notional = get_min_notional(pair)
     size = min(balance * pct, max_size)
@@ -131,7 +142,7 @@ def open_position(pair: str, price: float, size_pct: float = None):
             buy_fee   = amount * avg_price * BINANCE_FEE
         value    = amount * avg_price
         tp_price = avg_price * (1 + config.TAKE_PROFIT_PCT)
-        pos      = Position(pair, avg_price, amount, value, tp_price, avg_price)
+        pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
         _state.positions[pair] = pos
         _state.total_fees += buy_fee
         _state.balance = get_eur_balance()
@@ -144,7 +155,7 @@ def open_position(pair: str, price: float, size_pct: float = None):
         value    = amount * price
         buy_fee  = value * BINANCE_FEE
         tp_price = price * (1 + config.TAKE_PROFIT_PCT)
-        pos      = Position(pair, price, amount, value, tp_price, price)
+        pos      = Position(pair, price, amount, value, tp_price, price, opened_at=_time.time())
         _state.positions[pair] = pos
         _state.balance -= value + buy_fee
         _state.total_fees += buy_fee
@@ -317,6 +328,7 @@ def close_position(pair: str, price: float, reason: str = "signal"):
 
 
 def check_stops(prices: dict):
+    now = _time.time()
     for pair, pos in list(_state.positions.items()):
         if pair not in prices:
             continue
@@ -326,5 +338,21 @@ def check_stops(prices: dict):
             close_position(pair, price, reason="take_profit")
         elif check_trailing_stop(pos, price):
             close_position(pair, price, reason="trailing_stop")
+        elif (config.TIME_STOP_DAYS > 0
+              and pos.opened_at > 0
+              and (now - pos.opened_at) / 86400 > config.TIME_STOP_DAYS
+              and pos.peak() <= pos.trailing_stop_level()):
+            age = (now - pos.opened_at) / 86400
+            notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
+            close_position(pair, price, reason="time_stop")
         elif updated:
+            _save()
+
+    # Update portfolio peak for drawdown guard
+    if config.MAX_DRAWDOWN_PCT > 0:
+        portfolio_value = _state.balance + sum(
+            prices[p] * pos.amount for p, pos in _state.positions.items() if p in prices
+        )
+        if portfolio_value > _state.portfolio_peak:
+            _state.portfolio_peak = portfolio_value
             _save()

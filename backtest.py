@@ -85,8 +85,10 @@ def run_pair(
     ema_span:   int   = 200,
     min_exit:     float = None,
     ema_filter:   bool  = True,
-    hard_stop:    float = None,   # e.g. 0.20 = cut loss at -20% from entry
-    ema_gap:      float = 0.0,    # require price > ema * (1 + ema_gap) to buy
+    hard_stop:       float = None,  # e.g. 0.20 = cut loss at -20% from entry
+    ema_gap:         float = 0.0,   # require price > ema * (1 + ema_gap) to buy
+    time_stop_days:  float = 0,     # close if no profit floor reached within N days (0 = off)
+    max_drawdown:    float = 0,     # pause buys if portfolio drops >X% from peak (0 = off)
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -104,9 +106,13 @@ def run_pair(
 
     rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period, ema_span)
 
-    balance  = start_balance
+    balance        = start_balance
+    portfolio_peak = start_balance
     position: Position | None = None
+    entry_candle:  int = 0
     trades: list[Trade] = []
+
+    candles_per_day = {"1m": 1440, "5m": 288, "15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}.get(INTERVAL, 96)
 
     for i in range(WARMUP, len(close_arr)):
         price = float(close_arr[i])
@@ -150,12 +156,31 @@ def run_pair(
                 position = None
                 continue
 
+            if (time_stop_days > 0
+                    and (i - entry_candle) > time_stop_days * candles_per_day
+                    and position.peak() <= stop_level):
+                bf = position.value_eur * fee_rate
+                sf = position.amount * price * fee_rate
+                balance += position.amount * price - sf
+                trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "time_stop", position.dca_done))
+                position = None
+                continue
+
+        # update portfolio peak (cash only when no position, cash+pos otherwise)
+        pos_val = position.amount * price if position is not None else 0.0
+        portfolio_peak = max(portfolio_peak, balance + pos_val)
+
         if position is None and rsi < rsi_buy and (not ema_filter or price > ema * (1 + ema_gap)):
+            if max_drawdown > 0 and portfolio_peak > 0:
+                drawdown = (portfolio_peak - balance) / portfolio_peak
+                if drawdown > max_drawdown:
+                    continue
             max_size = balance / (1 + fee_rate)
             size = min(balance * pos_pct, max_size)
             if size >= 1:
                 position = Position(pair, price, size / price, size,
                                     price * (1 + tp_pct), price)
+                entry_candle = i
                 balance -= size + size * fee_rate
 
         if enable_dca and position is not None and not position.dca_done:
@@ -359,6 +384,31 @@ def sweep_rsiperiod(days_list: list[int]):
                 trades, _ = run_pair(pair, df, start, rsi_period=s["rsi_period"])
                 summarise(label, trades, start, wide=True)
         print()
+
+
+def sweep_timestop(days_list: list[int]):
+    scenarios = [
+        dict(time_stop_days=0,  label="no time stop  (current)"),
+        dict(time_stop_days=14, label="time stop 14d"),
+        dict(time_stop_days=21, label="time stop 21d"),
+        dict(time_stop_days=30, label="time stop 30d"),
+        dict(time_stop_days=45, label="time stop 45d"),
+        dict(time_stop_days=60, label="time stop 60d"),
+        dict(time_stop_days=90, label="time stop 90d"),
+    ]
+    _run_sweep(days_list, "Time-based stop sweep (close if no profit floor within N days)", scenarios, PAIRS)
+
+
+def sweep_maxdrawdown(days_list: list[int]):
+    scenarios = [
+        dict(max_drawdown=0,    label="no drawdown guard  (current)"),
+        dict(max_drawdown=0.10, label="pause buys >10% drawdown"),
+        dict(max_drawdown=0.15, label="pause buys >15% drawdown"),
+        dict(max_drawdown=0.20, label="pause buys >20% drawdown"),
+        dict(max_drawdown=0.25, label="pause buys >25% drawdown"),
+        dict(max_drawdown=0.30, label="pause buys >30% drawdown"),
+    ]
+    _run_sweep(days_list, "Max portfolio drawdown guard sweep", scenarios, PAIRS)
 
 
 def sweep_ema_gap(days_list: list[int]):
@@ -634,7 +684,9 @@ if __name__ == "__main__":
             "minexit":  sweep_min_exit,
             "rsiper":   sweep_rsiperiod,
             "hardstop": sweep_hardstop,
-            "emagap":   sweep_ema_gap,
+            "emagap":      sweep_ema_gap,
+            "timestop":    sweep_timestop,
+            "maxdrawdown": sweep_maxdrawdown,
         }
         if mode == "all":
             for fn in sweeps.values():
