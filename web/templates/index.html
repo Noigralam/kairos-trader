@@ -38,6 +38,26 @@
 
     .container { max-width: 1600px; margin: 0 auto; padding: 24px 40px; }
 
+    /* ── tabs ─────────────────────────────────────────────────────────────── */
+    .tab-bar {
+      display: flex; gap: 4px; margin-bottom: 24px;
+      border-bottom: 1px solid var(--border); padding-bottom: 0;
+    }
+    .tab-bar button {
+      padding: 8px 24px; border-radius: 6px 6px 0 0; border: 1px solid transparent;
+      cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s;
+      background: transparent; color: var(--muted); margin-bottom: -1px;
+    }
+    .tab-bar button:hover { color: var(--text); }
+    .tab-bar button.active {
+      background: var(--surface); color: var(--text);
+      border-color: var(--border); border-bottom-color: var(--surface);
+    }
+    .tab-bar button .tab-dot {
+      display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+      margin-right: 7px; vertical-align: middle; margin-top: -1px;
+    }
+
     .stats {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
     }
@@ -167,15 +187,28 @@
     .above-trend { color: var(--green); }
     .below-trend { color: var(--red); }
 
-    /* ── futures section ────────────────────────────────────────────────── */
-    .futures-section { margin-bottom: 28px; }
-    .futures-header {
+    .chart-section { margin-bottom: 28px; }
+    .chart-controls {
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
     }
-    .futures-header h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 0; }
-    .futures-header-badges { display: flex; gap: 8px; align-items: center; }
-    .futures-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .chart-controls h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .btn-group { display: flex; gap: 6px; }
+    .btn-group button {
+      padding: 4px 12px; font-size: 12px; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    }
+    .btn-group button.active { border-color: var(--blue); color: var(--blue); }
+    .chart-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px;
+    }
+    .chart-box { position: relative; width: 100%; }
+    .chart-box.price-box  { height: 240px; }
+    .chart-box.candle-box { height: 160px; margin-top: 8px; }
+    .chart-box.rsi-box    { height: 100px; margin-top: 8px; }
+
+    /* ── futures tab ─────────────────────────────────────────────────────── */
     .futures-stats {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px;
     }
@@ -214,31 +247,6 @@
       position: absolute; top: -4px; width: 2px; height: 12px;
       background: #fff; border-radius: 1px;
     }
-    .liq-bar-pin-label {
-      position: absolute; top: 10px; font-size: 10px; color: var(--muted);
-      white-space: nowrap; transform: translateX(-50%);
-    }
-
-    .chart-section { margin-bottom: 28px; }
-    .chart-controls {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
-    }
-    .chart-controls h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-    .btn-group { display: flex; gap: 6px; }
-    .btn-group button {
-      padding: 4px 12px; font-size: 12px; border-radius: 4px;
-      border: 1px solid var(--border); background: var(--surface); color: var(--muted);
-    }
-    .btn-group button.active { border-color: var(--blue); color: var(--blue); }
-    .chart-wrap {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 8px; padding: 16px;
-    }
-    .chart-box { position: relative; width: 100%; }
-    .chart-box.price-box  { height: 240px; }
-    .chart-box.candle-box { height: 160px; margin-top: 8px; }
-    .chart-box.rsi-box    { height: 100px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -262,158 +270,173 @@
 
 <div class="container">
 
-  <div class="stats">
-    <div class="stat-card">
-      <div class="label">Balance</div>
-      <div class="value"><span id="balance">—</span><span id="starting-balance" style="font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Portfolio Value</div>
-      <div class="value"><span id="portfolio-value">—</span><span id="portfolio-pct" style="font-size:13px;font-weight:400;margin-left:6px;"></span></div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Total P&L</div>
-      <div class="value" id="pnl">—</div>
-    </div>
-    <div class="stat-card">
-      <div class="label">Total Trades</div>
-      <div class="value" id="total-trades">—</div>
-    </div>
+  <div class="tab-bar">
+    <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
+      <span class="tab-dot" style="background:var(--blue)"></span>Spot
+    </button>
+    <button class="tab" data-tab="futures" onclick="switchTab('futures')" id="futures-tab-btn" style="display:none">
+      <span class="tab-dot" id="futures-tab-dot" style="background:var(--muted)"></span>Futures
+    </button>
   </div>
 
-  <div class="controls">
-    <button class="primary" onclick="control('start')">▶ Start</button>
-    <button class="warning" onclick="control('pause')">⏸ Pause</button>
-    <button onclick="control('resume')">↺ Resume</button>
-    <button class="danger" onclick="control('stop')">■ Stop</button>
-  </div>
+  <!-- ═══════════════════════════ SPOT TAB ══════════════════════════════ -->
+  <div id="tab-spot">
 
-
-  <section>
-    <h2>Performance</h2>
-    <div class="stats" id="perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
-      <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="stat-winrate">—</div></div>
-      <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="stat-avgpnl">—</div></div>
-      <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="stat-best">—</div></div>
-      <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="stat-worst">—</div></div>
-      <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="stat-hold">—</div></div>
+    <div class="stats">
       <div class="stat-card">
-        <div class="label">Fear &amp; Greed</div>
-        <div class="value" id="fng-value">—</div>
-        <div style="font-size:11px;color:var(--muted)" id="fng-label"></div>
+        <div class="label">Balance</div>
+        <div class="value"><span id="balance">—</span><span id="starting-balance" style="font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Portfolio Value</div>
+        <div class="value"><span id="portfolio-value">—</span><span id="portfolio-pct" style="font-size:13px;font-weight:400;margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total P&L</div>
+        <div class="value" id="pnl">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Trades</div>
+        <div class="value" id="total-trades">—</div>
       </div>
     </div>
-  </section>
 
-  <section>
-    <div class="chart-controls">
-      <h2>Portfolio Value</h2>
-      <div class="btn-group" id="balance-span-btns">
-        <button onclick="setBalanceDays(0.167)" data-days="0.167">4h</button>
-        <button onclick="setBalanceDays(1)"    data-days="1">1d</button>
-        <button onclick="setBalanceDays(7)"    data-days="7">7d</button>
-        <button onclick="setBalanceDays(30)"  data-days="30" class="active">30d</button>
-        <button onclick="setBalanceDays(90)"  data-days="90">90d</button>
-        <button onclick="setBalanceDays(0)"   data-days="0">All</button>
+    <div class="controls">
+      <button class="primary" onclick="control('start')">▶ Start</button>
+      <button class="warning" onclick="control('pause')">⏸ Pause</button>
+      <button onclick="control('resume')">↺ Resume</button>
+      <button class="danger" onclick="control('stop')">■ Stop</button>
+    </div>
+
+    <section>
+      <h2>Performance</h2>
+      <div class="stats" id="perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="stat-winrate">—</div></div>
+        <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="stat-avgpnl">—</div></div>
+        <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="stat-best">—</div></div>
+        <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="stat-worst">—</div></div>
+        <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="stat-hold">—</div></div>
+        <div class="stat-card">
+          <div class="label">Fear &amp; Greed</div>
+          <div class="value" id="fng-value">—</div>
+          <div style="font-size:11px;color:var(--muted)" id="fng-label"></div>
+        </div>
       </div>
-    </div>
-    <div class="chart-box" style="height:160px"><canvas id="balance-chart"></canvas></div>
-  </section>
+    </section>
 
-  <section>
-    <h2>Recent Trades</h2>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Time (Helsinki)</th>
-            <th>Pair</th>
-            <th>Side</th>
-            <th>Price</th>
-            <th>Amount</th>
-            <th>Value (EUR)</th>
-            <th>PnL</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody id="trades-body">
-          <tr><td colspan="8" class="empty">No trades yet</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="futures-section" id="futures-section" style="display:none">
-    <div class="futures-header">
-      <h2>Futures Engine</h2>
-      <div class="futures-header-badges">
-        <span id="futures-mode-badge" class="badge" style="background:#1c2128;color:var(--muted);">—</span>
-        <span id="futures-status-badge" class="badge stopped">stopped</span>
+    <section>
+      <div class="chart-controls">
+        <h2>Portfolio Value</h2>
+        <div class="btn-group" id="balance-span-btns">
+          <button onclick="setBalanceDays(0.167)" data-days="0.167">4h</button>
+          <button onclick="setBalanceDays(1)"    data-days="1">1d</button>
+          <button onclick="setBalanceDays(7)"    data-days="7">7d</button>
+          <button onclick="setBalanceDays(30)"  data-days="30" class="active">30d</button>
+          <button onclick="setBalanceDays(90)"  data-days="90">90d</button>
+          <button onclick="setBalanceDays(0)"   data-days="0">All</button>
+        </div>
       </div>
-    </div>
-    <div class="futures-stats">
+      <div class="chart-box" style="height:160px"><canvas id="balance-chart"></canvas></div>
+    </section>
+
+    <section>
+      <h2>Recent Trades</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time (Helsinki)</th>
+              <th>Pair</th>
+              <th>Side</th>
+              <th>Price</th>
+              <th>Amount</th>
+              <th>Value (EUR)</th>
+              <th>PnL</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="trades-body">
+            <tr><td colspan="8" class="empty">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Market Conditions</h2>
+      <div class="signals-grid" id="signals-grid">
+        <div class="signal-card"><div class="commentary">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-controls">
+        <h2>Price chart</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="btn-group" id="pair-btns"></div>
+          <div class="btn-group" id="span-btns">
+            <button onclick="setSpan('4h')"  data-span="4h">4h</button>
+            <button onclick="setSpan('1d')"  data-span="1d" class="active">1d</button>
+            <button onclick="setSpan('3d')"  data-span="3d">3d</button>
+            <button onclick="setSpan('1w')"  data-span="1w">1w</button>
+            <button onclick="setSpan('2w')"  data-span="2w">2w</button>
+            <button onclick="setSpan('1m')"  data-span="1m">1m</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box price-box"><canvas id="price-chart"></canvas></div>
+        <div class="chart-box candle-box"><canvas id="candle-chart"></canvas></div>
+        <div class="chart-box rsi-box"><canvas id="rsi-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Tax Summary (Vero)</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr><th>Year</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net P&L (EUR)</th></tr>
+          </thead>
+          <tbody id="tax-body">
+            <tr><td colspan="4" class="empty">No data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div><!-- /tab-spot -->
+
+  <!-- ═══════════════════════════ FUTURES TAB ═══════════════════════════ -->
+  <div id="tab-futures" style="display:none">
+
+    <div class="stats futures-stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-bottom:16px">
       <div class="stat-card"><div class="label">Futures Balance</div><div class="value" id="f-balance">—</div></div>
       <div class="stat-card"><div class="label">Realised PnL</div><div class="value" id="f-pnl">—</div></div>
       <div class="stat-card"><div class="label">Trades</div><div class="value" id="f-trades">—</div></div>
       <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
     </div>
-    <div class="futures-controls" style="margin-bottom:16px">
+
+    <div class="controls">
       <button class="primary" onclick="futuresControl('start')">▶ Start</button>
       <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
       <span style="color:var(--muted);font-size:12px;margin-left:4px">Last tick: <span id="f-last-tick">—</span></span>
     </div>
-    <div class="futures-pos-grid" id="futures-pos-grid">
-      <div style="color:var(--muted);font-size:13px;padding:4px">No open futures positions</div>
-    </div>
-  </section>
 
-  <section>
-    <h2>Market Conditions</h2>
-    <div class="signals-grid" id="signals-grid">
-      <div class="signal-card"><div class="commentary">Loading…</div></div>
-    </div>
-  </section>
-
-  <section class="chart-section">
-    <div class="chart-controls">
-      <h2>Price chart</h2>
-      <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <div class="btn-group" id="pair-btns"></div>
-        <div class="btn-group" id="span-btns">
-          <button onclick="setSpan('4h')"  data-span="4h">4h</button>
-          <button onclick="setSpan('1d')"  data-span="1d" class="active">1d</button>
-          <button onclick="setSpan('3d')"  data-span="3d">3d</button>
-          <button onclick="setSpan('1w')"  data-span="1w">1w</button>
-          <button onclick="setSpan('2w')"  data-span="2w">2w</button>
-          <button onclick="setSpan('1m')"  data-span="1m">1m</button>
-        </div>
+    <section>
+      <h2>Open Positions</h2>
+      <div class="futures-pos-grid" id="futures-pos-grid">
+        <div style="color:var(--muted);font-size:13px;padding:4px">No open futures positions</div>
       </div>
-    </div>
-    <div class="chart-wrap">
-      <div class="chart-box price-box"><canvas id="price-chart"></canvas></div>
-      <div class="chart-box candle-box"><canvas id="candle-chart"></canvas></div>
-      <div class="chart-box rsi-box"><canvas id="rsi-chart"></canvas></div>
-    </div>
-  </section>
+    </section>
 
+  </div><!-- /tab-futures -->
+
+  <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
   <section>
     <h2>Recent Activity</h2>
     <div class="log-box" id="log-box">
       <div class="log-entry tick"><span class="log-time">--:--:--</span>Waiting for data…</div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Tax Summary (Vero)</h2>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr><th>Year</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net P&L (EUR)</th></tr>
-        </thead>
-        <tbody id="tax-body">
-          <tr><td colspan="4" class="empty">No data</td></tr>
-        </tbody>
-      </table>
     </div>
   </section>
 
@@ -430,6 +453,21 @@
     if (n === null || n === undefined) return '—';
     const cls = n >= 0 ? 'pos' : 'neg';
     return `<span class="${cls}">${n >= 0 ? '+' : ''}${_fi(n)} €</span>`;
+  }
+
+  // ── tab switching ─────────────────────────────────────────────────────────
+  let _activeTab = 'spot';
+  function switchTab(name) {
+    _activeTab = name;
+    document.getElementById('tab-spot').style.display    = name === 'spot'    ? '' : 'none';
+    document.getElementById('tab-futures').style.display = name === 'futures' ? '' : 'none';
+    document.querySelectorAll('.tab-bar button').forEach(b =>
+      b.classList.toggle('active', b.dataset.tab === name));
+    // sync header badges to active engine
+    const spotBadges    = document.getElementById('spot-header-badges');
+    const futuresBadges = document.getElementById('futures-header-badges');
+    if (spotBadges)    spotBadges.style.display    = name === 'spot'    ? '' : 'none';
+    if (futuresBadges) futuresBadges.style.display = name === 'futures' ? '' : 'none';
   }
 
   async function control(action, pair) {
@@ -457,7 +495,7 @@
     if (msg.includes('[BUY]') || msg.includes('[FUTURES BUY]') || msg.includes('[FUTURES DCA]')) return 'buy';
     if (msg.includes('[SELL]') || msg.includes('[STOP-LOSS]') || msg.includes('[FUTURES SELL]') || msg.includes('[FUTURES LIQUIDATION]')) return 'sell';
     if (msg.includes('[ERROR]') || msg.includes('[FUTURES ERROR]')) return 'error';
-    if (msg.includes('[BOT]') || msg.includes('[FUTURES]'))  return 'status';
+    if (msg.includes('[BOT]') || msg.includes('[FUTURES]')) return 'status';
     if (msg.includes('[TICK]') || msg.includes('[OVERRIDE]') || msg.includes('[FUTURES TICK]')) return 'tick';
     return 'tick';
   }
@@ -511,7 +549,6 @@
           const tpPct      = ((pos.take_profit    - pos.entry_price) / pos.entry_price * 100);
           const bePct      = ((pos.break_even     - pos.entry_price) / pos.entry_price * 100);
 
-          // price ladder: scale from -1% to tpPct+1%
           const ladderMin = -1, ladderMax = Math.max(tpPct + 1, peakPct + 1, pct + 1);
           const ladderRange = ladderMax - ladderMin;
           const lp = v => Math.min(100, Math.max(0, ((v - ladderMin) / ladderRange) * 100)).toFixed(1);
@@ -629,7 +666,7 @@
       const tax = await taxRes.json();
       const logs = await logRes.json();
 
-      // Badges
+      // Header badges (spot)
       const badge = document.getElementById('status-badge');
       badge.textContent = s.status;
       badge.className = 'badge ' + s.status;
@@ -654,7 +691,6 @@
       const pnlEl = document.getElementById('pnl');
       pnlEl.innerHTML = fmtPnl(s.total_pnl);
 
-      // store positions for use in signal cards
       _positions = s.positions;
 
       // Trades
@@ -813,7 +849,6 @@
       const res  = await fetch(`/api/chart/${_chartPair}?span=${_chartSpan}`);
       const data = await res.json();
 
-      // position level lines for current pair
       const pos = _positions[_chartPair] || null;
       const n   = data.labels.length;
       const posLines = {
@@ -822,8 +857,6 @@
         peak:      pos ? Array(n).fill(pos.highest_price)   : [],
       };
 
-
-      // price chart
       if (_priceChart) {
         _priceChart.data.labels           = data.labels;
         _priceChart.data.datasets[0].data = data.prices;
@@ -875,7 +908,7 @@
             plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
               callbacks: { label: c => {
                 if (c.dataset.label === 'Volume')  return ` Vol: ${Number(c.raw).toLocaleString('fi-FI', {maximumFractionDigits: 2})}`;
-if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
                 return c.dataset.type === 'scatter'
                   ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
                   : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
@@ -891,7 +924,6 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
         });
       }
 
-      // candlestick chart
       const ohlcMin = Math.min(...data.ohlc.map(d => d.l));
       const ohlcMax = Math.max(...data.ohlc.map(d => d.h));
       const ohlcPad = (ohlcMax - ohlcMin) * 0.05;
@@ -923,12 +955,7 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
         });
       }
 
-      // rsi chart
       const _ob = _signals[_chartPair]?.rsi_overbought ?? 75;
-      const rsiAnnotations = [
-        { y: 30, color: '#3fb950' },
-        { y: _ob, color: '#f85149' },
-      ];
       if (_rsiChart) {
         _rsiChart.data.labels           = data.labels;
         _rsiChart.data.datasets[0].data = data.rsi;
@@ -965,10 +992,11 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
     } catch(e) { console.error(e); }
   }
 
+  let _signals = {};
   async function initChart() {
     const res     = await fetch('/api/signals');
-    const signals = await res.json();
-    const pairs   = Object.keys(signals);
+    _signals      = await res.json();
+    const pairs   = Object.keys(_signals);
     const pb      = document.getElementById('pair-btns');
     pb.innerHTML  = pairs.map(p => `<button onclick="setPair('${p}')" data-pair="${p}">${p}</button>`).join('');
     if (pairs.length) setPair(pairs[0]);
@@ -980,7 +1008,7 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
   function updateCountdown() {
     const now     = new Date();
     const elapsed = (now.getMinutes() * 60 + now.getSeconds()) % 900;
-    const secs    = 900 - elapsed + 15;  // 15s buffer matches engine
+    const secs    = 900 - elapsed + 15;
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     document.getElementById('next-tick').textContent =
@@ -1082,13 +1110,11 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
       const labels = rows.map(r => r.t);
       const values = rows.map(r => r.balance);
 
-      // map trades to chart label positions
       const tradeLines = [];
       const seen = new Set();
       for (const t of trades) {
         const tl = _tradeLabel(t.timestamp);
         if (!tl || seen.has(tl)) continue;
-        // find nearest label at or after trade time
         const idx = labels.findIndex(l => l >= tl);
         if (idx < 0) continue;
         seen.add(tl);
@@ -1173,24 +1199,37 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
       const d   = await res.json();
       if (!d.enabled) return;
 
-      document.getElementById('futures-section').style.display = '';
+      // Reveal futures tab button
+      const tabBtn = document.getElementById('futures-tab-btn');
+      tabBtn.style.display = '';
 
-      // Header badges
-      const sb = document.getElementById('futures-status-badge');
-      sb.textContent = d.running ? 'running' : 'stopped';
-      sb.className   = 'badge ' + (d.running ? 'running' : 'stopped');
-      const mb = document.getElementById('futures-mode-badge');
-      mb.textContent = d.mode || '—';
-      mb.style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-      mb.style.color = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
+      // Update status dot colour
+      const dot = document.getElementById('futures-tab-dot');
+      if (dot) dot.style.background = d.running ? 'var(--green)' : 'var(--muted)';
+
+      // Update header badges when on futures tab
+      const badge = document.getElementById('futures-status-badge');
+      if (badge) {
+        badge.textContent = d.running ? 'running' : 'stopped';
+        badge.className   = 'badge ' + (d.running ? 'running' : 'stopped');
+      }
 
       // Summary stats
       document.getElementById('f-balance').textContent = fmtUsdt(d.balance);
       document.getElementById('f-pnl').innerHTML       = fmtPnlUsdt(d.total_pnl);
       document.getElementById('f-trades').textContent  = d.total_trades;
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
-      document.getElementById('f-fees').innerHTML = fmtPnlUsdt(-feesAndFunding);
+      document.getElementById('f-fees').innerHTML      = fmtPnlUsdt(-feesAndFunding);
       document.getElementById('f-last-tick').textContent = d.last_tick || '—';
+
+      // If on futures tab, sync header badges
+      if (_activeTab === 'futures') {
+        document.getElementById('status-badge').textContent = d.running ? 'running' : 'stopped';
+        document.getElementById('status-badge').className   = 'badge ' + (d.running ? 'running' : 'stopped');
+        document.getElementById('mode-badge').textContent   = d.mode || '—';
+        document.getElementById('mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+        document.getElementById('mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
+      }
 
       // Position cards
       const grid  = document.getElementById('futures-pos-grid');
@@ -1201,21 +1240,17 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
       }
 
       grid.innerHTML = pairs.map(([sym, p]) => {
-        const pnlCls    = p.unrealized_pnl >= 0 ? 'pos' : 'neg';
-        const pnlSign   = p.unrealized_pnl >= 0 ? '+' : '';
-        const pctSign   = p.pnl_pct >= 0 ? '+' : '';
+        const pnlCls  = p.unrealized_pnl >= 0 ? 'pos' : 'neg';
+        const pnlSign = p.unrealized_pnl >= 0 ? '+' : '';
+        const pctSign = p.pnl_pct >= 0 ? '+' : '';
 
-        // Liquidation proximity bar
-        // Range: liq_price → entry_price * 1.1 (rough safe zone)
-        const rangeMin  = p.liquidation_price;
-        const rangeMax  = p.entry_price * (1 + 1 / p.leverage);  // ~safe zone upper
-        const range     = rangeMax - rangeMin;
-        const markPct   = range > 0 ? Math.min(100, Math.max(0, (p.mark_price - rangeMin) / range * 100)).toFixed(1) : 50;
-        const entryPct  = range > 0 ? Math.min(100, Math.max(0, (p.entry_price - rangeMin) / range * 100)).toFixed(1) : 50;
-        const trailPct  = range > 0 ? Math.min(100, Math.max(0, (p.trailing_stop - rangeMin) / range * 100)).toFixed(1) : 50;
+        const rangeMin = p.liquidation_price;
+        const rangeMax = p.entry_price * (1 + 1 / p.leverage);
+        const range    = rangeMax - rangeMin;
+        const pin = v => range > 0 ? Math.min(100, Math.max(0, (v - rangeMin) / range * 100)).toFixed(1) : 50;
 
-        const liqDist   = ((p.mark_price - p.liquidation_price) / p.mark_price * 100).toFixed(1);
-        const liqColor  = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
+        const liqDist  = ((p.mark_price - p.liquidation_price) / p.mark_price * 100).toFixed(1);
+        const liqColor = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
 
         const dcaStr = p.dca_done
           ? '<span style="color:var(--muted)">used</span>'
@@ -1229,41 +1264,29 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
               <span class="lev-badge">${p.leverage}x</span>
             </div>
           </div>
-
           <div class="fp-pnl">
             <div class="pnl-usd ${pnlCls}">${pnlSign}${fmtUsdt(Math.abs(p.unrealized_pnl))}
               <span style="font-size:14px;font-weight:400;margin-left:6px">${pctSign}${p.pnl_pct}%</span>
             </div>
             <div class="pnl-sub">Mark: ${fmtUsdt(p.mark_price, 4)} · Entry: ${fmtUsdt(p.entry_price, 4)}</div>
           </div>
-
           <div style="margin-bottom:6px">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
               <span style="color:${liqColor}">Liq ${fmtUsdt(p.liquidation_price, 4)} (${liqDist}% away)</span>
               <span>Trail ${fmtUsdt(p.trailing_stop, 4)}</span>
             </div>
             <div class="liq-bar-wrap">
-              <div class="liq-bar-pin" style="left:${entryPct}%" title="Entry"></div>
-              <div class="liq-bar-pin" style="left:${trailPct}%;background:var(--red)" title="Trail stop"></div>
-              <div class="liq-bar-pin" style="left:${markPct}%;background:#fff;width:3px;height:14px;top:-5px" title="Mark price"></div>
+              <div class="liq-bar-pin" style="left:${pin(p.entry_price)}%" title="Entry"></div>
+              <div class="liq-bar-pin" style="left:${pin(p.trailing_stop)}%;background:var(--red)" title="Trail stop"></div>
+              <div class="liq-bar-pin" style="left:${pin(p.mark_price)}%;background:#fff;width:3px;height:14px;top:-5px" title="Mark price"></div>
             </div>
           </div>
-
-          <div class="fp-row">
-            <span class="fp-label">Margin</span>
-            <span class="fp-val">${fmtUsdt(p.margin)}</span>
-          </div>
-          <div class="fp-row">
-            <span class="fp-label">Take profit</span>
-            <span class="fp-val" style="color:var(--muted);opacity:0.6">${fmtUsdt(p.take_profit_price, 4)}</span>
-          </div>
-          <div class="fp-row">
-            <span class="fp-label">DCA trigger</span>
-            <span class="fp-val">${dcaStr}</span>
-          </div>
+          <div class="fp-row"><span class="fp-label">Margin</span><span class="fp-val">${fmtUsdt(p.margin)}</span></div>
+          <div class="fp-row"><span class="fp-label">Take profit</span><span class="fp-val" style="opacity:0.5">${fmtUsdt(p.take_profit_price, 4)}</span></div>
+          <div class="fp-row"><span class="fp-label">DCA trigger</span><span class="fp-val">${dcaStr}</span></div>
           <div class="fp-row">
             <span class="fp-label">Funding paid</span>
-            <span class="fp-val ${p.funding_paid >= 0 ? 'neg' : 'pos'}">${p.funding_paid !== 0 ? (p.funding_paid > 0 ? '-' : '+') + fmtUsdt(Math.abs(p.funding_paid), 4) : '—'}</span>
+            <span class="fp-val ${p.funding_paid > 0 ? 'neg' : p.funding_paid < 0 ? 'pos' : ''}">${p.funding_paid !== 0 ? (p.funding_paid > 0 ? '-' : '+') + fmtUsdt(Math.abs(p.funding_paid), 4) : '—'}</span>
           </div>
           <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--muted)">${Number(p.amount).toFixed(4)} units</span>
