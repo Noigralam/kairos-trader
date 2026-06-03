@@ -23,7 +23,7 @@
 
     header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 16px 24px; border-bottom: 1px solid var(--border);
+      padding: 16px 40px; border-bottom: 1px solid var(--border);
     }
     header h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
 
@@ -36,7 +36,7 @@
     .badge.paused   { background: #3a2e0a; color: var(--yellow); }
     .badge.stopped  { background: #3a1a1a; color: var(--red); }
 
-    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .container { max-width: 1600px; margin: 0 auto; padding: 24px 40px; }
 
     .stats {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;
@@ -96,7 +96,7 @@
     .log-entry.status  { color: var(--blue); }
     .log-entry.error   { color: var(--red); font-weight: 600; }
 
-    .signals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .signals-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; }
     .signal-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
     }
@@ -239,7 +239,7 @@
 
   <section>
     <h2>Performance</h2>
-    <div class="stats" id="perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+    <div class="stats" id="perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="stat-winrate">—</div></div>
       <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="stat-avgpnl">—</div></div>
       <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="stat-best">—</div></div>
