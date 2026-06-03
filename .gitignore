@@ -28,6 +28,7 @@ data/trades.db
 data/candles.db
 data/bot.pid
 data/discord_ids.json
+data/watchdog.log
 
 # IDE
 .vscode/
