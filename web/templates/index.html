@@ -40,18 +40,19 @@
 
     /* ── tabs ─────────────────────────────────────────────────────────────── */
     .tab-bar {
-      display: flex; gap: 4px; margin-bottom: 24px;
-      border-bottom: 1px solid var(--border); padding-bottom: 0;
+      display: flex; gap: 4px; margin-bottom: 28px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 4px; width: fit-content;
     }
     .tab-bar button {
-      padding: 8px 24px; border-radius: 6px 6px 0 0; border: 1px solid transparent;
+      padding: 7px 22px; border-radius: 6px; border: 1px solid transparent;
       cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s;
-      background: transparent; color: var(--muted); margin-bottom: -1px;
+      background: transparent; color: var(--muted);
     }
-    .tab-bar button:hover { color: var(--text); }
+    .tab-bar button:hover { color: var(--text); background: #21262d; }
     .tab-bar button.active {
-      background: var(--surface); color: var(--text);
-      border-color: var(--border); border-bottom-color: var(--surface);
+      background: var(--bg); color: var(--text);
+      border-color: var(--border);
     }
     .tab-bar button .tab-dot {
       display: inline-block; width: 6px; height: 6px; border-radius: 50%;
