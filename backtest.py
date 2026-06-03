@@ -499,6 +499,21 @@ def sweep_ema_gap(days_list: list[int]):
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
 
 
+def sweep_dca_rsi(days_list: list[int]):
+    scenarios = [
+        dict(dca_rsi=30,  label="DCA RSI < 30"),
+        dict(dca_rsi=33,  label="DCA RSI < 33"),
+        dict(dca_rsi=35,  label="DCA RSI < 35"),
+        dict(dca_rsi=38,  label="DCA RSI < 38  ◄ current"),
+        dict(dca_rsi=40,  label="DCA RSI < 40"),
+        dict(dca_rsi=45,  label="DCA RSI < 45"),
+        dict(dca_rsi=50,  label="DCA RSI < 50"),
+        dict(dca_rsi=60,  label="DCA RSI < 60"),
+        dict(dca_rsi=100, label="DCA RSI < 100  (always fire)"),
+    ]
+    _run_sweep(days_list, "DCA RSI threshold sweep", scenarios, PAIRS)
+
+
 def sweep_htf_rsi(days_list: list[int]):
     start = config.SIMULATION_BALANCE
     for days in days_list:
@@ -897,6 +912,7 @@ if __name__ == "__main__":
             "dailyema":    sweep_daily_ema,
             "interval":    sweep_interval,
             "htfrsi":      sweep_htf_rsi,
+            "dcarsi":      sweep_dca_rsi,
         }
         if mode == "all":
             for fn in sweeps.values():
