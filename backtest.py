@@ -30,20 +30,22 @@ from bot.risk import Position, apply_dca, update_peak, calc_pnl
 INTERVAL = "15m"
 WARMUP   = 210
 PAIRS    = ["ETHEUR", "SOLEUR"]
+CANDLES_PER_DAY = {"1m": 1440, "5m": 288, "15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}
 
 
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
 
-def fetch(pair: str, days: int) -> pd.DataFrame:
-    needed = days * 24 * 4 + WARMUP
-    df = get_df(pair, INTERVAL, limit=needed)
+def fetch(pair: str, days: int, interval: str = INTERVAL) -> pd.DataFrame:
+    cpd    = CANDLES_PER_DAY.get(interval, 96)
+    needed = days * cpd + WARMUP
+    df = get_df(pair, interval, limit=needed)
     if len(df) >= needed * 0.9:
         return df
-    print(f"  Syncing {pair}/{INTERVAL} {days}d…", flush=True)
-    initial_sync(pair, INTERVAL, days=days)
-    return get_df(pair, INTERVAL, limit=needed)
+    print(f"  Syncing {pair}/{interval} {days}d…", flush=True)
+    initial_sync(pair, interval, days=days)
+    return get_df(pair, interval, limit=needed)
 
 
 def fetch_daily_ema(pair: str, days: int, ema_span: int = 200) -> pd.Series:
@@ -119,6 +121,7 @@ def run_pair(
     max_dca:         int   = 1,          # max number of DCA tranches (1 = current behaviour)
     dca_step:        float = None,       # additional drop % per DCA level; defaults to dca_drop
     daily_ema_arr:   np.ndarray = None,  # daily EMA200 aligned to df index; None = disabled
+    interval:        str = INTERVAL,     # candle interval (used for time_stop_days calc)
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -144,7 +147,7 @@ def run_pair(
     trades: list[Trade] = []
     _dca_step = dca_step if dca_step is not None else dca_drop
 
-    candles_per_day = {"1m": 1440, "5m": 288, "15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}.get(INTERVAL, 96)
+    candles_per_day = CANDLES_PER_DAY.get(interval, 96)
 
     for i in range(WARMUP, len(close_arr)):
         price = float(close_arr[i])
@@ -464,6 +467,37 @@ def sweep_ema_gap(days_list: list[int]):
         dict(ema_gap=0.15, label="gap=15%  above EMA"),
     ]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
+
+
+def sweep_interval(days_list: list[int]):
+    start = config.SIMULATION_BALANCE
+    intervals = ["15m", "1h", "4h"]
+    for days in days_list:
+        _header(days, "Candle interval sweep", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in PAIRS:
+            print(f"\n  ── {pair} ──")
+            for ivl in intervals:
+                df = fetch(pair, days, interval=ivl)
+                # also test with RSI tuned to the interval (faster RSI on slower candles)
+                rsi_p = config.rsi_period_for(pair)
+                tag_cur = "  ◄ current" if ivl == INTERVAL else ""
+                label = f"{ivl}  RSI({rsi_p}){tag_cur}"
+                trades, _ = run_pair(pair, df, start,
+                                     ema_gap=config.EMA_GAP_PCT,
+                                     interval=ivl)
+                summarise(label, trades, start, wide=True)
+                # also try RSI(14) on higher timeframes
+                if ivl != INTERVAL:
+                    for rp in ([14] if rsi_p != 14 else []):
+                        trades, _ = run_pair(pair, df, start,
+                                             ema_gap=config.EMA_GAP_PCT,
+                                             rsi_period=rp,
+                                             interval=ivl)
+                        summarise(f"{ivl}  RSI({rp})", trades, start, wide=True)
+        print()
 
 
 def sweep_daily_ema(days_list: list[int]):
@@ -802,6 +836,7 @@ if __name__ == "__main__":
             "tieredsize":  sweep_tieredsize,
             "multidca":    sweep_multidca,
             "dailyema":    sweep_daily_ema,
+            "interval":    sweep_interval,
         }
         if mode == "all":
             for fn in sweeps.values():
