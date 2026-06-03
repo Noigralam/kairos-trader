@@ -37,10 +37,11 @@ def compute_signal(
     rsi_oversold: int = 30,
     rsi_overbought: int = 65,
     ema_trend: int = 200,
+    ema_gap: float = 0.0,
 ) -> StrategyResult:
     """
     RSI mean-reversion with EMA200 trend guard.
-    BUY  when RSI < rsi_oversold AND price > EMA200 (uptrend dip).
+    BUY  when RSI < rsi_oversold AND price > EMA200 * (1 + ema_gap).
     SELL when RSI > rsi_overbought (recovery complete).
     """
     if len(df) < ema_trend + 2:
@@ -50,10 +51,16 @@ def compute_signal(
     rsi = float(_rsi(close, rsi_period).iloc[-1])
     ema_t = float(_ema(close, ema_trend).iloc[-1])
     price = float(close.iloc[-1])
+    ema_threshold = ema_t * (1 + ema_gap)
 
     if rsi < rsi_oversold:
-        if price < ema_t:
-            return StrategyResult(Signal.HOLD, f"BUY blocked — price below EMA{ema_trend} (downtrend)", rsi, ema_t)
+        if price < ema_threshold:
+            reason = (
+                f"BUY blocked — price below EMA{ema_trend} (downtrend)"
+                if price < ema_t else
+                f"BUY blocked — price within {ema_gap*100:.0f}% gap of EMA{ema_trend}"
+            )
+            return StrategyResult(Signal.HOLD, reason, rsi, ema_t)
         return StrategyResult(Signal.BUY, f"RSI oversold ({rsi:.1f})", rsi, ema_t)
 
     if rsi > rsi_overbought:

@@ -83,8 +83,10 @@ def run_pair(
     rsi_sell:   int   = None,
     rsi_period: int   = None,
     ema_span:   int   = 200,
-    min_exit:   float = None,
-    ema_filter: bool  = True,
+    min_exit:     float = None,
+    ema_filter:   bool  = True,
+    hard_stop:    float = None,   # e.g. 0.20 = cut loss at -20% from entry
+    ema_gap:      float = 0.0,    # require price > ema * (1 + ema_gap) to buy
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -139,7 +141,16 @@ def run_pair(
                 position = None
                 continue
 
-        if position is None and rsi < rsi_buy and (not ema_filter or price > ema):
+            if hard_stop is not None and lo <= position.entry_price * (1 - hard_stop):
+                ep = position.entry_price * (1 - hard_stop)
+                bf = position.value_eur * fee_rate
+                sf = position.amount * ep * fee_rate
+                balance += position.amount * ep - sf
+                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "hard_stop", position.dca_done))
+                position = None
+                continue
+
+        if position is None and rsi < rsi_buy and (not ema_filter or price > ema * (1 + ema_gap)):
             max_size = balance / (1 + fee_rate)
             size = min(balance * pos_pct, max_size)
             if size >= 1:
@@ -348,6 +359,33 @@ def sweep_rsiperiod(days_list: list[int]):
                 trades, _ = run_pair(pair, df, start, rsi_period=s["rsi_period"])
                 summarise(label, trades, start, wide=True)
         print()
+
+
+def sweep_ema_gap(days_list: list[int]):
+    scenarios = [
+        dict(ema_gap=0.00, label="gap=0%   (current)"),
+        dict(ema_gap=0.01, label="gap=1%   above EMA"),
+        dict(ema_gap=0.02, label="gap=2%   above EMA"),
+        dict(ema_gap=0.03, label="gap=3%   above EMA"),
+        dict(ema_gap=0.05, label="gap=5%   above EMA"),
+        dict(ema_gap=0.07, label="gap=7%   above EMA"),
+        dict(ema_gap=0.10, label="gap=10%  above EMA"),
+        dict(ema_gap=0.15, label="gap=15%  above EMA"),
+    ]
+    _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
+
+
+def sweep_hardstop(days_list: list[int]):
+    scenarios = [
+        dict(hard_stop=None,  label="no hard stop  (current)"),
+        dict(hard_stop=0.10,  label="hard stop -10%"),
+        dict(hard_stop=0.15,  label="hard stop -15%"),
+        dict(hard_stop=0.20,  label="hard stop -20%"),
+        dict(hard_stop=0.25,  label="hard stop -25%"),
+        dict(hard_stop=0.30,  label="hard stop -30%"),
+        dict(hard_stop=0.40,  label="hard stop -40%"),
+    ]
+    _run_sweep(days_list, "Hard stop loss sweep", scenarios, PAIRS)
 
 
 def sweep_ema(days_list: list[int]):
@@ -587,14 +625,16 @@ if __name__ == "__main__":
         mode      = str_args[1].lower() if len(str_args) > 1 else "all"
         days_list = day_args or [365, 180]
         sweeps = {
-            "exit":    sweep_exit,
-            "floor":   sweep_floor,
-            "trail":   sweep_trail,
-            "buyrsi":  sweep_buyrsi,
-            "dca":     sweep_dca,
-            "ema":     sweep_ema,
-            "minexit": sweep_min_exit,
-            "rsiper":  sweep_rsiperiod,
+            "exit":     sweep_exit,
+            "floor":    sweep_floor,
+            "trail":    sweep_trail,
+            "buyrsi":   sweep_buyrsi,
+            "dca":      sweep_dca,
+            "ema":      sweep_ema,
+            "minexit":  sweep_min_exit,
+            "rsiper":   sweep_rsiperiod,
+            "hardstop": sweep_hardstop,
+            "emagap":   sweep_ema_gap,
         }
         if mode == "all":
             for fn in sweeps.values():

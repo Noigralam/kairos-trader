@@ -106,9 +106,11 @@ def api_signals():
             result = compute_signal(get_df(pair, config.INTERVAL),
                                     rsi_period=config.rsi_period_for(pair),
                                     rsi_oversold=config.RSI_OVERSOLD,
-                                    rsi_overbought=config.rsi_overbought_for(pair))
+                                    rsi_overbought=config.rsi_overbought_for(pair),
+                                    ema_gap=config.EMA_GAP_PCT)
             gap = price - result.ema_trend
-            above_trend = gap >= 0
+            ema_threshold = result.ema_trend * (1 + config.EMA_GAP_PCT)
+            above_trend = price >= ema_threshold
             has_position = pair in state.positions
 
             if result.signal == Signal.BUY and not has_position:
@@ -123,10 +125,17 @@ def api_signals():
                         f"Price is €{abs(gap):,.2f} below EMA200 — holding position, "
                         f"watching for RSI to reach {config.rsi_overbought_for(pair)} for exit."
                     )
+                elif price >= result.ema_trend:
+                    commentary = (
+                        f"Price is above EMA200 but within the {config.EMA_GAP_PCT*100:.0f}% gap filter "
+                        f"(need €{ema_threshold:,.2f}, currently €{price:,.2f}). "
+                        f"Waiting for stronger trend confirmation."
+                    )
                 else:
                     commentary = (
                         f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
-                        f"No buys until price recovers above €{result.ema_trend:,.2f}."
+                        f"No buys until price recovers above €{ema_threshold:,.2f} "
+                        f"(EMA200 €{result.ema_trend:,.2f} + {config.EMA_GAP_PCT*100:.0f}% gap)."
                     )
             elif result.rsi >= config.RSI_OVERSOLD:
                 if has_position:
@@ -148,6 +157,7 @@ def api_signals():
                 "rsi_period": config.rsi_period_for(pair),
                 "rsi_overbought": config.rsi_overbought_for(pair),
                 "ema200": round(result.ema_trend, 2),
+                "ema_threshold": round(ema_threshold, 2),
                 "above_trend": above_trend,
                 "gap": round(gap, 2),
                 "signal": result.signal.value,

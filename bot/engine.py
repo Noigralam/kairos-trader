@@ -96,7 +96,8 @@ def _loop():
             results = {pair: compute_signal(get_df(pair, config.INTERVAL),
                                             rsi_period=config.rsi_period_for(pair),
                                             rsi_oversold=config.RSI_OVERSOLD,
-                                            rsi_overbought=config.rsi_overbought_for(pair))
+                                            rsi_overbought=config.rsi_overbought_for(pair),
+                                            ema_gap=config.EMA_GAP_PCT)
                        for pair in config.TRADING_PAIRS}
 
             # Per-pair detail: log + web buffer only
