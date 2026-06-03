@@ -37,7 +37,11 @@ if __name__ == "__main__":
     from bot.simulator import init as init_state
     from bot.engine import start as start_engine
     from bot.discord_bot import start as start_discord
+    from bot import config as _cfg
     init_state()
     start_engine()
     start_discord()
+    if _cfg.FUTURES_ENABLED:
+        from bot.futures_engine import start as start_futures
+        start_futures()
     run()

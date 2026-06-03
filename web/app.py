@@ -305,6 +305,69 @@ def api_log():
     return jsonify(get_recent_logs())
 
 
+@app.route("/api/futures/status")
+def api_futures_status():
+    if not config.FUTURES_ENABLED:
+        return jsonify({"enabled": False})
+    from bot.futures_simulator import get_state as fget_state
+    from bot.futures_engine import get_last_tick as f_last_tick, is_running as f_running
+    from bot.futures_exchange import get_mark_price
+    state = fget_state()
+    positions_out = {}
+    for sym, pos in state.positions.items():
+        try:
+            mark = get_mark_price(sym)
+        except Exception:
+            mark = pos.entry_price
+        positions_out[sym] = {
+            "side":              pos.side,
+            "entry_price":       round(pos.entry_price, 4),
+            "amount":            pos.amount,
+            "margin":            round(pos.margin, 2),
+            "leverage":          pos.leverage,
+            "mark_price":        round(mark, 4),
+            "unrealized_pnl":    round(pos.unrealized_pnl(mark), 4),
+            "pnl_pct":           round(pos.pnl_pct(mark) * 100, 2),
+            "liquidation_price": round(pos.liquidation_price(), 4),
+            "take_profit_price": round(pos.take_profit_price, 4),
+            "trailing_stop":     round(pos.trailing_stop_level(), 4),
+            "dca_done":          pos.dca_done,
+            "funding_paid":      round(pos.funding_paid, 4),
+        }
+    return jsonify({
+        "enabled":       True,
+        "running":       f_running(),
+        "mode":          config.FUTURES_MODE,
+        "last_tick":     f_last_tick(),
+        "balance":       round(state.balance, 2),
+        "total_trades":  state.total_trades,
+        "total_pnl":     round(state.total_pnl, 4),
+        "total_fees":    round(state.total_fees, 4),
+        "total_funding": round(state.total_funding, 4),
+        "positions":     positions_out,
+    })
+
+
+@app.route("/api/futures/control", methods=["POST"])
+def api_futures_control():
+    if not config.FUTURES_ENABLED:
+        return jsonify({"error": "futures not enabled"}), 400
+    from bot import futures_engine
+    data   = request.get_json(force=True)
+    action = data.get("action")
+    symbol = data.get("symbol", "").upper()
+    if action == "start":
+        futures_engine.start()
+    elif action == "stop":
+        futures_engine.stop()
+    elif action == "manual_open" and symbol:
+        size_pct = float(data.get("size_pct", config.FUTURES_POSITION_SIZE_PCT))
+        futures_engine.manual_open(symbol, size_pct)
+    elif action == "manual_close" and symbol:
+        futures_engine.manual_close(symbol)
+    return jsonify({"running": futures_engine.is_running()})
+
+
 @app.route("/api/control", methods=["POST"])
 def api_control():
     data = request.get_json(force=True)
