@@ -305,6 +305,34 @@ def api_log():
     return jsonify(get_recent_logs())
 
 
+@app.route("/api/futures/balance_history")
+def api_futures_balance_history():
+    if not config.FUTURES_ENABLED:
+        return jsonify([])
+    days = float(request.args.get("days", 30))
+    rows = db.get_balance_history(f"futures_{config.FUTURES_MODE}", max(days, 0))
+    import zoneinfo as _zi, datetime as _dt
+    tz = _zi.ZoneInfo("Europe/Helsinki")
+    out = []
+    for ts, bal in rows:
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+        except Exception:
+            t = ts
+        out.append({"t": t, "balance": bal})
+    return jsonify(out)
+
+
+@app.route("/api/futures/trades")
+def api_futures_trades():
+    if not config.FUTURES_ENABLED:
+        return jsonify([])
+    cols = ["id", "timestamp", "pair", "side", "price", "amount",
+            "value_eur", "fee", "mode", "pnl", "notes"]
+    rows = db.get_trades(50, mode=f"futures_{config.FUTURES_MODE}")
+    return jsonify([dict(zip(cols, row)) for row in rows])
+
+
 @app.route("/api/futures/stats")
 def api_futures_stats():
     if not config.FUTURES_ENABLED:
@@ -317,7 +345,7 @@ def api_futures_status():
     if not config.FUTURES_ENABLED:
         return jsonify({"enabled": False})
     from bot.futures_simulator import get_state as fget_state
-    from bot.futures_engine import get_last_tick as f_last_tick, is_running as f_running
+    from bot.futures_engine import get_last_tick as f_last_tick, is_running as f_running, is_paused as f_paused
     from bot.futures_exchange import get_mark_price
     state = fget_state()
     positions_out = {}
@@ -344,6 +372,7 @@ def api_futures_status():
     return jsonify({
         "enabled":       True,
         "running":       f_running(),
+        "paused":        f_paused(),
         "mode":          config.FUTURES_MODE,
         "last_tick":     f_last_tick(),
         "balance":       round(state.balance, 2),
@@ -365,6 +394,10 @@ def api_futures_control():
     symbol = data.get("symbol", "").upper()
     if action == "start":
         futures_engine.start()
+    elif action == "pause":
+        futures_engine.pause()
+    elif action == "resume":
+        futures_engine.resume()
     elif action == "stop":
         futures_engine.stop()
     elif action == "manual_open" and symbol:
@@ -372,7 +405,7 @@ def api_futures_control():
         futures_engine.manual_open(symbol, size_pct)
     elif action == "manual_close" and symbol:
         futures_engine.manual_close(symbol)
-    return jsonify({"running": futures_engine.is_running()})
+    return jsonify({"running": futures_engine.is_running(), "paused": futures_engine.is_paused()})
 
 
 @app.route("/api/control", methods=["POST"])

@@ -12,6 +12,7 @@ from .futures_simulator import (
     check_stops, apply_funding,
 )
 from .notifier import notify
+from . import db as _db
 
 log = logging.getLogger("cryptobot")
 
@@ -23,6 +24,7 @@ INTERVAL_SECONDS = {
 _FUTURES_INTERVAL = "15m"
 
 _running  = False
+_paused   = False
 _thread: threading.Thread = None
 _lock     = threading.Lock()
 _last_tick: str = None
@@ -81,6 +83,9 @@ def _loop():
     time.sleep(wait)
 
     while _running:
+        if _paused:
+            time.sleep(5)
+            continue
         try:
             _last_tick = datetime.datetime.now(
                 tz=zoneinfo.ZoneInfo("Europe/Helsinki")
@@ -155,6 +160,11 @@ def _loop():
                 # futures means overbought, but we let the trailing stop lock in
                 # profit rather than exiting at the first overbought RSI tick.
 
+            # Snapshot portfolio value (cash + open position unrealised PnL)
+            snap = get_state()
+            open_pnl = sum(p.unrealized_pnl(prices[s]) for s, p in snap.positions.items() if s in prices)
+            _db.log_balance(round(snap.balance + open_pnl, 2), f"futures_{config.FUTURES_MODE}")
+
         except Exception as e:
             log.error(f"[FUTURES LOOP] {e}", exc_info=True)
             notify(f"[FUTURES ERROR] {e}", discord=False)
@@ -173,14 +183,33 @@ def start():
 
 
 def stop():
-    global _running
+    global _running, _paused
     with _lock:
         _running = False
+        _paused  = False
     notify("[FUTURES] Engine stopped.", discord=False)
+
+
+def pause():
+    global _paused
+    with _lock:
+        _paused = True
+    notify("[FUTURES] Engine paused.", discord=False)
+
+
+def resume():
+    global _paused
+    with _lock:
+        _paused = False
+    notify("[FUTURES] Engine resumed.", discord=False)
 
 
 def is_running() -> bool:
     return _running
+
+
+def is_paused() -> bool:
+    return _paused
 
 
 def manual_open(symbol: str, size_pct: float = None):

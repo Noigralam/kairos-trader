@@ -420,8 +420,9 @@
 
     <div class="controls">
       <button class="primary" onclick="futuresControl('start')">▶ Start</button>
+      <button class="warning" onclick="futuresControl('pause')">⏸ Pause</button>
+      <button onclick="futuresControl('resume')">↺ Resume</button>
       <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
-      <span style="color:var(--muted);font-size:12px;margin-left:4px">Last tick: <span id="f-last-tick">—</span></span>
     </div>
 
     <section>
@@ -433,6 +434,43 @@
         <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="f-stat-worst">—</div></div>
         <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="f-stat-hold">—</div></div>
       </div>
+    </section>
+
+    <section>
+      <h2>Recent Trades</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time (Helsinki)</th>
+              <th>Pair</th>
+              <th>Side</th>
+              <th>Price</th>
+              <th>Amount</th>
+              <th>Notional</th>
+              <th>PnL</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="f-trades-body">
+            <tr><td colspan="8" class="empty">No futures trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <div class="chart-controls">
+        <h2>Portfolio Value</h2>
+        <div class="btn-group" id="f-balance-span-btns">
+          <button onclick="setFBalanceDays(0.167)" data-days="0.167">4h</button>
+          <button onclick="setFBalanceDays(1)"     data-days="1">1d</button>
+          <button onclick="setFBalanceDays(7)"     data-days="7">7d</button>
+          <button onclick="setFBalanceDays(30)"    data-days="30" class="active">30d</button>
+          <button onclick="setFBalanceDays(0)"     data-days="0">All</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:160px"><canvas id="f-balance-chart"></canvas></div>
     </section>
 
     <section>
@@ -1194,6 +1232,82 @@
     return `<span class="${cls}">${n >= 0 ? '+' : ''}${fmtUsdt(Math.abs(n))}</span>`;
   }
 
+  let _fBalanceChart = null;
+  let _fBalanceDays  = 30;
+
+  function setFBalanceDays(days) {
+    _fBalanceDays = days;
+    document.querySelectorAll('#f-balance-span-btns button').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.days) === days));
+    loadFuturesBalanceChart();
+  }
+
+  async function loadFuturesBalanceChart() {
+    try {
+      const qs   = _fBalanceDays > 0 ? `?days=${_fBalanceDays}` : '';
+      const rows = await fetch(`/api/futures/balance_history${qs}`).then(r => r.json());
+      if (!rows.length) return;
+      const labels = rows.map(r => r.t);
+      const values = rows.map(r => r.balance);
+      if (_fBalanceChart) {
+        _fBalanceChart.data.labels           = labels;
+        _fBalanceChart.data.datasets[0].data = values;
+        _fBalanceChart.update('none');
+      } else {
+        const ctx = document.getElementById('f-balance-chart').getContext('2d');
+        _fBalanceChart = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets: [{
+            label: 'Futures portfolio value',
+            data: values,
+            borderColor: '#bc8cff',
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.1,
+            fill: true,
+            backgroundColor: '#bc8cff18',
+          }]},
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { display: false },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => ` ${fmtUsdt(c.raw)}` }
+              },
+            },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y,
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' $' }
+              },
+            },
+          },
+        });
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function loadFuturesTrades() {
+    try {
+      const trades = await fetch('/api/futures/trades').then(r => r.json());
+      const tb = document.getElementById('f-trades-body');
+      if (!trades.length) {
+        tb.innerHTML = '<tr><td colspan="8" class="empty">No futures trades yet</td></tr>';
+        return;
+      }
+      tb.innerHTML = trades.map(t => `<tr>
+        <td>${t.timestamp.slice(0, 19).replace('T', ' ')}</td>
+        <td>${t.pair}</td>
+        <td class="${t.side.toLowerCase()}">${t.side}</td>
+        <td>${fmtUsdt(t.price, 4)}</td>
+        <td>${Number(t.amount).toFixed(4)}</td>
+        <td>${fmtUsdt(t.value_eur)}</td>
+        <td>${t.pnl != null ? fmtPnlUsdt(t.pnl) : '—'}</td>
+        <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+      </tr>`).join('');
+    } catch(e) { console.error(e); }
+  }
+
   async function loadFuturesStats() {
     try {
       const s = await fetch('/api/futures/stats').then(r => r.json());
@@ -1233,13 +1347,17 @@
 
       // Update status dot colour
       const dot = document.getElementById('futures-tab-dot');
-      if (dot) dot.style.background = d.running ? 'var(--green)' : 'var(--muted)';
+      if (dot) dot.style.background = d.running && !d.paused ? 'var(--green)' : d.paused ? 'var(--yellow)' : 'var(--muted)';
 
-      // Update header badges when on futures tab
-      const badge = document.getElementById('futures-status-badge');
-      if (badge) {
-        badge.textContent = d.running ? 'running' : 'stopped';
-        badge.className   = 'badge ' + (d.running ? 'running' : 'stopped');
+      const fStatus = !d.running ? 'stopped' : d.paused ? 'paused' : 'running';
+
+      // If on futures tab, sync header badges
+      if (_activeTab === 'futures') {
+        document.getElementById('status-badge').textContent = fStatus;
+        document.getElementById('status-badge').className   = 'badge ' + fStatus;
+        document.getElementById('mode-badge').textContent   = d.mode || '—';
+        document.getElementById('mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+        document.getElementById('mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
       }
 
       // Summary stats
@@ -1251,15 +1369,8 @@
       document.getElementById('f-last-tick').textContent = d.last_tick || '—';
 
       loadFuturesStats();
-
-      // If on futures tab, sync header badges
-      if (_activeTab === 'futures') {
-        document.getElementById('status-badge').textContent = d.running ? 'running' : 'stopped';
-        document.getElementById('status-badge').className   = 'badge ' + (d.running ? 'running' : 'stopped');
-        document.getElementById('mode-badge').textContent   = d.mode || '—';
-        document.getElementById('mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-        document.getElementById('mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
-      }
+      loadFuturesTrades();
+      loadFuturesBalanceChart();
 
       // Position cards
       const grid  = document.getElementById('futures-pos-grid');
