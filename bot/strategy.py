@@ -38,6 +38,7 @@ def compute_signal(
     rsi_overbought: int = 65,
     ema_trend: int = 200,
     ema_gap: float = 0.0,
+    daily_ema: float = None,  # daily EMA200 value; None = disabled
 ) -> StrategyResult:
     """
     RSI mean-reversion with EMA200 trend guard.
@@ -61,6 +62,10 @@ def compute_signal(
                 f"BUY blocked — price within {ema_gap*100:.0f}% gap of EMA{ema_trend}"
             )
             return StrategyResult(Signal.HOLD, reason, rsi, ema_t)
+        if daily_ema is not None and price < daily_ema:
+            return StrategyResult(Signal.HOLD,
+                                  f"BUY blocked — price below daily EMA200 ({daily_ema:,.2f}) — sustained downtrend",
+                                  rsi, ema_t)
         return StrategyResult(Signal.BUY, f"RSI oversold ({rsi:.1f})", rsi, ema_t)
 
     if rsi > rsi_overbought:

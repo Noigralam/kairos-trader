@@ -17,6 +17,7 @@ Days can be one or multiple values: python backtest.py sweep exit 365 180 90
 import sys
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
@@ -43,6 +44,30 @@ def fetch(pair: str, days: int) -> pd.DataFrame:
     print(f"  Syncing {pair}/{INTERVAL} {days}d…", flush=True)
     initial_sync(pair, INTERVAL, days=days)
     return get_df(pair, INTERVAL, limit=needed)
+
+
+def fetch_daily_ema(pair: str, days: int, ema_span: int = 200) -> pd.Series:
+    """Daily EMA series indexed by open_time (UTC ms). Syncs 1d candles if needed."""
+    needed = days + ema_span + 10
+    df = get_df(pair, "1d", limit=needed)
+    if len(df) < needed * 0.8:
+        print(f"  Syncing {pair}/1d…", flush=True)
+        initial_sync(pair, "1d", days=needed)
+        df = get_df(pair, "1d", limit=needed)
+    ema = df["close"].ewm(span=ema_span, adjust=False).mean()
+    return df[["open_time"]].assign(daily_ema=ema.values).set_index("open_time")["daily_ema"]
+
+
+def align_daily_ema(df_15m: pd.DataFrame, daily_ema: pd.Series) -> np.ndarray:
+    """For each 15m candle return the most recent daily EMA value (forward-filled)."""
+    daily_df = daily_ema.reset_index()
+    daily_df.columns = ["open_time", "daily_ema"]
+    merged = pd.merge_asof(
+        df_15m[["open_time"]].sort_values("open_time"),
+        daily_df.sort_values("open_time"),
+        on="open_time",
+    )
+    return merged["daily_ema"].values
 
 
 def precompute(df: pd.DataFrame, rsi_period: int, ema_span: int = 200):
@@ -89,10 +114,11 @@ def run_pair(
     ema_gap:         float = 0.0,   # require price > ema * (1 + ema_gap) to buy
     time_stop_days:  float = 0,     # close if no profit floor reached within N days (0 = off)
     max_drawdown:    float = 0,     # pause buys if portfolio drops >X% from peak (0 = off)
-    strong_gap:      float = None,  # price > ema*(1+strong_gap) → use pos_pct; below → use weak_pct
-    weak_pct:        float = None,  # reduced size for borderline entries (between ema_gap and strong_gap)
-    max_dca:         int   = 1,     # max number of DCA tranches (1 = current behaviour)
-    dca_step:        float = None,  # additional drop % per DCA level; defaults to dca_drop
+    strong_gap:      float = None,       # price > ema*(1+strong_gap) → use pos_pct; below → use weak_pct
+    weak_pct:        float = None,       # reduced size for borderline entries (between ema_gap and strong_gap)
+    max_dca:         int   = 1,          # max number of DCA tranches (1 = current behaviour)
+    dca_step:        float = None,       # additional drop % per DCA level; defaults to dca_drop
+    daily_ema_arr:   np.ndarray = None,  # daily EMA200 aligned to df index; None = disabled
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -176,7 +202,10 @@ def run_pair(
         pos_val = position.amount * price if position is not None else 0.0
         portfolio_peak = max(portfolio_peak, balance + pos_val)
 
-        if position is None and rsi < rsi_buy and (not ema_filter or price > ema * (1 + ema_gap)):
+        daily_ema_val = float(daily_ema_arr[i]) if daily_ema_arr is not None else None
+
+        if position is None and rsi < rsi_buy and (not ema_filter or price > ema * (1 + ema_gap)) \
+                and (daily_ema_val is None or np.isnan(daily_ema_val) or price > daily_ema_val):
             if max_drawdown > 0 and portfolio_peak > 0:
                 drawdown = (portfolio_peak - balance) / portfolio_peak
                 if drawdown > max_drawdown:
@@ -435,6 +464,30 @@ def sweep_ema_gap(days_list: list[int]):
         dict(ema_gap=0.15, label="gap=15%  above EMA"),
     ]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
+
+
+def sweep_daily_ema(days_list: list[int]):
+    start = config.SIMULATION_BALANCE
+    ema_spans = [50, 100, 200]
+    for days in days_list:
+        _header(days, "Daily EMA filter sweep (secondary trend guard on 1d candles)", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in PAIRS:
+            df = fetch(pair, days)
+            print(f"\n  ── {pair} ──")
+            # baseline — no daily filter
+            trades, _ = run_pair(pair, df, start, ema_gap=config.EMA_GAP_PCT)
+            summarise("no daily filter  (current)", trades, start, wide=True)
+            for span in ema_spans:
+                daily_ema = fetch_daily_ema(pair, days, ema_span=span)
+                arr = align_daily_ema(df, daily_ema)
+                label = f"+ daily EMA{span} filter"
+                trades, _ = run_pair(pair, df, start, ema_gap=config.EMA_GAP_PCT,
+                                     daily_ema_arr=arr)
+                summarise(label, trades, start, wide=True)
+        print()
 
 
 def sweep_multidca(days_list: list[int]):
@@ -748,6 +801,7 @@ if __name__ == "__main__":
             "maxdrawdown": sweep_maxdrawdown,
             "tieredsize":  sweep_tieredsize,
             "multidca":    sweep_multidca,
+            "dailyema":    sweep_daily_ema,
         }
         if mode == "all":
             for fn in sweeps.values():

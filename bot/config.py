@@ -26,6 +26,7 @@ RSI_PERIOD          = int(os.getenv("RSI_PERIOD", "14"))
 RSI_OVERSOLD        = int(os.getenv("RSI_OVERSOLD", "30"))
 RSI_OVERBOUGHT      = int(os.getenv("RSI_OVERBOUGHT", "65"))
 EMA_GAP_PCT         = float(os.getenv("EMA_GAP_PCT", "0.02"))
+DAILY_EMA_FILTER    = os.getenv("DAILY_EMA_FILTER", "false").lower() == "true"
 TIME_STOP_DAYS      = float(os.getenv("TIME_STOP_DAYS", "0"))    # 0 = disabled
 MAX_DRAWDOWN_PCT    = float(os.getenv("MAX_DRAWDOWN_PCT", "0"))  # 0 = disabled
 

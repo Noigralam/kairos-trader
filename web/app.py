@@ -103,11 +103,22 @@ def api_signals():
     for pair in config.TRADING_PAIRS:
         try:
             price = get_price(pair)
+            def _daily_ema_val(pair: str):
+                if not config.DAILY_EMA_FILTER:
+                    return None
+                from bot.candles import get_df as _gdf
+                df1d = _gdf(pair, "1d", limit=210)
+                if len(df1d) < 201:
+                    return None
+                return float(df1d["close"].ewm(span=200, adjust=False).mean().iloc[-1])
+
+            daily_ema_val = _daily_ema_val(pair)
             result = compute_signal(get_df(pair, config.INTERVAL),
                                     rsi_period=config.rsi_period_for(pair),
                                     rsi_oversold=config.RSI_OVERSOLD,
                                     rsi_overbought=config.rsi_overbought_for(pair),
-                                    ema_gap=config.EMA_GAP_PCT)
+                                    ema_gap=config.EMA_GAP_PCT,
+                                    daily_ema=daily_ema_val)
             gap = price - result.ema_trend
             ema_threshold = result.ema_trend * (1 + config.EMA_GAP_PCT)
             above_trend = price >= ema_threshold
@@ -158,6 +169,7 @@ def api_signals():
                 "rsi_overbought": config.rsi_overbought_for(pair),
                 "ema200": round(result.ema_trend, 2),
                 "ema_threshold": round(ema_threshold, 2),
+                "daily_ema200": round(daily_ema_val, 2) if daily_ema_val else None,
                 "above_trend": above_trend,
                 "gap": round(gap, 2),
                 "signal": result.signal.value,

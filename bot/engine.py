@@ -85,6 +85,8 @@ def _loop():
             _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
             for pair in config.TRADING_PAIRS:
                 sync_candles(pair, config.INTERVAL)
+                if config.DAILY_EMA_FILTER:
+                    sync_candles(pair, "1d")
 
             prices = {pair: get_price(pair) for pair in config.TRADING_PAIRS}
             notify(
@@ -92,12 +94,21 @@ def _loop():
                 discord=False,
             )
 
+            def _daily_ema(pair: str) -> float | None:
+                if not config.DAILY_EMA_FILTER:
+                    return None
+                df1d = get_df(pair, "1d", limit=210)
+                if len(df1d) < 201:
+                    return None
+                return float(df1d["close"].ewm(span=200, adjust=False).mean().iloc[-1])
+
             state = get_state()
             results = {pair: compute_signal(get_df(pair, config.INTERVAL),
                                             rsi_period=config.rsi_period_for(pair),
                                             rsi_oversold=config.RSI_OVERSOLD,
                                             rsi_overbought=config.rsi_overbought_for(pair),
-                                            ema_gap=config.EMA_GAP_PCT)
+                                            ema_gap=config.EMA_GAP_PCT,
+                                            daily_ema=_daily_ema(pair))
                        for pair in config.TRADING_PAIRS}
 
             # Per-pair detail: log + web buffer only
