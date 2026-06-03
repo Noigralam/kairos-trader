@@ -167,6 +167,58 @@
     .above-trend { color: var(--green); }
     .below-trend { color: var(--red); }
 
+    /* ── futures section ────────────────────────────────────────────────── */
+    .futures-section { margin-bottom: 28px; }
+    .futures-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+    }
+    .futures-header h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin: 0; }
+    .futures-header-badges { display: flex; gap: 8px; align-items: center; }
+    .futures-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .futures-stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px;
+    }
+    .futures-pos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+    .futures-pos-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px;
+    }
+    .futures-pos-card .fp-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+    }
+    .futures-pos-card .fp-symbol { font-size: 17px; font-weight: 600; }
+    .futures-pos-card .fp-badges { display: flex; gap: 6px; align-items: center; }
+    .lev-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+      background: #1a2a3a; color: #58a6ff; letter-spacing: .4px;
+    }
+    .side-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;
+      background: #1a3a1f; color: var(--green); letter-spacing: .4px;
+    }
+    .futures-pos-card .fp-pnl {
+      text-align: center; padding: 10px 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 12px;
+    }
+    .futures-pos-card .fp-pnl .pnl-usd { font-size: 20px; font-weight: 700; }
+    .futures-pos-card .fp-pnl .pnl-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .futures-pos-card .fp-row {
+      display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;
+    }
+    .futures-pos-card .fp-row .fp-label { color: var(--muted); }
+    .futures-pos-card .fp-row .fp-val   { font-weight: 500; }
+    .liq-bar-wrap {
+      position: relative; height: 4px; border-radius: 2px; margin: 8px 0 12px;
+      background: linear-gradient(to right, #f85149, #d29922, #3fb950);
+    }
+    .liq-bar-pin {
+      position: absolute; top: -4px; width: 2px; height: 12px;
+      background: #fff; border-radius: 1px;
+    }
+    .liq-bar-pin-label {
+      position: absolute; top: 10px; font-size: 10px; color: var(--muted);
+      white-space: nowrap; transform: translateX(-50%);
+    }
+
     .chart-section { margin-bottom: 28px; }
     .chart-controls {
       display: flex; align-items: center; justify-content: space-between;
@@ -291,6 +343,30 @@
     </div>
   </section>
 
+  <section class="futures-section" id="futures-section" style="display:none">
+    <div class="futures-header">
+      <h2>Futures Engine</h2>
+      <div class="futures-header-badges">
+        <span id="futures-mode-badge" class="badge" style="background:#1c2128;color:var(--muted);">—</span>
+        <span id="futures-status-badge" class="badge stopped">stopped</span>
+      </div>
+    </div>
+    <div class="futures-stats">
+      <div class="stat-card"><div class="label">Futures Balance</div><div class="value" id="f-balance">—</div></div>
+      <div class="stat-card"><div class="label">Realised PnL</div><div class="value" id="f-pnl">—</div></div>
+      <div class="stat-card"><div class="label">Trades</div><div class="value" id="f-trades">—</div></div>
+      <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
+    </div>
+    <div class="futures-controls" style="margin-bottom:16px">
+      <button class="primary" onclick="futuresControl('start')">▶ Start</button>
+      <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
+      <span style="color:var(--muted);font-size:12px;margin-left:4px">Last tick: <span id="f-last-tick">—</span></span>
+    </div>
+    <div class="futures-pos-grid" id="futures-pos-grid">
+      <div style="color:var(--muted);font-size:13px;padding:4px">No open futures positions</div>
+    </div>
+  </section>
+
   <section>
     <h2>Market Conditions</h2>
     <div class="signals-grid" id="signals-grid">
@@ -378,11 +454,11 @@
   }
 
   function logEntryClass(msg) {
-    if (msg.includes('[BUY]'))       return 'buy';
-    if (msg.includes('[SELL]') || msg.includes('[STOP-LOSS]')) return 'sell';
-    if (msg.includes('[ERROR]'))     return 'error';
-    if (msg.includes('[BOT]'))       return 'status';
-    if (msg.includes('[TICK]') || msg.includes('[OVERRIDE]')) return 'tick';
+    if (msg.includes('[BUY]') || msg.includes('[FUTURES BUY]') || msg.includes('[FUTURES DCA]')) return 'buy';
+    if (msg.includes('[SELL]') || msg.includes('[STOP-LOSS]') || msg.includes('[FUTURES SELL]') || msg.includes('[FUTURES LIQUIDATION]')) return 'sell';
+    if (msg.includes('[ERROR]') || msg.includes('[FUTURES ERROR]')) return 'error';
+    if (msg.includes('[BOT]') || msg.includes('[FUTURES]'))  return 'status';
+    if (msg.includes('[TICK]') || msg.includes('[OVERRIDE]') || msg.includes('[FUTURES TICK]')) return 'tick';
     return 'tick';
   }
 
@@ -1068,6 +1144,138 @@ if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c
   }
   let _lastKnownTick = null;
   loadBalanceChart();
+
+  // ── futures ───────────────────────────────────────────────────────────────
+  function fmtUsdt(n, decimals=2) {
+    if (n === null || n === undefined) return '—';
+    return Number(n).toLocaleString('fi-FI', {minimumFractionDigits: decimals, maximumFractionDigits: decimals}) + ' $';
+  }
+  function fmtPnlUsdt(n) {
+    if (n === null || n === undefined) return '—';
+    const cls = n >= 0 ? 'pos' : 'neg';
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}${fmtUsdt(Math.abs(n))}</span>`;
+  }
+
+  async function futuresControl(action, symbol) {
+    const body = { action };
+    if (symbol) body.symbol = symbol;
+    await fetch('/api/futures/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await refreshFutures();
+  }
+
+  async function refreshFutures() {
+    try {
+      const res = await fetch('/api/futures/status');
+      const d   = await res.json();
+      if (!d.enabled) return;
+
+      document.getElementById('futures-section').style.display = '';
+
+      // Header badges
+      const sb = document.getElementById('futures-status-badge');
+      sb.textContent = d.running ? 'running' : 'stopped';
+      sb.className   = 'badge ' + (d.running ? 'running' : 'stopped');
+      const mb = document.getElementById('futures-mode-badge');
+      mb.textContent = d.mode || '—';
+      mb.style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+      mb.style.color = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
+
+      // Summary stats
+      document.getElementById('f-balance').textContent = fmtUsdt(d.balance);
+      document.getElementById('f-pnl').innerHTML       = fmtPnlUsdt(d.total_pnl);
+      document.getElementById('f-trades').textContent  = d.total_trades;
+      const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
+      document.getElementById('f-fees').innerHTML = fmtPnlUsdt(-feesAndFunding);
+      document.getElementById('f-last-tick').textContent = d.last_tick || '—';
+
+      // Position cards
+      const grid  = document.getElementById('futures-pos-grid');
+      const pairs = Object.entries(d.positions || {});
+      if (pairs.length === 0) {
+        grid.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:4px">No open futures positions</div>';
+        return;
+      }
+
+      grid.innerHTML = pairs.map(([sym, p]) => {
+        const pnlCls    = p.unrealized_pnl >= 0 ? 'pos' : 'neg';
+        const pnlSign   = p.unrealized_pnl >= 0 ? '+' : '';
+        const pctSign   = p.pnl_pct >= 0 ? '+' : '';
+
+        // Liquidation proximity bar
+        // Range: liq_price → entry_price * 1.1 (rough safe zone)
+        const rangeMin  = p.liquidation_price;
+        const rangeMax  = p.entry_price * (1 + 1 / p.leverage);  // ~safe zone upper
+        const range     = rangeMax - rangeMin;
+        const markPct   = range > 0 ? Math.min(100, Math.max(0, (p.mark_price - rangeMin) / range * 100)).toFixed(1) : 50;
+        const entryPct  = range > 0 ? Math.min(100, Math.max(0, (p.entry_price - rangeMin) / range * 100)).toFixed(1) : 50;
+        const trailPct  = range > 0 ? Math.min(100, Math.max(0, (p.trailing_stop - rangeMin) / range * 100)).toFixed(1) : 50;
+
+        const liqDist   = ((p.mark_price - p.liquidation_price) / p.mark_price * 100).toFixed(1);
+        const liqColor  = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
+
+        const dcaStr = p.dca_done
+          ? '<span style="color:var(--muted)">used</span>'
+          : `$${Number(p.entry_price * (1 - 0.01)).toLocaleString('fi-FI', {minimumFractionDigits: 4})}`;
+
+        return `<div class="futures-pos-card">
+          <div class="fp-header">
+            <span class="fp-symbol">${sym}</span>
+            <div class="fp-badges">
+              <span class="side-badge">${p.side}</span>
+              <span class="lev-badge">${p.leverage}x</span>
+            </div>
+          </div>
+
+          <div class="fp-pnl">
+            <div class="pnl-usd ${pnlCls}">${pnlSign}${fmtUsdt(Math.abs(p.unrealized_pnl))}
+              <span style="font-size:14px;font-weight:400;margin-left:6px">${pctSign}${p.pnl_pct}%</span>
+            </div>
+            <div class="pnl-sub">Mark: ${fmtUsdt(p.mark_price, 4)} · Entry: ${fmtUsdt(p.entry_price, 4)}</div>
+          </div>
+
+          <div style="margin-bottom:6px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+              <span style="color:${liqColor}">Liq ${fmtUsdt(p.liquidation_price, 4)} (${liqDist}% away)</span>
+              <span>Trail ${fmtUsdt(p.trailing_stop, 4)}</span>
+            </div>
+            <div class="liq-bar-wrap">
+              <div class="liq-bar-pin" style="left:${entryPct}%" title="Entry"></div>
+              <div class="liq-bar-pin" style="left:${trailPct}%;background:var(--red)" title="Trail stop"></div>
+              <div class="liq-bar-pin" style="left:${markPct}%;background:#fff;width:3px;height:14px;top:-5px" title="Mark price"></div>
+            </div>
+          </div>
+
+          <div class="fp-row">
+            <span class="fp-label">Margin</span>
+            <span class="fp-val">${fmtUsdt(p.margin)}</span>
+          </div>
+          <div class="fp-row">
+            <span class="fp-label">Take profit</span>
+            <span class="fp-val" style="color:var(--muted);opacity:0.6">${fmtUsdt(p.take_profit_price, 4)}</span>
+          </div>
+          <div class="fp-row">
+            <span class="fp-label">DCA trigger</span>
+            <span class="fp-val">${dcaStr}</span>
+          </div>
+          <div class="fp-row">
+            <span class="fp-label">Funding paid</span>
+            <span class="fp-val ${p.funding_paid >= 0 ? 'neg' : 'pos'}">${p.funding_paid !== 0 ? (p.funding_paid > 0 ? '-' : '+') + fmtUsdt(Math.abs(p.funding_paid), 4) : '—'}</span>
+          </div>
+          <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:12px;color:var(--muted)">${Number(p.amount).toFixed(4)} units</span>
+            <button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button>
+          </div>
+        </div>`;
+      }).join('');
+    } catch(e) { console.error('[futures]', e); }
+  }
+
+  refreshFutures();
+  setInterval(refreshFutures, 30000);
 </script>
 </body>
 </html>
