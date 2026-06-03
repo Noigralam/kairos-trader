@@ -32,8 +32,14 @@ MAX_DRAWDOWN_PCT    = float(os.getenv("MAX_DRAWDOWN_PCT", "0"))  # 0 = disabled
 def rsi_period_for(pair: str) -> int:
     return int(os.getenv(f"RSI_PERIOD_{pair}", RSI_PERIOD))
 
+def rsi_oversold_for(pair: str) -> int:
+    return int(os.getenv(f"RSI_OVERSOLD_{pair}", RSI_OVERSOLD))
+
 def rsi_overbought_for(pair: str) -> int:
     return int(os.getenv(f"RSI_OVERBOUGHT_{pair}", RSI_OVERBOUGHT))
+
+def ema_gap_for(pair: str) -> float:
+    return float(os.getenv(f"EMA_GAP_PCT_{pair}", EMA_GAP_PCT))
 
 def min_exit_for(pair: str) -> float:
     return float(os.getenv(f"MIN_EXIT_PROFIT_PCT_{pair}", MIN_EXIT_PROFIT_PCT))

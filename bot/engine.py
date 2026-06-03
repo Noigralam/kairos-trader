@@ -105,9 +105,9 @@ def _loop():
             state = get_state()
             results = {pair: compute_signal(get_df(pair, config.INTERVAL),
                                             rsi_period=config.rsi_period_for(pair),
-                                            rsi_oversold=config.RSI_OVERSOLD,
+                                            rsi_oversold=config.rsi_oversold_for(pair),
                                             rsi_overbought=config.rsi_overbought_for(pair),
-                                            ema_gap=config.EMA_GAP_PCT,
+                                            ema_gap=config.ema_gap_for(pair),
                                             daily_ema=_daily_ema(pair))
                        for pair in config.TRADING_PAIRS}
 

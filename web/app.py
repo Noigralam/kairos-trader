@@ -115,12 +115,12 @@ def api_signals():
             daily_ema_val = _daily_ema_val(pair)
             result = compute_signal(get_df(pair, config.INTERVAL),
                                     rsi_period=config.rsi_period_for(pair),
-                                    rsi_oversold=config.RSI_OVERSOLD,
+                                    rsi_oversold=config.rsi_oversold_for(pair),
                                     rsi_overbought=config.rsi_overbought_for(pair),
-                                    ema_gap=config.EMA_GAP_PCT,
+                                    ema_gap=config.ema_gap_for(pair),
                                     daily_ema=daily_ema_val)
             gap = price - result.ema_trend
-            ema_threshold = result.ema_trend * (1 + config.EMA_GAP_PCT)
+            ema_threshold = result.ema_trend * (1 + config.ema_gap_for(pair))
             above_trend = price >= ema_threshold
             has_position = pair in state.positions
 
@@ -138,7 +138,7 @@ def api_signals():
                     )
                 elif price >= result.ema_trend:
                     commentary = (
-                        f"Price is above EMA200 but within the {config.EMA_GAP_PCT*100:.0f}% gap filter "
+                        f"Price is above EMA200 but within the {config.ema_gap_for(pair)*100:.0f}% gap filter "
                         f"(need €{ema_threshold:,.2f}, currently €{price:,.2f}). "
                         f"Waiting for stronger trend confirmation."
                     )
@@ -146,9 +146,9 @@ def api_signals():
                     commentary = (
                         f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
                         f"No buys until price recovers above €{ema_threshold:,.2f} "
-                        f"(EMA200 €{result.ema_trend:,.2f} + {config.EMA_GAP_PCT*100:.0f}% gap)."
+                        f"(EMA200 €{result.ema_trend:,.2f} + {config.ema_gap_for(pair)*100:.0f}% gap)."
                     )
-            elif result.rsi >= config.RSI_OVERSOLD:
+            elif result.rsi >= config.rsi_oversold_for(pair):
                 if has_position:
                     commentary = (
                         f"Holding — RSI is {result.rsi:.1f}, watching for recovery above "
@@ -157,7 +157,7 @@ def api_signals():
                 else:
                     commentary = (
                         f"Trend is healthy (price above EMA200 by €{gap:,.2f}), "
-                        f"but RSI is {result.rsi:.1f} — waiting for a dip below {config.RSI_OVERSOLD}."
+                        f"but RSI is {result.rsi:.1f} — waiting for a dip below {config.rsi_oversold_for(pair)}."
                     )
             else:
                 commentary = result.reason
@@ -223,9 +223,9 @@ def api_chart(pair):
         r   = rsi.iloc[i]
         e   = ema.iloc[i]
         p   = close.iloc[i]
-        if r < config.RSI_OVERSOLD and p > e:
+        if r < config.rsi_oversold_for(pair.upper()) and p > e:
             buy_prices[i] = round(p, 4)
-        elif r < config.RSI_OVERSOLD and p <= e:
+        elif r < config.rsi_oversold_for(pair.upper()) and p <= e:
             blocked_buys[i] = round(p, 4)
         elif r > config.rsi_overbought_for(pair.upper()):
             sell_prices[i] = round(p, 4)
