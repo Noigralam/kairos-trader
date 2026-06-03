@@ -517,6 +517,8 @@
 
   // ── tab switching ─────────────────────────────────────────────────────────
   let _activeTab = 'spot';
+  let _spotLastStatus = null;
+
   function switchTab(name) {
     _activeTab = name;
     document.getElementById('tab-spot').style.display    = name === 'spot'    ? '' : 'none';
@@ -525,29 +527,37 @@
       b.classList.toggle('active', b.dataset.tab === name));
 
     const onFutures = name === 'futures';
-    // spot-only header rows
-    document.getElementById('last-tick').style.display  = onFutures ? 'none' : '';
-    document.getElementById('uptime').style.display     = onFutures ? 'none' : '';
-    document.getElementById('live-since').style.display = onFutures ? 'none' : '';
-    // futures-only header rows
-    document.getElementById('f-header-tick').style.display    = onFutures ? '' : 'none';
-    document.getElementById('f-header-stopchk').style.display = onFutures ? '' : 'none';
-    // next-tick countdown stays (same 15m boundary for both)
+    document.getElementById('last-tick').style.display         = onFutures ? 'none' : '';
+    document.getElementById('uptime').style.display            = onFutures ? 'none' : '';
+    document.getElementById('live-since').style.display        = onFutures ? 'none' : '';
+    document.getElementById('f-header-tick').style.display     = onFutures ? '' : 'none';
+    document.getElementById('f-header-stopchk').style.display  = onFutures ? '' : 'none';
 
     if (onFutures) _syncFuturesHeader();
+    else           _syncSpotHeader();
+  }
+
+  function _syncSpotHeader() {
+    if (!_spotLastStatus) return;
+    const s = _spotLastStatus;
+    document.getElementById('status-badge').textContent = s.status;
+    document.getElementById('status-badge').className   = 'badge ' + s.status;
+    document.getElementById('mode-badge').textContent   = s.mode || '—';
+    document.getElementById('mode-badge').style.background = s.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+    document.getElementById('mode-badge').style.color      = s.mode === 'live' ? '#58a6ff' : '#bc8cff';
   }
 
   function _syncFuturesHeader() {
-    if (_fLastStatus) {
-      const fStatus = !_fLastStatus.running ? 'stopped' : _fLastStatus.paused ? 'paused' : 'running';
-      document.getElementById('status-badge').textContent = fStatus;
-      document.getElementById('status-badge').className   = 'badge ' + fStatus;
-      document.getElementById('mode-badge').textContent   = _fLastStatus.mode || '—';
-      document.getElementById('mode-badge').style.background = _fLastStatus.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-      document.getElementById('mode-badge').style.color      = _fLastStatus.mode === 'live' ? '#58a6ff' : '#bc8cff';
-      document.getElementById('f-header-tick').textContent    = 'Last tick: ' + (_fLastStatus.last_tick || '—');
-      document.getElementById('f-header-stopchk').textContent = `Stop-check: ${_fLastStatus.stop_check_interval ?? 60}s`;
-    }
+    if (!_fLastStatus) return;
+    const d = _fLastStatus;
+    const fStatus = !d.running ? 'stopped' : d.paused ? 'paused' : 'running';
+    document.getElementById('status-badge').textContent = fStatus;
+    document.getElementById('status-badge').className   = 'badge ' + fStatus;
+    document.getElementById('mode-badge').textContent   = d.mode || '—';
+    document.getElementById('mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
+    document.getElementById('mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
+    document.getElementById('f-header-tick').textContent    = 'Last tick: ' + (d.last_tick || '—');
+    document.getElementById('f-header-stopchk').textContent = `Stop-check: ${d.stop_check_interval ?? 60}s`;
   }
 
   async function control(action, pair) {
@@ -742,6 +752,7 @@
         fetch('/api/log'),
       ]);
       const s = await statusRes.json();
+      _spotLastStatus = s;
       const trades = await tradesRes.json();
       const tax = await taxRes.json();
       const logs = await logRes.json();
