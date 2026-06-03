@@ -21,11 +21,13 @@ INTERVAL_SECONDS = {
     "1h": 3600, "4h": 14400, "1d": 86400,
 }
 
-_FUTURES_INTERVAL = "15m"
+_FUTURES_INTERVAL    = "15m"
+_STOP_CHECK_INTERVAL = config.FUTURES_STOP_CHECK_INTERVAL
 
 _running  = False
 _paused   = False
 _thread: threading.Thread = None
+_stop_thread: threading.Thread = None
 _lock     = threading.Lock()
 _last_tick: str = None
 
@@ -172,14 +174,43 @@ def _loop():
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
 
+def _stop_loop():
+    """Fast loop: fetch mark prices and run stop checks every _STOP_CHECK_INTERVAL seconds.
+    Skips candle fetching and signal computation — pure risk management only."""
+    log.info(f"[FUTURES] Stop-check loop started ({_STOP_CHECK_INTERVAL}s interval)")
+    while _running:
+        time.sleep(_STOP_CHECK_INTERVAL)
+        if not _running or _paused:
+            continue
+        try:
+            state = get_state()
+            if not state.positions:
+                continue
+            prices = {}
+            for sym in list(state.positions):
+                try:
+                    prices[sym] = get_mark_price(sym)
+                except Exception as e:
+                    log.warning(f"[FUTURES STOP-CHECK] {sym} price fetch failed: {e}")
+            if prices:
+                for sym in list(state.positions):
+                    if sym in prices:
+                        _maybe_apply_funding(sym, prices[sym])
+                check_stops(prices)
+        except Exception as e:
+            log.error(f"[FUTURES STOP-CHECK] {e}", exc_info=True)
+
+
 def start():
-    global _running, _thread
+    global _running, _thread, _stop_thread
     with _lock:
         if _running:
             return
         _running = True
-    _thread = threading.Thread(target=_loop, daemon=True, name="futures-engine")
+    _thread      = threading.Thread(target=_loop,       daemon=True, name="futures-engine")
+    _stop_thread = threading.Thread(target=_stop_loop,  daemon=True, name="futures-stop-check")
     _thread.start()
+    _stop_thread.start()
 
 
 def stop():

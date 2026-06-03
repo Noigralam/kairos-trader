@@ -64,7 +64,8 @@ FUTURES_TAKE_PROFIT_PCT  = float(os.getenv("FUTURES_TAKE_PROFIT_PCT", "0.05"))
 FUTURES_TRAILING_STOP_PCT = float(os.getenv("FUTURES_TRAILING_STOP_PCT", "0.05"))
 FUTURES_PROFIT_FLOOR_PCT = float(os.getenv("FUTURES_PROFIT_FLOOR_PCT", "0.03"))
 FUTURES_MIN_EXIT_PROFIT_PCT = float(os.getenv("FUTURES_MIN_EXIT_PROFIT_PCT", "0.02"))
-FUTURES_MAX_DRAWDOWN_PCT = float(os.getenv("FUTURES_MAX_DRAWDOWN_PCT", "0"))
+FUTURES_MAX_DRAWDOWN_PCT       = float(os.getenv("FUTURES_MAX_DRAWDOWN_PCT", "0"))
+FUTURES_STOP_CHECK_INTERVAL    = int(os.getenv("FUTURES_STOP_CHECK_INTERVAL", "60"))  # seconds
 
 def futures_rsi_period_for(pair: str) -> int:
     return int(os.getenv(f"FUTURES_RSI_PERIOD_{pair}", os.getenv("FUTURES_RSI_PERIOD", "7")))
