@@ -89,6 +89,10 @@ def run_pair(
     ema_gap:         float = 0.0,   # require price > ema * (1 + ema_gap) to buy
     time_stop_days:  float = 0,     # close if no profit floor reached within N days (0 = off)
     max_drawdown:    float = 0,     # pause buys if portfolio drops >X% from peak (0 = off)
+    strong_gap:      float = None,  # price > ema*(1+strong_gap) → use pos_pct; below → use weak_pct
+    weak_pct:        float = None,  # reduced size for borderline entries (between ema_gap and strong_gap)
+    max_dca:         int   = 1,     # max number of DCA tranches (1 = current behaviour)
+    dca_step:        float = None,  # additional drop % per DCA level; defaults to dca_drop
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.BINANCE_FEE
@@ -110,7 +114,9 @@ def run_pair(
     portfolio_peak = start_balance
     position: Position | None = None
     entry_candle:  int = 0
+    dca_count:     int = 0
     trades: list[Trade] = []
+    _dca_step = dca_step if dca_step is not None else dca_drop
 
     candles_per_day = {"1m": 1440, "5m": 288, "15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}.get(INTERVAL, 96)
 
@@ -175,21 +181,27 @@ def run_pair(
                 drawdown = (portfolio_peak - balance) / portfolio_peak
                 if drawdown > max_drawdown:
                     continue
+            effective_pct = pos_pct
+            if strong_gap is not None and weak_pct is not None and price < ema * (1 + strong_gap):
+                effective_pct = weak_pct
             max_size = balance / (1 + fee_rate)
-            size = min(balance * pos_pct, max_size)
+            size = min(balance * effective_pct, max_size)
             if size >= 1:
                 position = Position(pair, price, size / price, size,
                                     price * (1 + tp_pct), price)
                 entry_candle = i
+                dca_count    = 0
                 balance -= size + size * fee_rate
 
-        if enable_dca and position is not None and not position.dca_done:
+        if enable_dca and position is not None and dca_count < max_dca:
+            next_drop = dca_drop + dca_count * _dca_step
             drop = (position.entry_price - price) / position.entry_price
-            if drop >= dca_drop and rsi < dca_rsi:
+            if drop >= next_drop and rsi < dca_rsi:
                 max_size  = balance / (1 + fee_rate)
                 dca_value = min(balance * dca_pct, max_size)
                 if dca_value >= 1:
                     apply_dca(position, price, dca_value)
+                    dca_count += 1
                     balance -= dca_value + dca_value * fee_rate
 
         if position is not None and rsi > rsi_sell:
@@ -423,6 +435,53 @@ def sweep_ema_gap(days_list: list[int]):
         dict(ema_gap=0.15, label="gap=15%  above EMA"),
     ]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
+
+
+def sweep_multidca(days_list: list[int]):
+    scenarios = [
+        dict(max_dca=0,                         label="no DCA"),
+        dict(max_dca=1,                         label="1 DCA @ -1%        (current)"),
+        dict(max_dca=2,                         label="2 DCAs @ -1% -2%"),
+        dict(max_dca=3,                         label="3 DCAs @ -1% -2% -3%"),
+        dict(max_dca=2, dca_step=0.02,          label="2 DCAs @ -1% -3%"),
+        dict(max_dca=3, dca_step=0.02,          label="3 DCAs @ -1% -3% -5%"),
+        dict(max_dca=2, dca_pct=0.50,           label="2 DCAs @ -1% -2%  size=50%"),
+        dict(max_dca=3, dca_pct=0.33,           label="3 DCAs @ -1% -2% -3%  size=33%"),
+    ]
+    _run_sweep(days_list, "Multi-DCA sweep", scenarios, PAIRS)
+
+
+def sweep_tieredsize(days_list: list[int]):
+    # baseline: flat 75% always
+    # tiers: full size (75%) only when price is X% above EMA, else reduced size Y%
+    scenarios = [
+        dict(label="flat 75%  (current)",                                          ),
+        dict(label="strong≥5%→75%  weak→50%",  strong_gap=0.05, weak_pct=0.50),
+        dict(label="strong≥5%→75%  weak→40%",  strong_gap=0.05, weak_pct=0.40),
+        dict(label="strong≥5%→75%  weak→33%",  strong_gap=0.05, weak_pct=0.33),
+        dict(label="strong≥7%→75%  weak→50%",  strong_gap=0.07, weak_pct=0.50),
+        dict(label="strong≥7%→75%  weak→40%",  strong_gap=0.07, weak_pct=0.40),
+        dict(label="strong≥10%→75% weak→50%",  strong_gap=0.10, weak_pct=0.50),
+        dict(label="strong≥10%→75% weak→33%",  strong_gap=0.10, weak_pct=0.33),
+        dict(label="flat 50%",                  pos_pct=0.50,   dca_pct=0.50),
+    ]
+    start = config.SIMULATION_BALANCE
+    for days in days_list:
+        _header(days, "Tiered position size sweep (full size only when price well above EMA)", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        for pair in PAIRS:
+            df = fetch(pair, days)
+            print(f"\n  ── {pair} ──")
+            for s in scenarios:
+                kwargs = {k: v for k, v in s.items() if k != "label"}
+                kwargs.setdefault("ema_gap", config.EMA_GAP_PCT)
+                kwargs.setdefault("pos_pct", config.POSITION_SIZE_PCT)
+                kwargs.setdefault("dca_pct", config.POSITION_SIZE_PCT)
+                trades, _ = run_pair(pair, df, start, **kwargs)
+                summarise(s["label"], trades, start, wide=True)
+        print()
 
 
 def sweep_hardstop(days_list: list[int]):
@@ -687,6 +746,8 @@ if __name__ == "__main__":
             "emagap":      sweep_ema_gap,
             "timestop":    sweep_timestop,
             "maxdrawdown": sweep_maxdrawdown,
+            "tieredsize":  sweep_tieredsize,
+            "multidca":    sweep_multidca,
         }
         if mode == "all":
             for fn in sweeps.values():
