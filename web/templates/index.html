@@ -425,6 +425,17 @@
     </div>
 
     <section>
+      <h2>Performance</h2>
+      <div class="stats" id="f-perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="f-stat-winrate">—</div></div>
+        <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="f-stat-avgpnl">—</div></div>
+        <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="f-stat-best">—</div></div>
+        <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="f-stat-worst">—</div></div>
+        <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="f-stat-hold">—</div></div>
+      </div>
+    </section>
+
+    <section>
       <h2>Open Positions</h2>
       <div class="futures-pos-grid" id="futures-pos-grid">
         <div style="color:var(--muted);font-size:13px;padding:4px">No open futures positions</div>
@@ -1183,6 +1194,22 @@
     return `<span class="${cls}">${n >= 0 ? '+' : ''}${fmtUsdt(Math.abs(n))}</span>`;
   }
 
+  async function loadFuturesStats() {
+    try {
+      const s = await fetch('/api/futures/stats').then(r => r.json());
+      if (!s) return;
+      document.getElementById('f-stat-winrate').textContent = `${s.win_rate}%  (${s.wins}W / ${s.losses}L)`;
+      document.getElementById('f-stat-winrate').style.color = s.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('f-stat-avgpnl').textContent  = `${s.avg_pnl > 0 ? '+' : ''}${fmtUsdt(Math.abs(s.avg_pnl))}`;
+      document.getElementById('f-stat-avgpnl').style.color  = s.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('f-stat-best').textContent    = `+${fmtUsdt(s.best)}`;
+      document.getElementById('f-stat-best').style.color    = 'var(--green)';
+      document.getElementById('f-stat-worst').textContent   = `${s.worst >= 0 ? '+' : ''}${fmtUsdt(Math.abs(s.worst))}`;
+      document.getElementById('f-stat-worst').style.color   = s.worst >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('f-stat-hold').textContent    = s.avg_hold_h != null ? `${s.avg_hold_h}h` : '—';
+    } catch(e) { console.error(e); }
+  }
+
   async function futuresControl(action, symbol) {
     const body = { action };
     if (symbol) body.symbol = symbol;
@@ -1222,6 +1249,8 @@
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
       document.getElementById('f-fees').innerHTML      = fmtPnlUsdt(-feesAndFunding);
       document.getElementById('f-last-tick').textContent = d.last_tick || '—';
+
+      loadFuturesStats();
 
       // If on futures tab, sync header badges
       if (_activeTab === 'futures') {

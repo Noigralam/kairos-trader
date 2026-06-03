@@ -305,6 +305,13 @@ def api_log():
     return jsonify(get_recent_logs())
 
 
+@app.route("/api/futures/stats")
+def api_futures_stats():
+    if not config.FUTURES_ENABLED:
+        return jsonify(None)
+    return jsonify(db.get_trade_stats(f"futures_{config.FUTURES_MODE}"))
+
+
 @app.route("/api/futures/status")
 def api_futures_status():
     if not config.FUTURES_ENABLED:
