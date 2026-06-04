@@ -27,6 +27,7 @@ class BotStatus(Enum):
 
 _status = BotStatus.STOPPED
 _thread: threading.Thread = None
+_stop_thread: threading.Thread = None
 _lock = threading.Lock()
 _last_tick: str = None
 _prev_tick: dict = {}          # pair -> {price, rsi, ema200, above_ema}
@@ -190,6 +191,30 @@ def _loop():
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
 
+def _stop_loop():
+    """Fast loop: fetch current prices and run stop checks every SPOT_STOP_CHECK_INTERVAL seconds.
+    Runs between candles so trailing stops and take-profits fire without waiting for the next tick."""
+    log.info(f"[SPOT] Stop-check loop started ({config.SPOT_STOP_CHECK_INTERVAL}s interval)")
+    while _status != BotStatus.STOPPED:
+        time.sleep(config.SPOT_STOP_CHECK_INTERVAL)
+        if _status != BotStatus.RUNNING:
+            continue
+        try:
+            state = get_state()
+            if not state.positions:
+                continue
+            prices = {}
+            for pair in list(state.positions):
+                try:
+                    prices[pair] = get_price(pair)
+                except Exception as e:
+                    log.warning(f"[SPOT STOP-CHECK] {pair} price fetch failed: {e}")
+            if prices:
+                check_stops(prices)
+        except Exception as e:
+            log.error(f"[SPOT STOP-CHECK] {e}", exc_info=True)
+
+
 _LIVE_SINCE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "live_since.txt")
 
 
@@ -216,14 +241,16 @@ def get_uptime() -> int | None:
 
 
 def start():
-    global _thread, _start_time
+    global _thread, _stop_thread, _start_time
     if _status == BotStatus.RUNNING:
         return
     _ensure_live_since()
     _start_time = time.time()
     _set_status(BotStatus.RUNNING)
-    _thread = threading.Thread(target=_loop, daemon=True)
+    _thread      = threading.Thread(target=_loop,       daemon=True, name="spot-engine")
+    _stop_thread = threading.Thread(target=_stop_loop,  daemon=True, name="spot-stop-check")
     _thread.start()
+    _stop_thread.start()
 
 
 def pause():

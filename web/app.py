@@ -29,6 +29,7 @@ def api_status():
         "live_since": get_live_since(),
         "mode": config.MODE,
         "interval": config.INTERVAL,
+        "stop_check_interval": config.SPOT_STOP_CHECK_INTERVAL,
         "balance": round(state.balance, 2),
         "total_trades": state.total_trades,
         "total_pnl": round(state.total_pnl, 2),

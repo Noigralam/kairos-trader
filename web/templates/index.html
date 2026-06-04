@@ -300,7 +300,8 @@
       <span id="next-tick"     style="font-size:12px;color:var(--muted);">Next tick: —</span>
       <span id="uptime"        style="font-size:12px;color:var(--muted);">Session: —</span>
       <span id="live-since"    style="font-size:12px;color:var(--muted);"></span>
-      <span id="spot-interval" style="font-size:12px;color:var(--muted);">Interval: —</span>
+      <span id="spot-interval"   style="font-size:12px;color:var(--muted);">Interval: —</span>
+      <span id="spot-stopchk"   style="font-size:12px;color:var(--muted);">Stop-check: —</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
       <span id="status-badge" class="badge stopped">stopped</span>
@@ -613,6 +614,7 @@
     document.getElementById('mode-badge').style.background = s.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
     document.getElementById('mode-badge').style.color      = s.mode === 'live' ? '#58a6ff' : '#bc8cff';
     if (s.interval) document.getElementById('spot-interval').textContent = 'Interval: ' + s.interval;
+    if (s.stop_check_interval) document.getElementById('spot-stopchk').textContent = `Stop-check: ${s.stop_check_interval}s`;
   }
 
 
