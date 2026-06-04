@@ -249,7 +249,9 @@ def close_long(symbol: str, price: float, reason: str = "signal"):
         _state.balance = get_usdt_balance()
     else:
         returned_margin = pos.margin + pnl
-        _state.balance += max(returned_margin, 0)   # margin returned + profit (floored at 0)
+        # Isolated margin: max loss is the posted margin; liquidation should have fired first,
+        # but floor at 0 as a safety net so a bad pnl never drives balance negative.
+        _state.balance += max(returned_margin, 0)
 
     _state.total_trades  += 1
     _state.total_pnl     += pnl
@@ -278,6 +280,8 @@ def apply_funding(symbol: str, rate: float):
     if symbol not in _state.positions:
         return
     pos     = _state.positions[symbol]
+    # Funding is charged on notional (entry_price × qty), not on margin.
+    # Using margin × rate would undercount by a factor of leverage.
     cost    = pos.entry_price * pos.amount * rate
     pos.funding_paid  += cost
     _state.total_funding += cost

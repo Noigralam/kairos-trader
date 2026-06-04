@@ -139,7 +139,8 @@ def _loop():
                     discord=False,
                 )
 
-            # Funding check (before stop checks so cost is accounted)
+            # Apply funding before stop checks: if accumulated funding tips a position into
+            # loss territory, the stop should see the true net PnL, not a pre-funding snapshot.
             for sym in list(get_state().positions):
                 if sym in prices:
                     _maybe_apply_funding(sym, prices[sym])
@@ -164,10 +165,9 @@ def _loop():
                     if not pos.dca_done and drop >= config.FUTURES_DCA_DROP_PCT:
                         dca_long(sym, price)
 
-                # No explicit SELL signal path — exits are handled by check_stops
-                # (take-profit and trailing stop). A SELL from the RSI strategy on
-                # futures means overbought, but we let the trailing stop lock in
-                # profit rather than exiting at the first overbought RSI tick.
+                # Futures exits are driven by check_stops (take-profit / trailing stop),
+                # not RSI overbought. RSI can cross "overbought" many times during a
+                # strong trend; the trailing stop locks in profit without cutting too early.
 
             # Snapshot portfolio value (cash + open position unrealised PnL)
             snap = get_state()

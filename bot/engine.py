@@ -60,6 +60,8 @@ def _seconds_until_next_candle(sleep_sec: int) -> int:
     import datetime
     now = datetime.datetime.now()
     elapsed = (now.minute * 60 + now.second) % sleep_sec
+    # +15s grace period: Binance takes a few seconds to close and publish a candle.
+    # Without it we'd fetch the previous (already-stored) candle and skip the new one.
     return sleep_sec - elapsed + 15
 
 

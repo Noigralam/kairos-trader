@@ -17,6 +17,9 @@ class Position:
         return self.highest_price if self.highest_price > 0 else self.entry_price
 
     def trailing_stop_level(self) -> float:
+        # Minimum exit price that clears both buy+sell fees AND the profit floor.
+        # Dividing by (1 - fee) converts from "net proceeds needed" to "gross exit price"
+        # because the sell fee is taken from proceeds, not added on top.
         fee_plus_profit_floor = self.entry_price * (1 + config.BINANCE_FEE + config.PROFIT_FLOOR_PCT) / (1 - config.BINANCE_FEE)
         return max(fee_plus_profit_floor, self.peak() * (1 - config.TRAILING_STOP_PCT))
 
@@ -30,7 +33,7 @@ def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> Non
     position.amount = total_amount
     position.value_eur = total_value
     position.take_profit_price = position.entry_price * (1 + config.TAKE_PROFIT_PCT)
-    position.highest_price = dca_price  # reset peak so trailing stop starts fresh from new entry
+    position.highest_price = dca_price  # reset peak from new blended entry; old peak is irrelevant after cost basis shifts
     position.dca_done = True
 
 

@@ -69,7 +69,7 @@ def _load():
         _state.portfolio_peak = data.get("portfolio_peak", 0.0)
         _state.positions = {}
         for pair, pos in data.get("positions", {}).items():
-            pos.pop("stop_cooldown", None)
+            pos.pop("stop_cooldown", None)  # removed field; silently discard so old state files still load
             p = Position(**pos)
             if p.highest_price == 0.0:
                 p.highest_price = p.entry_price
@@ -123,6 +123,8 @@ def open_position(pair: str, price: float, size_pct: float = None):
     max_size = balance / (1 + BINANCE_FEE)
     min_notional = get_min_notional(pair)
     size = min(balance * pct, max_size)
+    # If the leftover after buying would be below Binance's minimum tradeable amount,
+    # spend everything — a stranded dust balance can't be traded anyway.
     if balance - size < min_notional:
         size = min(balance, max_size)
     if size < min_notional:

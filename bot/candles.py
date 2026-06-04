@@ -67,7 +67,7 @@ def initial_sync(pair: str, interval: str, days: int = 365):
         _insert(conn, pair, interval, batch)
         total += len(batch)
         cursor = batch[-1][0] + 1
-        time.sleep(0.08)
+        time.sleep(0.08)  # stay well under Binance's 1200 weight/min rate limit
 
     conn.commit()
     conn.close()
@@ -88,7 +88,8 @@ def sync(pair: str, interval: str):
     if not batch:
         return
 
-    # drop the last (still-open) candle — it hasn't closed yet
+    # Binance always returns the currently-open (incomplete) candle as the last entry.
+    # Drop it so RSI/EMA are never computed on a partial candle.
     batch = batch[:-1]
     if not batch:
         return

@@ -24,10 +24,12 @@ class FuturesPosition:
         return self.highest_price if self.highest_price > 0 else self.entry_price
 
     def trailing_stop_level(self) -> float:
+        # floor: minimum exit price that covers both entry+exit fees and the profit floor.
+        # Dividing by (1-fee) converts net-needed to gross exit price (sell fee is a deduction, not addition).
         fee_plus_floor = self.entry_price * (1 + config.FUTURES_FEE + config.FUTURES_PROFIT_FLOOR_PCT) / (1 - config.FUTURES_FEE)
         if self.side == "LONG":
             return max(fee_plus_floor, self.peak() * (1 - config.FUTURES_TRAILING_STOP_PCT))
-        else:  # SHORT
+        else:  # SHORT: symmetric ceiling below entry
             ceiling = self.entry_price * (1 - config.FUTURES_FEE - config.FUTURES_PROFIT_FLOOR_PCT) / (1 + config.FUTURES_FEE)
             return min(ceiling, self.peak() * (1 + config.FUTURES_TRAILING_STOP_PCT))
 
@@ -38,7 +40,7 @@ class FuturesPosition:
         Short: entry * (1 + 1/leverage - maintenance_margin_rate)
         Uses 0.5% maintenance margin rate (conservative for most symbols).
         """
-        mmr = 0.005
+        mmr = 0.005  # 0.5% is conservative but correct for most Tier-1 notionals on ETH/SOL
         if self.side == "LONG":
             return self.entry_price * (1 - 1 / self.leverage + mmr)
         else:
