@@ -489,6 +489,28 @@
       </div>
     </section>
 
+    <section class="chart-section">
+      <div class="chart-controls">
+        <h2>Price Chart</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="btn-group" id="f-pair-btns"></div>
+          <div class="btn-group" id="f-span-btns">
+            <button onclick="setFSpan('4h')"  data-span="4h">4h</button>
+            <button onclick="setFSpan('1d')"  data-span="1d" class="active">1d</button>
+            <button onclick="setFSpan('3d')"  data-span="3d">3d</button>
+            <button onclick="setFSpan('1w')"  data-span="1w">1w</button>
+            <button onclick="setFSpan('2w')"  data-span="2w">2w</button>
+            <button onclick="setFSpan('1m')"  data-span="1m">1m</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box price-box"><canvas id="f-price-chart"></canvas></div>
+        <div class="chart-box candle-box"><canvas id="f-candle-chart"></canvas></div>
+        <div class="chart-box rsi-box"><canvas id="f-rsi-chart"></canvas></div>
+      </div>
+    </section>
+
     <section>
       <h2>Open Positions</h2>
       <div class="futures-pos-grid" id="futures-pos-grid">
@@ -1597,6 +1619,178 @@
       }).join('');
     } catch(e) { console.error('[futures]', e); }
   }
+
+  // ── futures price chart ──────────────────────────────────────────────────
+  let _fPriceChart  = null;
+  let _fCandleChart = null;
+  let _fRsiChart    = null;
+  let _fChartPair   = null;
+  let _fChartSpan   = '1d';
+  let _fSignals     = {};
+
+  function setFPair(sym) {
+    _fChartPair = sym;
+    document.querySelectorAll('#f-pair-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.pair === sym));
+    loadFuturesChart();
+  }
+
+  function setFSpan(span) {
+    _fChartSpan = span;
+    document.querySelectorAll('#f-span-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.span === span));
+    loadFuturesChart();
+  }
+
+  async function loadFuturesChart() {
+    if (!_fChartPair) return;
+    try {
+      const data = await fetch(`/api/futures/chart/${_fChartPair}?span=${_fChartSpan}`).then(r => r.json());
+      if (!data.labels?.length) return;
+
+      const _ob = _fSignals[_fChartPair]?.rsi_overbought ?? 75;
+      const _os = _fSignals[_fChartPair]?.rsi_oversold   ?? 35;
+
+      // Price + EMA + trades chart
+      if (_fPriceChart) {
+        _fPriceChart.data.labels           = data.labels;
+        _fPriceChart.data.datasets[0].data = data.prices;
+        _fPriceChart.data.datasets[1].data = data.ema200;
+        _fPriceChart.data.datasets[2].data = data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _fPriceChart.data.datasets[3].data = data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _fPriceChart.data.datasets[4].data = data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _fPriceChart.data.datasets[5].data = data.actual_buys;
+        _fPriceChart.data.datasets[6].data = data.actual_sells;
+        _fPriceChart.data.datasets[7].data = data.actual_dcas;
+        _fPriceChart.data.datasets[8].data = data.bb_upper;
+        _fPriceChart.data.datasets[9].data = data.bb_lower;
+        _fPriceChart.data.datasets[10].data             = data.volume;
+        _fPriceChart.data.datasets[10].backgroundColor  = data.vol_colors;
+        _fPriceChart.update('none');
+      } else {
+        const ctx = document.getElementById('f-price-chart').getContext('2d');
+        _fPriceChart = new Chart(ctx, {
+          data: {
+            labels: data.labels,
+            datasets: [
+              { type: 'line',    label: 'Price',  data: data.prices, borderColor: '#58a6ff', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+              { type: 'line',    label: 'EMA200', data: data.ema200, borderColor: '#d29922', borderWidth: 1.5, borderDash: [4,3], pointRadius: 0, tension: 0.1 },
+              { type: 'scatter', label: 'BUY',    data: data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#3fb950', pointRadius: 5, pointStyle: 'triangle' },
+              { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
+              { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+              { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
+                backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+              { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
+                backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
+              { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+              { type: 'line', label: 'BB Upper', data: data.bb_upper, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '+1', backgroundColor: '#8b949e18' },
+              { type: 'line', label: 'BB Lower', data: data.bb_lower, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1 },
+              { type: 'bar',  label: 'Volume', data: data.volume, backgroundColor: data.vol_colors, yAxisID: 'y1', borderWidth: 0 },
+            ],
+          },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
+              callbacks: { label: c => {
+                if (c.dataset.label === 'Volume') return ` Vol: ${Number(c.raw).toLocaleString('fi-FI', {maximumFractionDigits: 2})}`;
+                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: $${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                return c.dataset.type === 'scatter'
+                  ? ` ${c.dataset.label} @ $${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+                  : ` ${c.dataset.label}: $${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+              }}
+            }},
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' $' } },
+              y1: { display: false, position: 'right', grid: { drawOnChartArea: false },
+                    afterDataLimits: axis => { axis.max = axis.max * 4; } },
+            },
+          },
+        });
+      }
+
+      // Candlestick chart
+      const ohlcMin = Math.min(...data.ohlc.map(d => d.l));
+      const ohlcMax = Math.max(...data.ohlc.map(d => d.h));
+      const ohlcPad = (ohlcMax - ohlcMin) * 0.05;
+      if (_fCandleChart) {
+        _fCandleChart.data.labels    = data.labels;
+        _fCandleChart.data._ohlc     = data.ohlc;
+        _fCandleChart.options.scales.y.min = ohlcMin - ohlcPad;
+        _fCandleChart.options.scales.y.max = ohlcMax + ohlcPad;
+        _fCandleChart.update('none');
+      } else {
+        const ctx2 = document.getElementById('f-candle-chart').getContext('2d');
+        _fCandleChart = new Chart(ctx2, {
+          type: 'line',
+          data: { labels: data.labels, _ohlc: data.ohlc, datasets: [] },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins, legend: { display: false }, tooltip: { enabled: false } },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y,
+                min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad,
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' $' },
+              },
+            },
+          },
+        });
+      }
+
+      // RSI chart
+      if (_fRsiChart) {
+        _fRsiChart.data.labels           = data.labels;
+        _fRsiChart.data.datasets[0].data = data.rsi;
+        _fRsiChart.update('none');
+      } else {
+        const ctx3 = document.getElementById('f-rsi-chart').getContext('2d');
+        _fRsiChart = new Chart(ctx3, {
+          type: 'line',
+          data: {
+            labels: data.labels,
+            datasets: [
+              { label: `RSI(${_fSignals[_fChartPair]?.rsi_period ?? 7})`, data: data.rsi, borderColor: '#8b949e', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
+              { label: `Oversold (${_os})`,       data: Array(data.labels.length).fill(_os), borderColor: '#3fb95066', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+              { label: `Overbought (${_ob})`,     data: Array(data.labels.length).fill(_ob), borderColor: '#f8514966', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+            ],
+          },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { labels: { color: '#8b949e', boxWidth: 16, font: { size: 10 },
+                filter: item => item.text.startsWith('RSI(') } },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => c.datasetIndex === 0 ? ` RSI: ${Number(c.raw).toFixed(1)}` : null,
+                             filter: item => item.datasetIndex === 0 } },
+            },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y, min: 0, max: 100,
+                ticks: { color: '#8b949e', font: { size: 10 }, stepSize: 25 } },
+            },
+          },
+        });
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function initFuturesChart() {
+    try {
+      const res   = await fetch('/api/futures/signals');
+      _fSignals   = await res.json();
+      const pairs = Object.keys(_fSignals);
+      const pb    = document.getElementById('f-pair-btns');
+      pb.innerHTML = pairs.map(p => `<button onclick="setFPair('${p}')" data-pair="${p}">${p}</button>`).join('');
+      if (pairs.length) setFPair(pairs[0]);
+    } catch(e) { console.error(e); }
+  }
+
+  initFuturesChart();
 
   refreshFutures();
   refreshFuturesSignals();

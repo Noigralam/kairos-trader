@@ -399,6 +399,108 @@ def api_chart(pair):
     })
 
 
+@app.route("/api/futures/chart/<symbol>")
+def api_futures_chart(symbol):
+    if not config.FUTURES_ENABLED:
+        return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
+    import pandas as pd
+    from bot.candles import get_df as _get_df
+    span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672, "2w": 1344, "1m": 2880}
+    span  = request.args.get("span", "1d")
+    limit = span_candles.get(span, 96)
+    sym   = symbol.upper()
+
+    df = _get_df(sym, "15m", limit=limit + 210)
+    if df.empty:
+        return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
+
+    close = df["close"]
+    ema   = close.ewm(span=200, adjust=False).mean()
+
+    _bb_period = 20
+    bb_mid   = close.rolling(_bb_period).mean()
+    bb_std   = close.rolling(_bb_period).std()
+    bb_upper = bb_mid + 2 * bb_std
+    bb_lower = bb_mid - 2 * bb_std
+
+    _rp      = config.futures_rsi_period_for(sym)
+    delta    = close.diff()
+    gain     = delta.clip(lower=0)
+    loss     = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=_rp - 1, min_periods=_rp).mean()
+    avg_loss = loss.ewm(com=_rp - 1, min_periods=_rp).mean()
+    rsi      = 100 - (100 / (1 + avg_gain / avg_loss))
+
+    buy_prices   = [None] * len(df)
+    sell_prices  = [None] * len(df)
+    blocked_buys = [None] * len(df)
+    _ema_gap     = config.futures_ema_gap_for(sym)
+    for i in range(210, len(df)):
+        r = rsi.iloc[i]; e = ema.iloc[i]; p = close.iloc[i]
+        if r < config.futures_rsi_oversold_for(sym) and p > e * (1 + _ema_gap):
+            buy_prices[i] = round(p, 4)
+        elif r < config.futures_rsi_oversold_for(sym):
+            blocked_buys[i] = round(p, 4)
+        elif r > config.futures_rsi_overbought_for(sym):
+            sell_prices[i] = round(p, 4)
+
+    import zoneinfo as _zi, datetime as _dt
+    _tz = _zi.ZoneInfo("Europe/Helsinki")
+    sl  = slice(-limit, None)
+    labels = (df["open_time"].iloc[sl]
+              .dt.tz_convert(_tz)
+              .dt.strftime("%m-%d %H:%M").tolist())
+    label_set = set(labels)
+
+    actual_buys = []; actual_sells = []; actual_dcas = []
+    for row in db.get_trades(200, mode=f"futures_{config.FUTURES_MODE}"):
+        _, ts, tpair, side, price, *_ = row
+        notes = row[-1] or ""
+        if tpair != sym:
+            continue
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
+            t = t.replace(minute=(t.minute // 15) * 15, second=0, microsecond=0)
+            label = t.strftime("%m-%d %H:%M")
+        except Exception:
+            continue
+        if label not in label_set:
+            continue
+        pt = {"x": label, "y": round(price, 4)}
+        if side == "BUY" and "dca" in notes.lower():
+            actual_dcas.append(pt)
+        elif side == "BUY":
+            actual_buys.append(pt)
+        elif side == "SELL":
+            actual_sells.append(pt)
+
+    vol_up     = (close >= df["open"]).iloc[sl]
+    vol_colors = ['#3fb95066' if u else '#f8514966' for u in vol_up]
+    ohlc = [{"x": lbl, "o": round(o, 4), "h": round(h, 4), "l": round(l, 4), "c": round(c, 4)}
+            for lbl, o, h, l, c in zip(
+                labels,
+                df["open"].iloc[sl].tolist(), df["high"].iloc[sl].tolist(),
+                df["low"].iloc[sl].tolist(),  close.iloc[sl].tolist())]
+
+    return jsonify({
+        "labels":       labels,
+        "prices":       close.iloc[sl].round(4).tolist(),
+        "ema200":       ema.iloc[sl].round(4).tolist(),
+        "bb_upper":     bb_upper.iloc[sl].round(4).tolist(),
+        "bb_lower":     bb_lower.iloc[sl].round(4).tolist(),
+        "ohlc":         ohlc,
+        "volume":       df["volume"].iloc[sl].round(4).tolist(),
+        "vol_colors":   vol_colors,
+        "rsi":          rsi.iloc[sl].round(2).tolist(),
+        "buys":         buy_prices[-limit:],
+        "sells":        sell_prices[-limit:],
+        "blocked_buys": blocked_buys[-limit:],
+        "actual_buys":  actual_buys,
+        "actual_sells": actual_sells,
+        "actual_dcas":  actual_dcas,
+    })
+
+
 @app.route("/api/log")
 def api_log():
     return jsonify(get_recent_logs())
