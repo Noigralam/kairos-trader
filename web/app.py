@@ -68,6 +68,15 @@ def api_tax():
     ])
 
 
+@app.route("/api/futures/tax")
+def api_futures_tax():
+    rows = db.get_tax_summary(mode="futures_live")
+    return jsonify([
+        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3]}
+        for r in rows
+    ])
+
+
 @app.route("/api/stats")
 def api_stats():
     return jsonify(db.get_trade_stats(config.MODE))

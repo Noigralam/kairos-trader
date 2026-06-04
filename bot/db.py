@@ -168,7 +168,7 @@ def get_trade_stats(mode: str):
     }
 
 
-def get_tax_summary():
+def get_tax_summary(mode="live"):
     """Realized P&L grouped by year for Finnish Vero tax reporting."""
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute("""
@@ -178,9 +178,9 @@ def get_tax_summary():
             SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END)   AS losses,
             SUM(pnl)                                            AS net_pnl
         FROM trades
-        WHERE pnl IS NOT NULL AND mode = 'live'
+        WHERE pnl IS NOT NULL AND mode = ?
         GROUP BY year
         ORDER BY year DESC
-    """).fetchall()
+    """, (mode,)).fetchall()
     conn.close()
     return rows
