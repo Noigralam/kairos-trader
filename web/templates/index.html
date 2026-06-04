@@ -267,12 +267,18 @@
   <div style="display:flex;align-items:center;gap:16px;">
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
       <span id="refresh-indicator">Refreshing…</span>
-      <span id="last-tick" style="font-size:11px;color:var(--muted);">Last tick: —</span>
-      <span id="next-tick" style="color:var(--muted);font-size:12px;">Next tick: —</span>
-      <span id="uptime"    style="color:var(--muted);font-size:12px;">Uptime: —</span>
-      <span id="live-since" style="color:var(--muted);font-size:12px;"></span>
-      <span id="f-header-tick"    style="color:var(--muted);font-size:12px;display:none">Last tick: —</span>
-      <span id="f-header-stopchk" style="color:var(--muted);font-size:12px;display:none">Stop-check: 60s</span>
+      <!-- spot-only rows -->
+      <span id="last-tick"    style="font-size:11px;color:var(--muted);">Last tick: —</span>
+      <span id="next-tick"    style="color:var(--muted);font-size:12px;">Next tick: —</span>
+      <span id="uptime"       style="color:var(--muted);font-size:12px;">Uptime: —</span>
+      <span id="live-since"   style="color:var(--muted);font-size:12px;"></span>
+      <span id="spot-interval" style="color:var(--muted);font-size:12px;">Interval: —</span>
+      <!-- futures-only rows -->
+      <span id="f-header-tick"      style="color:var(--muted);font-size:12px;display:none">Last tick: —</span>
+      <span id="f-header-nexttick"  style="color:var(--muted);font-size:12px;display:none">Next tick: —</span>
+      <span id="f-header-uptime"    style="color:var(--muted);font-size:12px;display:none">Session: —</span>
+      <span id="f-header-stopchk"   style="color:var(--muted);font-size:12px;display:none">Stop-check: 60s</span>
+      <span id="f-header-leverage"  style="color:var(--muted);font-size:12px;display:none">Leverage: —</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
       <span id="status-badge" class="badge stopped">stopped</span>
@@ -527,11 +533,10 @@
       b.classList.toggle('active', b.dataset.tab === name));
 
     const onFutures = name === 'futures';
-    document.getElementById('last-tick').style.display         = onFutures ? 'none' : '';
-    document.getElementById('uptime').style.display            = onFutures ? 'none' : '';
-    document.getElementById('live-since').style.display        = onFutures ? 'none' : '';
-    document.getElementById('f-header-tick').style.display     = onFutures ? '' : 'none';
-    document.getElementById('f-header-stopchk').style.display  = onFutures ? '' : 'none';
+    ['last-tick','next-tick','uptime','live-since','spot-interval'].forEach(id =>
+      document.getElementById(id).style.display = onFutures ? 'none' : '');
+    ['f-header-tick','f-header-nexttick','f-header-uptime','f-header-stopchk','f-header-leverage'].forEach(id =>
+      document.getElementById(id).style.display = onFutures ? '' : 'none');
 
     if (onFutures) _syncFuturesHeader();
     else           _syncSpotHeader();
@@ -545,6 +550,19 @@
     document.getElementById('mode-badge').textContent   = s.mode || '—';
     document.getElementById('mode-badge').style.background = s.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
     document.getElementById('mode-badge').style.color      = s.mode === 'live' ? '#58a6ff' : '#bc8cff';
+    if (s.interval) document.getElementById('spot-interval').textContent = 'Interval: ' + s.interval;
+  }
+
+  function _updateFuturesHeaderSpans(d) {
+    document.getElementById('f-header-tick').textContent    = 'Last tick: ' + (d.last_tick || '—');
+    document.getElementById('f-header-stopchk').textContent = `Stop-check: ${d.stop_check_interval ?? 60}s`;
+    if (d.leverage) document.getElementById('f-header-leverage').textContent = `Leverage: ${d.leverage}x`;
+    if (d.uptime != null) {
+      const h = Math.floor(d.uptime / 3600);
+      const m = Math.floor((d.uptime % 3600) / 60);
+      document.getElementById('f-header-uptime').textContent =
+        h > 0 ? `Session: ${h}h ${m}m` : `Session: ${m}m`;
+    }
   }
 
   function _syncFuturesHeader() {
@@ -556,8 +574,7 @@
     document.getElementById('mode-badge').textContent   = d.mode || '—';
     document.getElementById('mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
     document.getElementById('mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
-    document.getElementById('f-header-tick').textContent    = 'Last tick: ' + (d.last_tick || '—');
-    document.getElementById('f-header-stopchk').textContent = `Stop-check: ${d.stop_check_interval ?? 60}s`;
+    _updateFuturesHeaderSpans(d);
   }
 
   async function control(action, pair) {
@@ -757,14 +774,8 @@
       const tax = await taxRes.json();
       const logs = await logRes.json();
 
-      // Header badges (spot)
-      const badge = document.getElementById('status-badge');
-      badge.textContent = s.status;
-      badge.className = 'badge ' + s.status;
-      const modeBadge = document.getElementById('mode-badge');
-      modeBadge.textContent = s.mode;
-      modeBadge.style.background = s.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-      modeBadge.style.color = s.mode === 'live' ? '#58a6ff' : '#bc8cff';
+      // Header badges — only update when spot tab is active
+      if (_activeTab === 'spot') _syncSpotHeader();
 
       // Stats
       document.getElementById('balance').textContent = fmt(s.balance);
@@ -1102,8 +1113,9 @@
     const secs    = 900 - elapsed + 15;
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    document.getElementById('next-tick').textContent =
-      `Next tick: ${m}m ${String(s).padStart(2,'0')}s`;
+    const txt = `Next tick: ${m}m ${String(s).padStart(2,'0')}s`;
+    document.getElementById('next-tick').textContent        = txt;
+    document.getElementById('f-header-nexttick').textContent = txt;
   }
   updateCountdown();
   setInterval(updateCountdown, 1000);
@@ -1505,6 +1517,7 @@
 
       const fStatus = !d.running ? 'stopped' : d.paused ? 'paused' : 'running';
 
+      _updateFuturesHeaderSpans(d);
       if (_activeTab === 'futures') _syncFuturesHeader();
 
       // Summary stats

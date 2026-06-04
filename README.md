@@ -1,15 +1,28 @@
 # Kairos
 
-RSI + EMA200 trend-following bot for Binance EUR pairs. Runs in simulation or live mode. Includes a web dashboard, Discord integration, and a unified backtest tool.
+RSI + EMA200 trend-following bot for Binance. Runs in simulation or live mode with two independent engines:
+- **Spot** — EUR pairs (ETHEUR, SOLEUR), 15m candles
+- **Futures** — USDT-M perpetuals (ETHUSDT, SOLUSDT), 15m candles, configurable leverage
+
+Includes a web dashboard, Discord integration, and backtest tools for both engines.
 
 ## Strategy
 
+### Spot
 - **Buy** when RSI drops below the oversold threshold (default 30) and price is above EMA200
-- **Exit via trailing stop** with a profit floor — the floor dominates until price runs far enough above entry
-- **Min-exit guard** prevents a signal-based sell below a configurable profit threshold (default +2%)
-- **DCA** averages down once per position when price drops ≥1% from entry and RSI confirms weakness
-- **Take-profit** at +5% acts as a spike catcher
-- Per-pair RSI periods and overbought thresholds: ETHEUR uses RSI(7)/sell>65, SOLEUR uses RSI(7)/sell>80
+- **Exit via trailing stop** with a profit floor — the stop rises once price crosses the floor above entry
+- **Min-exit guard** prevents a sell below a configurable profit threshold (default +2%)
+- **DCA** averages down once per position when price drops ≥4% from entry
+- **Take-profit** at +10% acts as a spike catcher
+- Per-pair RSI and overbought thresholds (e.g. `RSI_PERIOD_ETHEUR=7`)
+
+### Futures
+- Same RSI + EMA signal as spot, on 15m candles
+- Isolated-margin LONG only with configurable leverage (default 2×)
+- Exits via **take-profit**, **trailing stop** (with profit floor), or **liquidation** check
+- DCA averages down once when price drops 1% from entry
+- Funding cost applied every 8h on open positions
+- Separate fast-check loop runs every 60s for risk management (stop/TP/liquidation) without waiting for the next 15m candle
 
 ## Requirements
 
@@ -34,11 +47,10 @@ Simulation mode requires no API keys. For live trading:
 3. Enable exactly these permissions:
    - ✅ Enable Reading
    - ✅ Enable Spot & Margin Trading
-   - ❌ Everything else (no withdrawals, no transfers, no futures)
+   - ✅ Enable Futures (if using futures live mode)
+   - ❌ Everything else (no withdrawals, no transfers)
 4. Restrict access to your server's IP address for extra safety
 5. Copy the key and secret into `.env` as `BINANCE_API_KEY` and `BINANCE_SECRET_KEY`
-
-> The bot only places spot market orders and reads balances — it never touches withdrawals or futures.
 
 ## Running
 
@@ -52,14 +64,16 @@ Dashboard: `http://localhost:8888`
 
 ## Modes
 
-Set `MODE` in `.env`:
+Set `MODE` / `FUTURES_MODE` in `.env`:
 
-- `simulation` — paper trades, tracks virtual balance, writes to `data/state.json`
-- `live` — places real Binance market orders, reads balance from exchange, writes to `data/state_live.json`
+- `simulation` — paper trades, tracks virtual balance, no API keys needed
+- `live` — places real orders, reads balance from exchange
 
-Switching modes never touches the other mode's state file. Trade history is tagged by mode in `data/trades.db`.
+Spot and futures are completely independent: separate balances, separate state files, separate trade logs. Switching one mode never affects the other.
 
 ## Configuration (`.env`)
+
+### Spot
 
 | Variable | Default | Description |
 |---|---|---|
@@ -68,12 +82,12 @@ Switching modes never touches the other mode's state file. Trade history is tagg
 | `SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (EUR) |
 | `INTERVAL` | `15m` | Candle interval |
 | `POSITION_SIZE_PCT` | `0.75` | Fraction of balance per trade |
-| `DCA_DROP_PCT` | `0.01` | Drop from entry to trigger DCA |
-| `DCA_SIZE_PCT` | `0.75` | Fraction of balance for DCA buy |
-| `TAKE_PROFIT_PCT` | `0.05` | Take-profit target (+5%) |
+| `DCA_DROP_PCT` | `0.04` | Drop from entry to trigger DCA |
+| `DCA_SIZE_PCT` | `0.50` | Fraction of balance for DCA buy |
+| `TAKE_PROFIT_PCT` | `0.10` | Take-profit target |
 | `TRAILING_STOP_PCT` | `0.05` | Trailing stop distance |
-| `PROFIT_FLOOR_PCT` | `0.03` | Minimum profit before trailing stop can fire |
-| `MIN_EXIT_PROFIT_PCT` | `0.02` | Minimum profit before a sell signal can close a position |
+| `PROFIT_FLOOR_PCT` | `0.03` | Min profit before trailing stop can fire |
+| `MIN_EXIT_PROFIT_PCT` | `0.02` | Min profit before a signal sell can fire |
 | `RSI_PERIOD` | `14` | Default RSI period |
 | `RSI_OVERSOLD` | `30` | Buy threshold |
 | `RSI_OVERBOUGHT` | `75` | Default sell threshold |
@@ -85,9 +99,32 @@ Switching modes never touches the other mode's state file. Trade history is tagg
 | `WEB_HOST` | `127.0.0.1` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
 | `WEB_PORT` | `8888` | Dashboard port |
 
-Per-pair overrides are supported for `RSI_PERIOD`, `RSI_OVERBOUGHT`, and `MIN_EXIT_PROFIT_PCT` by appending the pair name (e.g. `RSI_PERIOD_ETHEUR=7`).
+Per-pair overrides: append the pair name, e.g. `RSI_PERIOD_ETHEUR=7`, `RSI_OVERBOUGHT_SOLEUR=80`.
 
-Trading pairs are set via `TRADING_PAIRS` in `.env` as a comma-separated list. Any Binance EUR spot pair works (e.g. `TRADING_PAIRS=ETHEUR,SOLEUR,BTCEUR`).
+### Futures
+
+| Variable | Default | Description |
+|---|---|---|
+| `FUTURES_ENABLED` | `false` | Enable futures engine |
+| `FUTURES_MODE` | `simulation` | `simulation` or `live` |
+| `FUTURES_TRADING_PAIRS` | `ETHUSDT,SOLUSDT` | USDT-M perpetual pairs |
+| `FUTURES_SIMULATION_BALANCE` | `200.0` | Starting balance (USDT) |
+| `FUTURES_LEVERAGE` | `2` | Leverage multiplier |
+| `FUTURES_MARGIN_TYPE` | `ISOLATED` | `ISOLATED` or `CROSSED` |
+| `FUTURES_POSITION_SIZE_PCT` | `0.75` | Fraction of balance per trade (margin) |
+| `FUTURES_DCA_DROP_PCT` | `0.01` | Drop from entry to trigger DCA |
+| `FUTURES_DCA_SIZE_PCT` | `0.75` | Fraction of balance for DCA |
+| `FUTURES_TAKE_PROFIT_PCT` | `0.05` | Take-profit target |
+| `FUTURES_TRAILING_STOP_PCT` | `0.05` | Trailing stop distance |
+| `FUTURES_PROFIT_FLOOR_PCT` | `0.03` | Min profit before trailing stop can fire |
+| `FUTURES_MIN_EXIT_PROFIT_PCT` | `0.02` | Min profit before signal sell fires |
+| `FUTURES_STOP_CHECK_INTERVAL` | `60` | Risk check frequency (seconds) |
+| `FUTURES_RSI_PERIOD` | `7` | Default RSI period for futures |
+| `FUTURES_RSI_OVERSOLD` | `30` | Buy threshold |
+| `FUTURES_RSI_OVERBOUGHT` | `75` | Sell threshold |
+| `FUTURES_EMA_GAP_PCT` | `0.02` | Min % above EMA200 to allow entry |
+
+Per-pair overrides: `FUTURES_RSI_PERIOD_ETHUSDT=7`, etc.
 
 ## Discord
 
@@ -115,6 +152,8 @@ When `DISCORD_BOT_TOKEN` is set, the following slash commands are available:
 
 ## Backtest
 
+### Spot
+
 ```bash
 # Pair comparison — solo vs combined, current settings
 python backtest.py
@@ -123,42 +162,72 @@ python backtest.py 90                        # custom window
 # Monthly top-up simulation
 python backtest.py topup 200 25 365          # start=€200, +€25/month, 365 days
 
-# Parameter sweeps (run on both pairs)
-python backtest.py sweep exit                # sell RSI + take-profit
-python backtest.py sweep floor               # profit floor %
+# Parameter sweeps
 python backtest.py sweep trail               # trailing stop %
+python backtest.py sweep floor               # profit floor %
+python backtest.py sweep exit                # sell RSI + take-profit
 python backtest.py sweep buyrsi              # buy RSI threshold
 python backtest.py sweep dca                 # DCA drop %, size %
+python backtest.py sweep lev                 # leverage
 python backtest.py sweep all                 # everything
 
 # Custom day windows
-python backtest.py sweep exit 365 180 90
+python backtest.py sweep trail 365 180 90
 ```
+
+### Futures
+
+```bash
+# Baseline — current config
+python backtest_futures.py
+python backtest_futures.py 90
+
+# Parameter sweeps (ETHUSDT + SOLUSDT)
+python backtest_futures.py sweep trail       # trailing stop %
+python backtest_futures.py sweep tp          # take-profit %
+python backtest_futures.py sweep pos         # position size %
+python backtest_futures.py sweep dca         # DCA drop % + size %
+python backtest_futures.py sweep floor       # profit floor %
+python backtest_futures.py sweep lev         # leverage
+python backtest_futures.py sweep rsi         # RSI buy/sell thresholds
+python backtest_futures.py sweep all         # everything
+
+# Custom day windows
+python backtest_futures.py sweep all 365 180 90
+```
+
+The futures backtest models: isolated margin, 0.05% taker fee, 0.01%/8h funding (longs), and liquidation at `entry × (1 − 1/lev + 0.5%)`.
 
 ## Project layout
 
 ```
 bot/
-  config.py        — settings loaded from .env, per-pair helpers
-  engine.py        — main loop, candle alignment, signal execution
-  simulator.py     — position management for simulation and live mode
-  exchange.py      — Binance API wrapper (klines, prices, orders, balance)
-  strategy.py      — RSI + EMA200 signal computation
-  candles.py       — local SQLite candle cache with incremental sync
-  risk.py          — Position dataclass, DCA, trailing stop, PnL
-  notifier.py      — Discord webhooks, tick embeds, alerts, log buffering
-  discord_bot.py   — discord.py slash command bot
-  db.py            — trade log, balance history, tax summary (SQLite)
+  config.py          — settings from .env, per-pair helpers (spot + futures)
+  engine.py          — spot trading loop, candle alignment, signal execution
+  simulator.py       — spot position management (simulation + live)
+  exchange.py        — Binance spot API wrapper
+  strategy.py        — RSI + EMA200 signal computation (shared by spot + futures)
+  candles.py         — local SQLite candle cache with incremental sync
+  risk.py            — spot Position dataclass, DCA, trailing stop, PnL
+  notifier.py        — Discord webhooks, tick embeds, alerts, log buffering
+  discord_bot.py     — discord.py slash command bot
+  db.py              — trade log, balance history, tax summary (SQLite)
+  futures_engine.py  — futures trading loop (15m signal + 60s risk threads)
+  futures_simulator.py — futures position management (simulation + live)
+  futures_exchange.py — Binance futures API wrapper
+  futures_risk.py    — FuturesPosition dataclass, liquidation, PnL
 web/
-  app.py           — Flask dashboard API
+  app.py             — Flask dashboard API (spot + futures endpoints)
   templates/
-    index.html     — single-page dashboard
+    index.html       — single-page dashboard (Spot / Futures tabs)
 data/
-  trades.db        — trade history (simulation + live, tagged by mode)
-  candles.db       — local candle cache
-  state.json       — simulation state (balance, open positions)
-  state_live.json  — live state (open positions; balance fetched from Binance)
-  live_since.txt   — timestamp of first live mode start
-backtest.py        — unified backtest and sweep tool
+  trades.db          — trade history (all modes, tagged by mode string)
+  candles.db         — local candle cache (spot + futures pairs)
+  state.json         — spot simulation state
+  state_live.json    — spot live state
+  futures_state.json — futures simulation/live state
+  live_since.txt     — timestamp of first spot live mode start
+backtest.py          — spot backtest and sweep tool
+backtest_futures.py  — futures backtest and sweep tool
 start.sh / stop.sh
 ```

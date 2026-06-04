@@ -28,6 +28,7 @@ def api_status():
         "uptime": get_uptime(),
         "live_since": get_live_since(),
         "mode": config.MODE,
+        "interval": config.INTERVAL,
         "balance": round(state.balance, 2),
         "total_trades": state.total_trades,
         "total_pnl": round(state.total_pnl, 2),
@@ -443,7 +444,7 @@ def api_futures_status():
     if not config.FUTURES_ENABLED:
         return jsonify({"enabled": False})
     from bot.futures_simulator import get_state as fget_state
-    from bot.futures_engine import get_last_tick as f_last_tick, is_running as f_running, is_paused as f_paused
+    from bot.futures_engine import get_last_tick as f_last_tick, get_uptime as f_get_uptime, is_running as f_running, is_paused as f_paused
     from bot.futures_exchange import get_mark_price
     state = fget_state()
     positions_out = {}
@@ -473,7 +474,9 @@ def api_futures_status():
         "paused":               f_paused(),
         "mode":                 config.FUTURES_MODE,
         "stop_check_interval":  config.FUTURES_STOP_CHECK_INTERVAL,
+        "leverage":      config.FUTURES_LEVERAGE,
         "last_tick":     f_last_tick(),
+        "uptime":        f_get_uptime(),
         "balance":       round(state.balance, 2),
         "total_trades":  state.total_trades,
         "total_pnl":     round(state.total_pnl, 4),

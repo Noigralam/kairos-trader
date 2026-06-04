@@ -30,6 +30,7 @@ _thread: threading.Thread = None
 _stop_thread: threading.Thread = None
 _lock     = threading.Lock()
 _last_tick: str = None
+_start_time: float = None
 
 # unix ms of next funding settlement per symbol (fetched on startup)
 _next_funding: dict[str, int] = {}
@@ -37,6 +38,12 @@ _next_funding: dict[str, int] = {}
 
 def get_last_tick() -> str:
     return _last_tick
+
+
+def get_uptime() -> int | None:
+    if _start_time is None:
+        return None
+    return int(time.time() - _start_time)
 
 
 def _seconds_until_next_candle(sleep_sec: int) -> int:
@@ -202,11 +209,12 @@ def _stop_loop():
 
 
 def start():
-    global _running, _thread, _stop_thread
+    global _running, _thread, _stop_thread, _start_time
     with _lock:
         if _running:
             return
         _running = True
+        _start_time = time.time()
     _thread      = threading.Thread(target=_loop,       daemon=True, name="futures-engine")
     _stop_thread = threading.Thread(target=_stop_loop,  daemon=True, name="futures-stop-check")
     _thread.start()
