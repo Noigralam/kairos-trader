@@ -589,12 +589,13 @@ def api_futures_status():
         "leverage":      config.FUTURES_LEVERAGE,
         "last_tick":     f_last_tick(),
         "uptime":        f_get_uptime(),
-        "balance":       round(state.balance, 2),
-        "total_trades":  state.total_trades,
-        "total_pnl":     round(state.total_pnl, 4),
-        "total_fees":    round(state.total_fees, 4),
-        "total_funding": round(state.total_funding, 4),
-        "positions":     positions_out,
+        "balance":           round(state.balance, 2),
+        "starting_balance":  db.get_starting_balance(f"futures_{config.FUTURES_MODE}"),
+        "total_trades":      state.total_trades,
+        "total_pnl":         round(state.total_pnl, 4),
+        "total_fees":        round(state.total_fees, 4),
+        "total_funding":     round(state.total_funding, 4),
+        "positions":         positions_out,
     })
 
 

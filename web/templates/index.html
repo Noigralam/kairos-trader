@@ -413,7 +413,7 @@
 
     <section class="chart-section">
       <div class="chart-controls">
-        <h2>Price chart</h2>
+        <h2>Price Chart</h2>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
           <div class="btn-group" id="pair-btns"></div>
           <div class="btn-group" id="span-btns">
@@ -453,7 +453,14 @@
   <div id="tab-futures" style="display:none">
 
     <div class="stats futures-stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-      <div class="stat-card"><div class="label">Futures Balance</div><div class="value" id="f-balance">—</div></div>
+      <div class="stat-card">
+        <div class="label">Balance</div>
+        <div class="value"><span id="f-balance">—</span><span id="f-starting-balance" style="font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Portfolio Value</div>
+        <div class="value"><span id="f-portfolio-value">—</span><span id="f-portfolio-pct" style="font-size:13px;font-weight:400;margin-left:6px;"></span></div>
+      </div>
       <div class="stat-card"><div class="label">Realised PnL</div><div class="value" id="f-pnl">—</div></div>
       <div class="stat-card"><div class="label">Trades</div><div class="value" id="f-trades">—</div></div>
       <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
@@ -1602,6 +1609,16 @@
 
       // Summary stats
       document.getElementById('f-balance').textContent = fmtUsdt(d.balance);
+      const fOpenVal = Object.values(d.positions || {}).reduce((s, p) => s + p.unrealized_pnl, 0);
+      const fPortVal = d.balance + Object.values(d.positions || {}).reduce((s, p) => s + p.margin, 0) + fOpenVal;
+      document.getElementById('f-portfolio-value').textContent = fmtUsdt(fPortVal);
+      if (d.starting_balance != null) {
+        document.getElementById('f-starting-balance').textContent = `· from ${fmtUsdt(d.starting_balance)}`;
+        const pct = (fPortVal - d.starting_balance) / d.starting_balance * 100;
+        const pctEl = document.getElementById('f-portfolio-pct');
+        pctEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+        pctEl.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+      }
       document.getElementById('f-pnl').innerHTML       = fmtPnlUsdt(d.total_pnl);
       document.getElementById('f-trades').textContent  = d.total_trades;
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
