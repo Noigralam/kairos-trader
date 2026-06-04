@@ -474,6 +474,11 @@
         <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="f-stat-best">—</div></div>
         <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="f-stat-worst">—</div></div>
         <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="f-stat-hold">—</div></div>
+        <div class="stat-card">
+          <div class="label">Fear &amp; Greed</div>
+          <div class="value" id="f-fng-value">—</div>
+          <div style="font-size:11px;color:var(--muted)" id="f-fng-label"></div>
+        </div>
       </div>
     </section>
 
@@ -1194,18 +1199,20 @@
   loadStats();
 
   // ── fear & greed ──────────────────────────────────────────────────────────
+  function _fngColor(v) {
+    return v <= 25 ? '#f85149' : v <= 45 ? '#e3b341' : v <= 55 ? '#8b949e' : v <= 75 ? '#3fb950' : '#58a6ff';
+  }
   async function loadFng() {
     try {
       const d = await fetch('/api/fng').then(r => r.json());
       if (d.value == null) return;
-      const el = document.getElementById('fng-value');
-      el.textContent = d.value;
-      el.style.color = d.value <= 25 ? '#f85149'
-                     : d.value <= 45 ? '#e3b341'
-                     : d.value <= 55 ? '#8b949e'
-                     : d.value <= 75 ? '#3fb950'
-                     :                 '#58a6ff';
-      document.getElementById('fng-label').textContent = d.label;
+      ['fng-value', 'f-fng-value'].forEach(id => {
+        const el = document.getElementById(id);
+        el.textContent = d.value;
+        el.style.color = _fngColor(d.value);
+      });
+      document.getElementById('fng-label').textContent   = d.label;
+      document.getElementById('f-fng-label').textContent = d.label;
     } catch(e) { console.error(e); }
   }
   loadFng();
