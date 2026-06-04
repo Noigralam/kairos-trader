@@ -101,7 +101,6 @@
     .pos  { color: var(--green); }
     .neg  { color: var(--red);   }
 
-    #refresh-indicator { font-size: 11px; color: var(--muted); }
     #last-tick { font-size: 12px; color: var(--muted); }
 
     .log-box {
@@ -295,7 +294,6 @@
   <div style="display:flex;align-items:center;gap:20px;">
     <!-- Spot info block -->
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-      <span id="refresh-indicator">Refreshing…</span>
       <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--blue);">Spot</span>
       <span id="last-tick"     style="font-size:12px;color:var(--muted);">Last tick: —</span>
       <span id="next-tick"     style="font-size:12px;color:var(--muted);">Next tick: —</span>
@@ -896,8 +894,6 @@
         }).join('');
       }
 
-      document.getElementById('refresh-indicator').textContent =
-        'Updated ' + new Date().toLocaleTimeString('fi-FI', { timeZone: 'Europe/Helsinki', hour: '2-digit', minute: '2-digit' });
       document.getElementById('last-tick').textContent =
         'Last tick: ' + (s.last_tick || '—');
       if (s.last_tick && s.last_tick !== _lastKnownTick) {
@@ -927,7 +923,6 @@
       }
 
     } catch (e) {
-      document.getElementById('refresh-indicator').textContent = 'Connection error';
     }
   }
 
