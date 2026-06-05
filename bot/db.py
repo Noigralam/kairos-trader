@@ -81,7 +81,7 @@ def log_balance(balance: float, mode: str):
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         "INSERT INTO balance_history (timestamp, balance, mode) VALUES (?, ?, ?)",
-        (datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"), balance, mode)
+        (datetime.now(tz=_TZ).strftime("%Y-%m-%d %H:%M:%S"), balance, mode)
     )
     conn.commit()
     conn.close()

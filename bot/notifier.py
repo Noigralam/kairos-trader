@@ -179,7 +179,8 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
         above  = gap >= 0
         ob     = config.rsi_overbought_for(pair)
 
-        if result.rsi < config.SPOT_RSI_OVERSOLD:
+        os     = config.rsi_oversold_for(pair)
+        if result.rsi < os:
             rsi_zone = "🟢 oversold"
         elif result.rsi > ob:
             rsi_zone = "🔴 overbought"
@@ -194,7 +195,7 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
             action = "**🔴 SELLING**"
         elif not above:
             action = "⏸ HOLD — downtrend"
-        elif result.rsi >= config.SPOT_RSI_OVERSOLD:
+        elif result.rsi >= os:
             action = "⏸ HOLD — wait RSI"
         else:
             action = "⏸ HOLD"

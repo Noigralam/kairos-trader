@@ -177,6 +177,7 @@ def api_signals():
                 "price": round(price, 2),
                 "rsi": round(result.rsi, 1),
                 "rsi_period": config.rsi_period_for(pair),
+                "rsi_oversold":  config.rsi_oversold_for(pair),
                 "rsi_overbought": config.rsi_overbought_for(pair),
                 "ema200": round(result.ema_trend, 2),
                 "ema_threshold": round(ema_threshold, 2),
