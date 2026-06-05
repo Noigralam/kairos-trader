@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time as _time
 from dataclasses import dataclass, field
 from . import config
@@ -15,6 +16,7 @@ from .notifier import notify, trade_alert, trailing_stop_alert
 from .db import log_trade
 
 FEE = config.FUTURES_FEE
+_check_lock = threading.Lock()
 
 _SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_state_simulation.json")
 _LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_state_live.json")
@@ -295,36 +297,39 @@ def apply_funding(symbol: str, rate: float):
 
 
 def check_stops(prices: dict):
-    now = _time.time()
-    for symbol, pos in list(_state.positions.items()):
-        if symbol not in prices:
-            continue
-        price = prices[symbol]
-        updated = update_peak(pos, price)
+    with _check_lock:
+        now = _time.time()
+        for symbol, pos in list(_state.positions.items()):
+            if symbol not in prices:
+                continue
+            price = prices[symbol]
+            updated = update_peak(pos, price)
 
-        if check_liquidation(pos, price):
-            notify(
-                f"[FUTURES LIQUIDATION] {symbol} — price ${price:,.4f} hit "
-                f"liquidation ${pos.liquidation_price():,.2f}. Closing."
+            if check_liquidation(pos, price):
+                notify(
+                    f"[FUTURES LIQUIDATION] {symbol} — price ${price:,.4f} hit "
+                    f"liquidation ${pos.liquidation_price():,.2f}. Closing."
+                )
+                close_long(symbol, pos.liquidation_price(), reason="liquidation")
+
+            elif check_take_profit(pos, price):
+                close_long(symbol, price, reason="take_profit")
+
+            elif check_trailing_stop(pos, price):
+                close_long(symbol, price, reason="trailing_stop")
+
+            elif updated:
+                _save()
+
+        # Update portfolio peak for drawdown guard (only positions with prices to avoid overstating value on partial fetch)
+        if config.FUTURES_MAX_DRAWDOWN_PCT > 0:
+            pos_pnl = sum(
+                p.unrealized_pnl(prices[s])
+                for s, p in _state.positions.items() if s in prices
             )
-            close_long(symbol, pos.liquidation_price(), reason="liquidation")
-
-        elif check_take_profit(pos, price):
-            close_long(symbol, price, reason="take_profit")
-
-        elif check_trailing_stop(pos, price):
-            close_long(symbol, price, reason="trailing_stop")
-
-        elif updated:
-            _save()
-
-    # Update portfolio peak for drawdown guard
-    if config.FUTURES_MAX_DRAWDOWN_PCT > 0:
-        pos_pnl = sum(
-            p.unrealized_pnl(prices[s])
-            for s, p in _state.positions.items() if s in prices
-        )
-        portfolio_value = _state.balance + sum(p.margin for p in _state.positions.values()) + pos_pnl
-        if portfolio_value > _state.portfolio_peak:
-            _state.portfolio_peak = portfolio_value
-            _save()
+            portfolio_value = _state.balance + sum(
+                p.margin for s, p in _state.positions.items() if s in prices
+            ) + pos_pnl
+            if portfolio_value > _state.portfolio_peak:
+                _state.portfolio_peak = portfolio_value
+                _save()

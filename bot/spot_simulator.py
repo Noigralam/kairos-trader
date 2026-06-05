@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time as _time
 from dataclasses import dataclass, field
 from . import config
@@ -9,6 +10,7 @@ from .db import log_trade
 from .spot_exchange import round_qty, get_min_notional, get_eur_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
+_check_lock = threading.Lock()
 
 _SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_state_simulation.json")
 _LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_state_live.json")
@@ -330,31 +332,32 @@ def close_position(pair: str, price: float, reason: str = "signal"):
 
 
 def check_stops(prices: dict):
-    now = _time.time()
-    for pair, pos in list(_state.positions.items()):
-        if pair not in prices:
-            continue
-        price = prices[pair]
-        updated = update_peak(pos, price)
-        if check_take_profit(pos, price):
-            close_position(pair, price, reason="take_profit")
-        elif check_trailing_stop(pos, price):
-            close_position(pair, price, reason="trailing_stop")
-        elif (config.SPOT_TIME_STOP_DAYS > 0
-              and pos.opened_at > 0
-              and (now - pos.opened_at) / 86400 > config.SPOT_TIME_STOP_DAYS
-              and pos.peak() <= pos.trailing_stop_level()):
-            age = (now - pos.opened_at) / 86400
-            notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
-            close_position(pair, price, reason="time_stop")
-        elif updated:
-            _save()
+    with _check_lock:
+        now = _time.time()
+        for pair, pos in list(_state.positions.items()):
+            if pair not in prices:
+                continue
+            price = prices[pair]
+            updated = update_peak(pos, price)
+            if check_take_profit(pos, price):
+                close_position(pair, price, reason="take_profit")
+            elif check_trailing_stop(pos, price):
+                close_position(pair, price, reason="trailing_stop")
+            elif (config.SPOT_TIME_STOP_DAYS > 0
+                  and pos.opened_at > 0
+                  and (now - pos.opened_at) / 86400 > config.SPOT_TIME_STOP_DAYS
+                  and pos.peak() <= pos.trailing_stop_level()):
+                age = (now - pos.opened_at) / 86400
+                notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
+                close_position(pair, price, reason="time_stop")
+            elif updated:
+                _save()
 
-    # Update portfolio peak for drawdown guard
-    if config.SPOT_MAX_DRAWDOWN_PCT > 0:
-        portfolio_value = _state.balance + sum(
-            prices[p] * pos.amount for p, pos in _state.positions.items() if p in prices
-        )
-        if portfolio_value > _state.portfolio_peak:
-            _state.portfolio_peak = portfolio_value
-            _save()
+        # Update portfolio peak for drawdown guard
+        if config.SPOT_MAX_DRAWDOWN_PCT > 0:
+            portfolio_value = _state.balance + sum(
+                prices[p] * pos.amount for p, pos in _state.positions.items() if p in prices
+            )
+            if portfolio_value > _state.portfolio_peak:
+                _state.portfolio_peak = portfolio_value
+                _save()
