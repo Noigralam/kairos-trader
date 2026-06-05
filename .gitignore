@@ -37,6 +37,7 @@ data/futures_state_live.json
 .idea/
 *.swp
 *.swo
+*.swn
 
 # OS
 .DS_Store
