@@ -22,13 +22,15 @@ config.json
 # Logs & runtime state
 *.log
 logs/
-data/state.json
-data/state_live.json
 data/trades.db
-data/candles.db
-data/bot.pid
+data/kairos.pid
 data/discord_ids.json
 data/watchdog.log
+data/spot_state_simulation.json
+data/spot_state_live.json
+data/spot_live_since.txt
+data/futures_state_simulation.json
+data/futures_state_live.json
 
 # IDE
 .vscode/
