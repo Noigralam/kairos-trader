@@ -3,7 +3,7 @@ from bot import spot_engine as engine, spot_simulator as simulator, db, config
 from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy
 from bot.notifier import get_recent_logs
 from bot.spot_exchange import get_price
-from bot.spot_candles import get_df
+from bot.candles import get_df
 from bot.strategy import compute_signal, Signal
 
 app = Flask(__name__, static_folder="static")
@@ -117,7 +117,7 @@ def api_signals():
             def _daily_ema_val(pair: str):
                 if not config.SPOT_DAILY_EMA_FILTER:
                     return None
-                from bot.spot_candles import get_df as _gdf
+                from bot.candles import get_df as _gdf
                 df1d = _gdf(pair, "1d", limit=210)
                 if len(df1d) < 201:
                     return None
@@ -414,7 +414,7 @@ def api_futures_chart(symbol):
     if not config.FUTURES_ENABLED:
         return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
     import pandas as pd
-    from bot.spot_candles import get_df as _get_df
+    from bot.candles import get_df as _get_df
     span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672, "2w": 1344, "1m": 2880}
     span  = request.args.get("span", "1d")
     limit = span_candles.get(span, 96)

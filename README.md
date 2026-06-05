@@ -257,7 +257,7 @@ bot/
   spot_simulator.py    — spot position management (simulation + live)
   spot_exchange.py     — Binance spot API wrapper
   strategy.py          — RSI + EMA200 signal (shared by spot + futures)
-  spot_candles.py      — local SQLite candle cache with incremental sync
+  candles.py           — local SQLite candle cache with incremental sync (shared by spot + futures)
   spot_risk.py         — spot Position dataclass, trailing stop, DCA, PnL
   notifier.py          — Discord webhooks, tick embeds, alerts, log buffering
   discord_bot.py       — discord.py slash command bot
@@ -272,7 +272,6 @@ web/
     index.html         — single-page dashboard (Spot / Futures tabs)
 data/
   trades.db            — trade history (all modes, tagged by mode string)
-  spot_candles.db           — local candle cache (spot + futures pairs)
   spot_state.json           — spot simulation state
   spot_state_live.json      — spot live state
   futures_state_simulation.json — futures simulation state

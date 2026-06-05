@@ -344,7 +344,7 @@ def build_chart(pairs: list, prices: dict, results: dict) -> io.BytesIO | None:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.dates as mdates
-        from .spot_candles import get_df
+        from .candles import get_df
 
         n = len(pairs)
         fig, axes = plt.subplots(n, 1, figsize=(8, 3 * n), squeeze=False)
