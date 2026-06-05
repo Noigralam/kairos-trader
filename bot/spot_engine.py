@@ -6,10 +6,10 @@ from enum import Enum
 from . import config
 
 log = logging.getLogger("cryptobot")
-from .exchange import get_klines, get_price
+from .spot_exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
-from .candles import initial_sync, sync as sync_candles, get_df
-from .simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add
+from .spot_candles import initial_sync, sync as sync_candles, get_df
+from .spot_simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add
 from .notifier import notify, notify_tick, bot_status_alert, build_chart, extreme_alert, daily_summary
 from . import db as _db
 

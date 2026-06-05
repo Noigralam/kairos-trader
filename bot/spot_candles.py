@@ -14,7 +14,7 @@ from datetime import datetime, timezone, timedelta
 import pandas as pd
 
 from .db import DB_PATH
-from .exchange import get_client
+from .spot_exchange import get_client
 
 log = logging.getLogger("cryptobot")
 

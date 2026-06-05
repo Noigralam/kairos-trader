@@ -24,8 +24,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from bot import config
-from bot.candles import get_df, initial_sync
-from bot.risk import Position, apply_dca, update_peak, calc_pnl
+from bot.spot_candles import get_df, initial_sync
+from bot.spot_risk import Position, apply_dca, update_peak, calc_pnl
 
 INTERVAL = "15m"
 WARMUP   = 210

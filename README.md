@@ -253,12 +253,12 @@ The futures backtest models isolated margin, 0.05% taker fee, 0.01%/8h funding o
 ```
 bot/
   config.py            — all settings from .env, per-pair helpers (spot + futures)
-  engine.py            — spot trading loop: candle alignment, signal execution, stop-check thread
-  simulator.py         — spot position management (simulation + live)
-  exchange.py          — Binance spot API wrapper
+  spot_engine.py       — spot trading loop: candle alignment, signal execution, stop-check thread
+  spot_simulator.py    — spot position management (simulation + live)
+  spot_exchange.py     — Binance spot API wrapper
   strategy.py          — RSI + EMA200 signal (shared by spot + futures)
-  candles.py           — local SQLite candle cache with incremental sync
-  risk.py              — spot Position dataclass, trailing stop, DCA, PnL
+  spot_candles.py      — local SQLite candle cache with incremental sync
+  spot_risk.py         — spot Position dataclass, trailing stop, DCA, PnL
   notifier.py          — Discord webhooks, tick embeds, alerts, log buffering
   discord_bot.py       — discord.py slash command bot
   db.py                — trade log, balance history, tax summary (SQLite)

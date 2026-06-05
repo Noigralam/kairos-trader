@@ -3,10 +3,10 @@ import os
 import time as _time
 from dataclasses import dataclass, field
 from . import config
-from .risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
+from .spot_risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert, notify
 from .db import log_trade
-from .exchange import round_qty, get_min_notional, get_eur_balance, place_order
+from .spot_exchange import round_qty, get_min_notional, get_eur_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
 

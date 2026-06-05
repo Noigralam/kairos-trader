@@ -6,9 +6,9 @@ import threading
 import discord
 from discord import app_commands
 
-from . import config, engine
-from .exchange import get_price
-from .simulator import get_state, manual_add
+from . import config, spot_engine as engine
+from .spot_exchange import get_price
+from .spot_simulator import get_state, manual_add
 from .notifier import daily_summary
 import bot.notifier as _notifier
 

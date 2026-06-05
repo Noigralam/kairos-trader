@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from bot import config
-from bot.candles import get_df, initial_sync
+from bot.spot_candles import get_df, initial_sync
 
 PAIRS   = ["ETHUSDT", "SOLUSDT"]
 INTERVAL = "15m"
