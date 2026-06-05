@@ -59,10 +59,10 @@ Edit `.env` — every setting is documented inline. At minimum:
 ./start.sh
 ```
 
-Open `http://localhost:8888` and confirm the dashboard loads, the status badge shows **running**, and tick logs appear every 15 minutes. Check `data/bot.log` if anything looks wrong:
+Open `http://localhost:8888` and confirm the dashboard loads, the status badge shows **running**, and tick logs appear every 15 minutes. Check `data/kairos.log` if anything looks wrong:
 
 ```bash
-tail -f data/bot.log
+tail -f data/kairos.log
 ```
 
 ### 4. Go live (optional)
@@ -95,14 +95,14 @@ Then restart:
 ./stop.sh && ./start.sh
 ```
 
-On startup in live mode the bot fetches your real EUR balance from Binance and logs it. Confirm this looks correct in `data/bot.log` before leaving it running.
+On startup in live mode the bot fetches your real EUR balance from Binance and logs it. Confirm this looks correct in `data/kairos.log` before leaving it running.
 
 ## Running
 
 ```bash
 ./start.sh          # start bot + dashboard in background
 ./stop.sh           # stop
-tail -f data/bot.log
+tail -f data/kairos.log
 ```
 
 Dashboard: `http://localhost:8888`
@@ -272,11 +272,12 @@ web/
     index.html         — single-page dashboard (Spot / Futures tabs)
 data/
   trades.db            — trade history (all modes, tagged by mode string)
-  candles.db           — local candle cache (spot + futures pairs)
-  state.json           — spot simulation state
-  state_live.json      — spot live state
-  futures_state.json   — futures state
-  live_since.txt       — timestamp of first spot live mode start
+  spot_candles.db           — local candle cache (spot + futures pairs)
+  spot_state.json           — spot simulation state
+  spot_state_live.json      — spot live state
+  futures_state_simulation.json — futures simulation state
+  futures_state_live.json   — futures live state
+  spot_live_since.txt       — timestamp of first spot live mode start
 backtest.py            — spot backtest and parameter sweep tool
 backtest_futures.py    — futures backtest and parameter sweep tool
 start.sh / stop.sh

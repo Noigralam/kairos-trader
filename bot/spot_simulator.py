@@ -10,8 +10,8 @@ from .spot_exchange import round_qty, get_min_notional, get_eur_balance, place_o
 
 SPOT_FEE = config.SPOT_FEE
 
-_SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "state.json")
-_LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "state_live.json")
+_SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_state_simulation.json")
+_LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_state_live.json")
 STATE_PATH = _LIVE_STATE_PATH if config.SPOT_MODE == "live" else _SIM_STATE_PATH
 
 

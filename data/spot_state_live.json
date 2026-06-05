@@ -1,0 +1,30 @@
+{
+  "mode": "live",
+  "balance": 2.081,
+  "total_trades": 0,
+  "total_pnl": 0.0,
+  "total_fees": 0.0012345300000000002,
+  "portfolio_peak": 0.0,
+  "positions": {
+    "SOLEUR": {
+      "pair": "SOLEUR",
+      "entry_price": 69.83636648394673,
+      "amount": 1.2770000000000001,
+      "value_eur": 89.18104,
+      "take_profit_price": 73.32818480814407,
+      "highest_price": 71.33,
+      "dca_done": true,
+      "opened_at": 0.0
+    },
+    "ETHEUR": {
+      "pair": "ETHEUR",
+      "entry_price": 1714.576,
+      "amount": 0.0225,
+      "value_eur": 38.57796,
+      "take_profit_price": 1800.3048000000001,
+      "highest_price": 1723.84,
+      "dca_done": true,
+      "opened_at": 0.0
+    }
+  }
+}

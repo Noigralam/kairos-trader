@@ -6,7 +6,7 @@ if [ ! -d ".venv" ]; then
     exit 1
 fi
 
-PID_FILE="data/bot.pid"
+PID_FILE="data/kairos.pid"
 
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     echo "Bot is already running (PID $(cat "$PID_FILE"))"
@@ -19,5 +19,5 @@ echo $! > "$PID_FILE"
 
 echo "Kairos started (PID $(cat "$PID_FILE"))"
 echo "Dashboard: http://$(hostname -I | awk '{print $1}'):$(grep WEB_PORT .env | cut -d= -f2)"
-echo "Logs:      tail -f data/bot.log"
+echo "Logs:      tail -f data/kairos.log"
 echo "Stop:      ./stop.sh"

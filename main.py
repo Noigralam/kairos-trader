@@ -3,7 +3,7 @@ import os
 from bot.db import init_db
 from web.app import run
 
-LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "bot.log")
+LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "kairos.log")
 
 
 def setup_logging():

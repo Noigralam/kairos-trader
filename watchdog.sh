@@ -1,7 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-PID_FILE="data/bot.pid"
+PID_FILE="data/kairos.pid"
 ENV_FILE=".env"
 
 # load DISCORD_WEBHOOK_URL from .env

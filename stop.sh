@@ -1,7 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-PID_FILE="data/bot.pid"
+PID_FILE="data/kairos.pid"
 
 # Kill the PID-file process first
 if [ -f "$PID_FILE" ]; then

@@ -217,7 +217,7 @@ def _stop_loop():
             log.error(f"[SPOT STOP-CHECK] {e}", exc_info=True)
 
 
-_LIVE_SINCE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "live_since.txt")
+_LIVE_SINCE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_live_since.txt")
 
 
 def _ensure_live_since():

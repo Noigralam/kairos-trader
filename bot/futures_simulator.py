@@ -16,9 +16,9 @@ from .db import log_trade
 
 FEE = config.FUTURES_FEE
 
-_STATE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "futures_state.json"
-)
+_SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_state_simulation.json")
+_LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_state_live.json")
+_STATE_PATH = _LIVE_STATE_PATH if config.FUTURES_MODE == "live" else _SIM_STATE_PATH
 
 
 @dataclass
