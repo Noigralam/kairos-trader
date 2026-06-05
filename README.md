@@ -14,6 +14,7 @@ Includes a web dashboard, Discord integration, and backtest tools for both engin
 - **Trailing stop** with a profit floor — the stop rises as price climbs, only fires once above the floor
 - **Take-profit** at +5% acts as a spike catcher
 - **DCA** averages down once per position when price drops ≥1% from entry
+- Fast-check loop runs every 60s for stop/TP checks between candles
 - Per-pair RSI and overbought thresholds (e.g. `SPOT_RSI_PERIOD_ETHEUR=7`)
 
 ### Futures
