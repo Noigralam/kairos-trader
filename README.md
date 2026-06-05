@@ -252,32 +252,32 @@ The futures backtest models isolated margin, 0.05% taker fee, 0.01%/8h funding o
 
 ```
 bot/
-  config.py            — all settings from .env, per-pair helpers (spot + futures)
-  spot_engine.py       — spot trading loop: candle alignment, signal execution, stop-check thread
-  spot_simulator.py    — spot position management (simulation + live)
-  spot_exchange.py     — Binance spot API wrapper
-  strategy.py          — RSI + EMA200 signal (shared by spot + futures)
-  candles.py           — local SQLite candle cache with incremental sync (shared by spot + futures)
-  spot_risk.py         — spot Position dataclass, trailing stop, DCA, PnL
-  notifier.py          — Discord webhooks, tick embeds, alerts, log buffering
-  discord_bot.py       — discord.py slash command bot
-  db.py                — trade log, balance history, tax summary (SQLite)
-  futures_engine.py    — futures loop: 15m signal thread + 60s risk/funding thread
-  futures_simulator.py — futures position management (simulation + live)
-  futures_exchange.py  — Binance futures API wrapper
-  futures_risk.py      — FuturesPosition dataclass, liquidation price, PnL
+  config.py                     — all settings from .env, per-pair helpers (spot + futures)
+  spot_engine.py                — spot trading loop: candle alignment, signal execution, stop-check thread
+  spot_simulator.py             — spot position management (simulation + live)
+  spot_exchange.py              — Binance spot API wrapper
+  spot_risk.py                  — spot Position dataclass, trailing stop, DCA, PnL
+  strategy.py                   — RSI + EMA200 signal (shared by spot + futures)
+  candles.py                    — local SQLite candle cache, incremental sync (shared by spot + futures)
+  notifier.py                   — Discord webhooks, tick embeds, alerts, log buffering
+  discord_bot.py                — discord.py slash command bot
+  db.py                         — trade log, balance history, tax summary (SQLite)
+  futures_engine.py             — futures loop: 15m signal thread + 60s risk/funding thread
+  futures_simulator.py          — futures position management (simulation + live)
+  futures_exchange.py           — Binance futures API wrapper
+  futures_risk.py               — FuturesPosition dataclass, liquidation price, PnL
 web/
-  app.py               — Flask dashboard API (spot + futures endpoints)
+  app.py                        — Flask dashboard API (spot + futures endpoints)
   templates/
-    index.html         — single-page dashboard (Spot / Futures tabs)
+    index.html                  — single-page dashboard (Spot / Futures tabs)
 data/
-  trades.db            — trade history (all modes, tagged by mode string)
-  spot_state.json           — spot simulation state
-  spot_state_live.json      — spot live state
+  trades.db                     — trade history and candle cache (all modes)
+  spot_state_simulation.json    — spot simulation state
+  spot_state_live.json          — spot live state
   futures_state_simulation.json — futures simulation state
-  futures_state_live.json   — futures live state
-  spot_live_since.txt       — timestamp of first spot live mode start
-backtest.py            — spot backtest and parameter sweep tool
-backtest_futures.py    — futures backtest and parameter sweep tool
+  futures_state_live.json       — futures live state
+  spot_live_since.txt           — timestamp of first spot live mode start
+backtest.py                     — spot backtest and parameter sweep tool
+backtest_futures.py             — futures backtest and parameter sweep tool
 start.sh / stop.sh
 ```
