@@ -333,9 +333,10 @@ def api_chart(pair):
         r   = rsi.iloc[i]
         e   = ema.iloc[i]
         p   = close.iloc[i]
-        if r < config.rsi_oversold_for(pair.upper()) and p > e:
+        _ema_threshold = e * (1 + config.ema_gap_for(pair.upper()))
+        if r < config.rsi_oversold_for(pair.upper()) and p >= _ema_threshold:
             buy_prices[i] = round(p, 4)
-        elif r < config.rsi_oversold_for(pair.upper()) and p <= e:
+        elif r < config.rsi_oversold_for(pair.upper()):
             blocked_buys[i] = round(p, 4)
         elif r > config.rsi_overbought_for(pair.upper()):
             sell_prices[i] = round(p, 4)

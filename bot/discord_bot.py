@@ -150,7 +150,7 @@ async def cmd_config(interaction: discord.Interaction):
         embed.add_field(
             name=pair,
             value=(f"RSI({config.rsi_period_for(pair)}) "
-                   f"buy<{config.SPOT_RSI_OVERSOLD} sell>{config.rsi_overbought_for(pair)}\n"
+                   f"buy<{config.rsi_oversold_for(pair)} sell>{config.rsi_overbought_for(pair)}\n"
                    f"min exit {config.min_exit_for(pair)*100:.0f}%"),
             inline=True,
         )
