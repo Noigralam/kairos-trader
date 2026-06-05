@@ -66,15 +66,15 @@ def _seconds_until_next_candle(sleep_sec: int) -> int:
 
 
 def _loop():
-    notify(f"Bot started | mode={config.MODE} | pairs={', '.join(config.TRADING_PAIRS)} | interval={config.INTERVAL}")
-    sleep_sec = INTERVAL_SECONDS.get(config.INTERVAL, 3600)
+    notify(f"Bot started | mode={config.SPOT_MODE} | pairs={', '.join(config.SPOT_TRADING_PAIRS)} | interval={config.SPOT_INTERVAL}")
+    sleep_sec = INTERVAL_SECONDS.get(config.SPOT_INTERVAL, 3600)
 
-    for pair in config.TRADING_PAIRS:
-        initial_sync(pair, config.INTERVAL)
+    for pair in config.SPOT_TRADING_PAIRS:
+        initial_sync(pair, config.SPOT_INTERVAL)
 
     # align to the next candle boundary before first tick
     wait = _seconds_until_next_candle(sleep_sec)
-    log.info(f"Waiting {wait}s to align to next {config.INTERVAL} candle boundary")
+    log.info(f"Waiting {wait}s to align to next {config.SPOT_INTERVAL} candle boundary")
     time.sleep(wait)
 
     while _status != BotStatus.STOPPED:
@@ -86,19 +86,19 @@ def _loop():
             import datetime, zoneinfo
             global _last_tick
             _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
-            for pair in config.TRADING_PAIRS:
-                sync_candles(pair, config.INTERVAL)
-                if config.DAILY_EMA_FILTER:
+            for pair in config.SPOT_TRADING_PAIRS:
+                sync_candles(pair, config.SPOT_INTERVAL)
+                if config.SPOT_DAILY_EMA_FILTER:
                     sync_candles(pair, "1d")
 
-            prices = {pair: get_price(pair) for pair in config.TRADING_PAIRS}
+            prices = {pair: get_price(pair) for pair in config.SPOT_TRADING_PAIRS}
             notify(
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
                 discord=False,
             )
 
             def _daily_ema(pair: str) -> float | None:
-                if not config.DAILY_EMA_FILTER:
+                if not config.SPOT_DAILY_EMA_FILTER:
                     return None
                 df1d = get_df(pair, "1d", limit=210)
                 if len(df1d) < 201:
@@ -106,13 +106,13 @@ def _loop():
                 return float(df1d["close"].ewm(span=200, adjust=False).mean().iloc[-1])
 
             state = get_state()
-            results = {pair: compute_signal(get_df(pair, config.INTERVAL),
+            results = {pair: compute_signal(get_df(pair, config.SPOT_INTERVAL),
                                             rsi_period=config.rsi_period_for(pair),
                                             rsi_oversold=config.rsi_oversold_for(pair),
                                             rsi_overbought=config.rsi_overbought_for(pair),
                                             ema_gap=config.ema_gap_for(pair),
                                             daily_ema=_daily_ema(pair))
-                       for pair in config.TRADING_PAIRS}
+                       for pair in config.SPOT_TRADING_PAIRS}
 
             # Per-pair detail: log + web buffer only
             for pair, result in results.items():
@@ -150,12 +150,12 @@ def _loop():
             global _last_summary_date
             today = _dt.date.today()
             if _last_summary_date is not None and today != _last_summary_date:
-                daily_summary(state, config.TRADING_PAIRS, prices, results)
+                daily_summary(state, config.SPOT_TRADING_PAIRS, prices, results)
             _last_summary_date = today
 
             # Discord tick embed
-            chart_buf = build_chart(config.TRADING_PAIRS, prices, results)
-            notify_tick(config.TRADING_PAIRS, prices, results, state, chart_buf)
+            chart_buf = build_chart(config.SPOT_TRADING_PAIRS, prices, results)
+            notify_tick(config.SPOT_TRADING_PAIRS, prices, results, state, chart_buf)
 
             # Check stop-loss and take-profit on every tick
             check_stops(prices)
@@ -168,7 +168,7 @@ def _loop():
                 elif has_position:
                     pos = state.positions[pair]
                     drop = (pos.entry_price - prices[pair]) / pos.entry_price
-                    if not pos.dca_done and drop >= config.DCA_DROP_PCT:
+                    if not pos.dca_done and drop >= config.SPOT_DCA_DROP_PCT:
                         dca_position(pair, prices[pair])
                         if pos.dca_done:
                             notify(f"[DCA] {pair} down {drop*100:.1f}% from entry, RSI={result.rsi:.1f} — averaged down", discord=False)
@@ -184,7 +184,7 @@ def _loop():
             # snapshot portfolio value (cash + open position mark-to-market)
             snap_state = get_state()
             open_val   = sum(prices[p] * pos.amount for p, pos in snap_state.positions.items() if p in prices)
-            _db.log_balance(round(snap_state.balance + open_val, 2), config.MODE)
+            _db.log_balance(round(snap_state.balance + open_val, 2), config.SPOT_MODE)
 
         except Exception as e:
             log.error(e, exc_info=True)
@@ -221,7 +221,7 @@ _LIVE_SINCE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "dat
 
 
 def _ensure_live_since():
-    if config.MODE == "live" and not os.path.exists(_LIVE_SINCE_PATH):
+    if config.SPOT_MODE == "live" and not os.path.exists(_LIVE_SINCE_PATH):
         import datetime, zoneinfo
         ts = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
         with open(_LIVE_SINCE_PATH, "w") as f:

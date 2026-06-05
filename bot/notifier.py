@@ -179,7 +179,7 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
         above  = gap >= 0
         ob     = config.rsi_overbought_for(pair)
 
-        if result.rsi < config.RSI_OVERSOLD:
+        if result.rsi < config.SPOT_RSI_OVERSOLD:
             rsi_zone = "🟢 oversold"
         elif result.rsi > ob:
             rsi_zone = "🔴 overbought"
@@ -194,7 +194,7 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
             action = "**🔴 SELLING**"
         elif not above:
             action = "⏸ HOLD — downtrend"
-        elif result.rsi >= config.RSI_OVERSOLD:
+        elif result.rsi >= config.SPOT_RSI_OVERSOLD:
             action = "⏸ HOLD — wait RSI"
         else:
             action = "⏸ HOLD"
@@ -239,7 +239,7 @@ def extreme_alert(pair: str, condition: str, rsi: float, price: float, ema: floa
     else:
         color, emoji = 0xf85149, "📉"
 
-    content = "@everyone" if config.MODE == "live" else ""
+    content = "@everyone" if config.SPOT_MODE == "live" else ""
     embed = {
         "title":       f"{emoji} EXTREME — {pair}",
         "description": condition,
@@ -258,7 +258,7 @@ def extreme_alert(pair: str, condition: str, rsi: float, price: float, ema: floa
 def daily_summary(state, pairs: list, prices: dict, results: dict):
     """Daily performance summary embed."""
     from . import db as _db
-    stats    = _db.get_trade_stats(config.MODE)
+    stats    = _db.get_trade_stats(config.SPOT_MODE)
     fng_val, fng_lbl = get_fng()
     open_val = sum(prices.get(p, 0) * pos.amount for p, pos in state.positions.items())
     total    = state.balance + open_val
@@ -304,7 +304,7 @@ def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: fl
     if pnl  is not None:
         fields.append({"name": "PnL", "value": f"€{pnl:+.2f}", "inline": True})
 
-    content = "@everyone" if config.MODE == "live" else ""
+    content = "@everyone" if config.SPOT_MODE == "live" else ""
     embed = {
         "title":     f"{emoji} {side} — {pair}",
         "color":     color,
@@ -317,7 +317,7 @@ def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: fl
 
 
 def trailing_stop_alert(pair: str, price: float, pnl: float):
-    content = "@everyone" if config.MODE == "live" else ""
+    content = "@everyone" if config.SPOT_MODE == "live" else ""
     embed = {
         "title":     f"🛑 TRAILING STOP — {pair}",
         "color":     0x3fb950 if pnl >= 0 else 0xf85149,
@@ -356,7 +356,7 @@ def build_chart(pairs: list, prices: dict, results: dict) -> io.BytesIO | None:
                 spine.set_edgecolor("#30363d")
             ax.tick_params(colors="#8b949e", labelsize=8)
 
-            df = get_df(pair, config.INTERVAL, limit=210 + 96)
+            df = get_df(pair, config.SPOT_INTERVAL, limit=210 + 96)
             if df.empty:
                 continue
             close  = df["close"]

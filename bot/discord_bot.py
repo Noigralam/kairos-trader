@@ -72,7 +72,7 @@ tree    = _client.tree
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 def _pair_choices():
-    return [app_commands.Choice(name=p, value=p) for p in config.TRADING_PAIRS]
+    return [app_commands.Choice(name=p, value=p) for p in config.SPOT_TRADING_PAIRS]
 
 
 def _status_embed() -> discord.Embed:
@@ -80,7 +80,7 @@ def _status_embed() -> discord.Embed:
     color = discord.Color.green() if engine.get_status() == "running" else discord.Color.orange()
     embed = discord.Embed(title="📊 Bot Status", color=color)
     embed.add_field(name="Status",  value=engine.get_status().upper(), inline=True)
-    embed.add_field(name="Mode",    value=config.MODE.upper(),         inline=True)
+    embed.add_field(name="Mode",    value=config.SPOT_MODE.upper(),         inline=True)
     embed.add_field(name="Balance", value=f"€{state.balance:,.2f}",   inline=True)
     embed.add_field(name="PnL",     value=f"€{state.total_pnl:+.2f}", inline=True)
     embed.add_field(name="Trades",  value=str(state.total_trades),    inline=True)
@@ -128,29 +128,29 @@ async def cmd_summary(interaction: discord.Interaction):
     state   = get_state()
     prices  = {}
     results = {}
-    for pair in config.TRADING_PAIRS:
+    for pair in config.SPOT_TRADING_PAIRS:
         try:
             prices[pair] = get_price(pair)
         except Exception:
             pass
-    await asyncio.to_thread(daily_summary, state, config.TRADING_PAIRS, prices, results)
+    await asyncio.to_thread(daily_summary, state, config.SPOT_TRADING_PAIRS, prices, results)
     await interaction.followup.send("📅 Summary sent to channel.", ephemeral=True)
 
 
 @tree.command(name="crp_config", description="Show current bot configuration")
 async def cmd_config(interaction: discord.Interaction):
     embed = discord.Embed(title="⚙️ Configuration", color=discord.Color.blurple())
-    embed.add_field(name="Interval",       value=config.INTERVAL,                    inline=True)
-    embed.add_field(name="Position size",  value=f"{config.POSITION_SIZE_PCT*100:.0f}%", inline=True)
-    embed.add_field(name="Profit floor",   value=f"{config.PROFIT_FLOOR_PCT*100:.0f}%",  inline=True)
-    embed.add_field(name="Trailing stop",  value=f"{config.TRAILING_STOP_PCT*100:.0f}%", inline=True)
-    embed.add_field(name="Take profit",    value=f"{config.TAKE_PROFIT_PCT*100:.0f}%",   inline=True)
-    embed.add_field(name="DCA drop",       value=f"{config.DCA_DROP_PCT*100:.0f}%",      inline=True)
-    for pair in config.TRADING_PAIRS:
+    embed.add_field(name="Interval",       value=config.SPOT_INTERVAL,                    inline=True)
+    embed.add_field(name="Position size",  value=f"{config.SPOT_POSITION_SIZE_PCT*100:.0f}%", inline=True)
+    embed.add_field(name="Profit floor",   value=f"{config.SPOT_PROFIT_FLOOR_PCT*100:.0f}%",  inline=True)
+    embed.add_field(name="Trailing stop",  value=f"{config.SPOT_TRAILING_STOP_PCT*100:.0f}%", inline=True)
+    embed.add_field(name="Take profit",    value=f"{config.SPOT_TAKE_PROFIT_PCT*100:.0f}%",   inline=True)
+    embed.add_field(name="DCA drop",       value=f"{config.SPOT_DCA_DROP_PCT*100:.0f}%",      inline=True)
+    for pair in config.SPOT_TRADING_PAIRS:
         embed.add_field(
             name=pair,
             value=(f"RSI({config.rsi_period_for(pair)}) "
-                   f"buy<{config.RSI_OVERSOLD} sell>{config.rsi_overbought_for(pair)}\n"
+                   f"buy<{config.SPOT_RSI_OVERSOLD} sell>{config.rsi_overbought_for(pair)}\n"
                    f"min exit {config.min_exit_for(pair)*100:.0f}%"),
             inline=True,
         )

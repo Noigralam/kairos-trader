@@ -8,16 +8,16 @@ from .notifier import trade_alert, trailing_stop_alert, notify
 from .db import log_trade
 from .exchange import round_qty, get_min_notional, get_eur_balance, place_order
 
-BINANCE_FEE = config.BINANCE_FEE
+SPOT_FEE = config.SPOT_FEE
 
 _SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "state.json")
 _LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "state_live.json")
-STATE_PATH = _LIVE_STATE_PATH if config.MODE == "live" else _SIM_STATE_PATH
+STATE_PATH = _LIVE_STATE_PATH if config.SPOT_MODE == "live" else _SIM_STATE_PATH
 
 
 @dataclass
 class SimState:
-    balance: float = field(default_factory=lambda: config.SIMULATION_BALANCE)
+    balance: float = field(default_factory=lambda: config.SPOT_SIMULATION_BALANCE)
     positions: dict = field(default_factory=dict)   # pair -> Position
     total_trades: int = 0
     total_pnl: float = 0.0
@@ -31,7 +31,7 @@ _state = SimState()
 def _save():
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     data = {
-        "mode": config.MODE,
+        "mode": config.SPOT_MODE,
         "balance": _state.balance,
         "total_trades": _state.total_trades,
         "total_pnl": _state.total_pnl,
@@ -62,7 +62,7 @@ def _load():
     try:
         with open(STATE_PATH) as f:
             data = json.load(f)
-        _state.balance = data.get("balance", config.SIMULATION_BALANCE)
+        _state.balance = data.get("balance", config.SPOT_SIMULATION_BALANCE)
         _state.total_trades = data.get("total_trades", 0)
         _state.total_pnl = data.get("total_pnl", 0.0)
         _state.total_fees = data.get("total_fees", 0.0)
@@ -79,7 +79,7 @@ def _load():
 
 
 def init():
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         # In live mode, balance is always fetched from Binance — just load positions.
         _load()
         _state.balance = get_eur_balance()
@@ -106,21 +106,21 @@ def reset():
 def open_position(pair: str, price: float, size_pct: float = None):
     if pair in _state.positions:
         return
-    pct = size_pct if size_pct is not None else config.POSITION_SIZE_PCT
+    pct = size_pct if size_pct is not None else config.SPOT_POSITION_SIZE_PCT
 
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         balance = get_eur_balance()
         _state.balance = balance
     else:
         balance = _state.balance
 
-    if config.MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
+    if config.SPOT_MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
         drawdown = (_state.portfolio_peak - balance) / _state.portfolio_peak
-        if drawdown > config.MAX_DRAWDOWN_PCT:
-            notify(f"[SKIP] {pair} buy blocked — portfolio drawdown {drawdown*100:.1f}% exceeds limit {config.MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
+        if drawdown > config.SPOT_MAX_DRAWDOWN_PCT:
+            notify(f"[SKIP] {pair} buy blocked — portfolio drawdown {drawdown*100:.1f}% exceeds limit {config.SPOT_MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
             return
 
-    max_size = balance / (1 + BINANCE_FEE)
+    max_size = balance / (1 + SPOT_FEE)
     min_notional = get_min_notional(pair)
     size = min(balance * pct, max_size)
     # If the leftover after buying would be below Binance's minimum tradeable amount,
@@ -131,7 +131,7 @@ def open_position(pair: str, price: float, size_pct: float = None):
         notify(f"[SKIP] {pair} buy signal — order size €{size:.2f} below minimum €{min_notional:.2f} (balance €{balance:.2f})")
         return
 
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         amount = round_qty(pair, size / price)
         order  = place_order(pair, "BUY", amount)
         fills  = order.get("fills", [])
@@ -141,9 +141,9 @@ def open_position(pair: str, price: float, size_pct: float = None):
             buy_fee   = sum(float(f["commission"]) for f in fills)
         else:
             avg_price = price
-            buy_fee   = amount * avg_price * BINANCE_FEE
+            buy_fee   = amount * avg_price * SPOT_FEE
         value    = amount * avg_price
-        tp_price = avg_price * (1 + config.TAKE_PROFIT_PCT)
+        tp_price = avg_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
         pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
         _state.positions[pair] = pos
         _state.total_fees += buy_fee
@@ -155,8 +155,8 @@ def open_position(pair: str, price: float, size_pct: float = None):
         amount   = size / price
         amount   = round_qty(pair, amount)
         value    = amount * price
-        buy_fee  = value * BINANCE_FEE
-        tp_price = price * (1 + config.TAKE_PROFIT_PCT)
+        buy_fee  = value * SPOT_FEE
+        tp_price = price * (1 + config.SPOT_TAKE_PROFIT_PCT)
         pos      = Position(pair, price, amount, value, tp_price, price, opened_at=_time.time())
         _state.positions[pair] = pos
         _state.balance -= value + buy_fee
@@ -168,20 +168,20 @@ def open_position(pair: str, price: float, size_pct: float = None):
 
 def manual_add(pair: str, price: float, size_pct: float):
     """Manual buy — opens new position or merges into existing one."""
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         balance = get_eur_balance()
         _state.balance = balance
     else:
         balance = _state.balance
 
-    max_size = balance / (1 + BINANCE_FEE)
+    max_size = balance / (1 + SPOT_FEE)
     size = min(balance * size_pct, max_size)
     if size < 1:
         return
 
-    buy_fee = size * BINANCE_FEE
+    buy_fee = size * SPOT_FEE
 
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         amount = round_qty(pair, size / price)
         order  = place_order(pair, "BUY", amount)
         fills  = order.get("fills", [])
@@ -191,10 +191,10 @@ def manual_add(pair: str, price: float, size_pct: float):
             buy_fee   = sum(float(f["commission"]) for f in fills)
         else:
             avg_price = price
-            buy_fee   = amount * avg_price * BINANCE_FEE
+            buy_fee   = amount * avg_price * SPOT_FEE
         value = amount * avg_price
         if pair not in _state.positions:
-            tp_price = avg_price * (1 + config.TAKE_PROFIT_PCT)
+            tp_price = avg_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
             pos = Position(pair, avg_price, amount, value, tp_price, avg_price)
             _state.positions[pair] = pos
         else:
@@ -208,8 +208,8 @@ def manual_add(pair: str, price: float, size_pct: float):
         if pair not in _state.positions:
             amount   = round_qty(pair, size / price)
             value    = amount * price
-            buy_fee  = value * BINANCE_FEE
-            tp_price = price * (1 + config.TAKE_PROFIT_PCT)
+            buy_fee  = value * SPOT_FEE
+            tp_price = price * (1 + config.SPOT_TAKE_PROFIT_PCT)
             pos      = Position(pair, price, amount, value, tp_price, price)
             _state.positions[pair] = pos
             _state.balance -= value + buy_fee
@@ -235,15 +235,15 @@ def dca_position(pair: str, price: float):
     if pos.dca_done:
         return
 
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         balance = get_eur_balance()
         _state.balance = balance
     else:
         balance = _state.balance
 
-    max_size  = balance / (1 + BINANCE_FEE)
+    max_size  = balance / (1 + SPOT_FEE)
     min_notional = get_min_notional(pair)
-    dca_value = min(balance * config.DCA_SIZE_PCT, max_size)
+    dca_value = min(balance * config.SPOT_DCA_SIZE_PCT, max_size)
     # if leftover after DCA would be below minimum tradeable, use all available balance
     if balance - dca_value < min_notional:
         dca_value = min(balance, max_size)
@@ -251,7 +251,7 @@ def dca_position(pair: str, price: float):
         notify(f"[SKIP] {pair} DCA — order size €{dca_value:.2f} below minimum €{min_notional:.2f} (balance €{balance:.2f})")
         return
 
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         amount = round_qty(pair, dca_value / price)
         order  = place_order(pair, "BUY", amount)
         fills  = order.get("fills", [])
@@ -263,7 +263,7 @@ def dca_position(pair: str, price: float):
         else:
             avg_price = price
             bought    = amount
-            buy_fee   = dca_value * BINANCE_FEE
+            buy_fee   = dca_value * SPOT_FEE
         apply_dca(pos, avg_price, dca_value)
         _state.total_fees += buy_fee
         _state.balance = get_eur_balance()
@@ -271,7 +271,7 @@ def dca_position(pair: str, price: float):
         trade_alert("DCA", pair, avg_price, bought, dca_value, fee=buy_fee)
         log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
     else:
-        buy_fee = dca_value * BINANCE_FEE
+        buy_fee = dca_value * SPOT_FEE
         bought  = dca_value / price
         apply_dca(pos, price, dca_value)
         _state.balance -= dca_value + buy_fee
@@ -287,7 +287,7 @@ def close_position(pair: str, price: float, reason: str = "signal"):
 
     pos = _state.positions.pop(pair)
 
-    if config.MODE == "live":
+    if config.SPOT_MODE == "live":
         order  = place_order(pair, "SELL", pos.amount)
         fills  = order.get("fills", [])
         if fills:
@@ -297,9 +297,9 @@ def close_position(pair: str, price: float, reason: str = "signal"):
         else:
             avg_price = price
             sold_qty  = pos.amount
-            sell_fee  = pos.amount * price * BINANCE_FEE
+            sell_fee  = pos.amount * price * SPOT_FEE
         exit_value = sold_qty * avg_price
-        buy_fee    = pos.value_eur * BINANCE_FEE
+        buy_fee    = pos.value_eur * SPOT_FEE
         pnl        = calc_pnl(pos, avg_price, buy_fee=buy_fee, sell_fee=sell_fee)
         _state.total_trades += 1
         _state.total_pnl    += pnl
@@ -313,8 +313,8 @@ def close_position(pair: str, price: float, reason: str = "signal"):
         log_trade(pair, "SELL", avg_price, sold_qty, exit_value, sell_fee, mode="live", pnl=pnl, notes=reason)
     else:
         exit_value = pos.amount * price
-        buy_fee    = pos.value_eur * BINANCE_FEE
-        sell_fee   = exit_value * BINANCE_FEE
+        buy_fee    = pos.value_eur * SPOT_FEE
+        sell_fee   = exit_value * SPOT_FEE
         pnl        = calc_pnl(pos, price, buy_fee=buy_fee, sell_fee=sell_fee)
         _state.balance      += exit_value - sell_fee
         _state.total_trades += 1
@@ -340,9 +340,9 @@ def check_stops(prices: dict):
             close_position(pair, price, reason="take_profit")
         elif check_trailing_stop(pos, price):
             close_position(pair, price, reason="trailing_stop")
-        elif (config.TIME_STOP_DAYS > 0
+        elif (config.SPOT_TIME_STOP_DAYS > 0
               and pos.opened_at > 0
-              and (now - pos.opened_at) / 86400 > config.TIME_STOP_DAYS
+              and (now - pos.opened_at) / 86400 > config.SPOT_TIME_STOP_DAYS
               and pos.peak() <= pos.trailing_stop_level()):
             age = (now - pos.opened_at) / 86400
             notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
@@ -351,7 +351,7 @@ def check_stops(prices: dict):
             _save()
 
     # Update portfolio peak for drawdown guard
-    if config.MAX_DRAWDOWN_PCT > 0:
+    if config.SPOT_MAX_DRAWDOWN_PCT > 0:
         portfolio_value = _state.balance + sum(
             prices[p] * pos.amount for p, pos in _state.positions.items() if p in prices
         )

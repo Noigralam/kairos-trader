@@ -16,7 +16,7 @@ def get_client() -> Client:
 
 
 def get_klines(symbol: str, interval: str = None, limit: int = 250) -> pd.DataFrame:
-    interval = interval or config.INTERVAL
+    interval = interval or config.SPOT_INTERVAL
     raw = get_client().futures_klines(symbol=symbol, interval=interval, limit=limit)
     df = pd.DataFrame(raw, columns=[
         "open_time", "open", "high", "low", "close", "volume",

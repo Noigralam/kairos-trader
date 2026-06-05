@@ -27,14 +27,14 @@ def api_status():
         "last_tick": get_last_tick(),
         "uptime": get_uptime(),
         "live_since": get_live_since(),
-        "mode": config.MODE,
-        "interval": config.INTERVAL,
+        "mode": config.SPOT_MODE,
+        "interval": config.SPOT_INTERVAL,
         "stop_check_interval": config.SPOT_STOP_CHECK_INTERVAL,
         "balance": round(state.balance, 2),
         "total_trades": state.total_trades,
         "total_pnl": round(state.total_pnl, 2),
         "total_fees": round(state.total_fees, 4),
-        "starting_balance": db.get_starting_balance(config.MODE),
+        "starting_balance": db.get_starting_balance(config.SPOT_MODE),
         "positions": {
             pair: {
                 "entry_price": pos.entry_price,
@@ -43,8 +43,8 @@ def api_status():
                 "highest_price": pos.peak(),
                 "trailing_stop": round(pos.trailing_stop_level(), 2),
                 "take_profit": pos.take_profit_price,
-                "dca_trigger": round(pos.entry_price * (1 - config.DCA_DROP_PCT), 2) if not pos.dca_done else None,
-                "break_even": round(pos.entry_price * (1 + config.BINANCE_FEE) / (1 - config.BINANCE_FEE), 2),
+                "dca_trigger": round(pos.entry_price * (1 - config.SPOT_DCA_DROP_PCT), 2) if not pos.dca_done else None,
+                "break_even": round(pos.entry_price * (1 + config.SPOT_FEE) / (1 - config.SPOT_FEE), 2),
                 "current_price": round(get_price(pair), 2),
             }
             for pair, pos in state.positions.items()
@@ -56,7 +56,7 @@ def api_status():
 def api_trades():
     cols = ["id", "timestamp", "pair", "side", "price", "amount",
             "value_eur", "fee", "mode", "pnl", "notes"]
-    rows = db.get_trades(50, mode=config.MODE)
+    rows = db.get_trades(50, mode=config.SPOT_MODE)
     return jsonify([dict(zip(cols, row)) for row in rows])
 
 
@@ -80,13 +80,13 @@ def api_futures_tax():
 
 @app.route("/api/stats")
 def api_stats():
-    return jsonify(db.get_trade_stats(config.MODE))
+    return jsonify(db.get_trade_stats(config.SPOT_MODE))
 
 
 @app.route("/api/balance_history")
 def api_balance_history():
     days = float(request.args.get("days", 30))
-    rows = db.get_balance_history(config.MODE, max(days, 0))
+    rows = db.get_balance_history(config.SPOT_MODE, max(days, 0))
     import zoneinfo as _zi
     tz = _zi.ZoneInfo("Europe/Helsinki")
     import datetime as _dt
@@ -111,11 +111,11 @@ def api_fng():
 def api_signals():
     out = {}
     state = simulator.get_state()
-    for pair in config.TRADING_PAIRS:
+    for pair in config.SPOT_TRADING_PAIRS:
         try:
             price = get_price(pair)
             def _daily_ema_val(pair: str):
-                if not config.DAILY_EMA_FILTER:
+                if not config.SPOT_DAILY_EMA_FILTER:
                     return None
                 from bot.candles import get_df as _gdf
                 df1d = _gdf(pair, "1d", limit=210)
@@ -124,7 +124,7 @@ def api_signals():
                 return float(df1d["close"].ewm(span=200, adjust=False).mean().iloc[-1])
 
             daily_ema_val = _daily_ema_val(pair)
-            result = compute_signal(get_df(pair, config.INTERVAL),
+            result = compute_signal(get_df(pair, config.SPOT_INTERVAL),
                                     rsi_period=config.rsi_period_for(pair),
                                     rsi_oversold=config.rsi_oversold_for(pair),
                                     rsi_overbought=config.rsi_overbought_for(pair),
@@ -298,7 +298,7 @@ def api_chart(pair):
     span  = request.args.get("span", "1d")
     limit = span_candles.get(span, 96)
 
-    df = get_df(pair.upper(), config.INTERVAL, limit=limit + 210)
+    df = get_df(pair.upper(), config.SPOT_INTERVAL, limit=limit + 210)
     if df.empty:
         return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
 
@@ -351,11 +351,11 @@ def api_chart(pair):
     import datetime as _dt, zoneinfo as _zi
     _tz = _zi.ZoneInfo("Europe/Helsinki")
     _interval_mins = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
-    _candle_mins = _interval_mins.get(config.INTERVAL, 15)
+    _candle_mins = _interval_mins.get(config.SPOT_INTERVAL, 15)
     actual_buys  = []
     actual_sells = []
     actual_dcas  = []
-    for row in db.get_trades(200, mode=config.MODE):
+    for row in db.get_trades(200, mode=config.SPOT_MODE):
         _, ts, tpair, side, price, *_ = row
         notes = row[-1] or ""
         if tpair != pair.upper():

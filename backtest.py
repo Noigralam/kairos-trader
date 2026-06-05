@@ -171,17 +171,17 @@ def run_pair(
     stop_cooldown:    int   = 0,         # 0 = disabled; N = block re-entry for N candles after trailing stop
 ) -> tuple[list[Trade], float]:
 
-    fee_rate   = config.BINANCE_FEE
-    pos_pct    = pos_pct    if pos_pct    is not None else config.POSITION_SIZE_PCT
-    dca_drop   = dca_drop   if dca_drop   is not None else config.DCA_DROP_PCT
-    dca_pct    = dca_pct    if dca_pct    is not None else config.DCA_SIZE_PCT
-    tp_pct     = tp_pct     if tp_pct     is not None else config.TAKE_PROFIT_PCT
-    trail_pct  = trail_pct  if trail_pct  is not None else config.TRAILING_STOP_PCT
-    floor_pct  = floor_pct  if floor_pct  is not None else config.PROFIT_FLOOR_PCT
-    rsi_buy    = rsi_buy    if rsi_buy    is not None else config.RSI_OVERSOLD
+    fee_rate   = config.SPOT_FEE
+    pos_pct    = pos_pct    if pos_pct    is not None else config.SPOT_POSITION_SIZE_PCT
+    dca_drop   = dca_drop   if dca_drop   is not None else config.SPOT_DCA_DROP_PCT
+    dca_pct    = dca_pct    if dca_pct    is not None else config.SPOT_DCA_SIZE_PCT
+    tp_pct     = tp_pct     if tp_pct     is not None else config.SPOT_TAKE_PROFIT_PCT
+    trail_pct  = trail_pct  if trail_pct  is not None else config.SPOT_TRAILING_STOP_PCT
+    floor_pct  = floor_pct  if floor_pct  is not None else config.SPOT_PROFIT_FLOOR_PCT
+    rsi_buy    = rsi_buy    if rsi_buy    is not None else config.SPOT_RSI_OVERSOLD
     rsi_sell   = rsi_sell   if rsi_sell   is not None else config.rsi_overbought_for(pair)
     rsi_period = rsi_period if rsi_period is not None else config.rsi_period_for(pair)
-    min_exit   = min_exit   if min_exit   is not None else config.MIN_EXIT_PROFIT_PCT
+    min_exit   = min_exit   if min_exit   is not None else config.SPOT_MIN_EXIT_PROFIT_PCT
 
     rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period, ema_span)
 
@@ -375,7 +375,7 @@ def _mark_current(scenarios: list[dict], **current):
 
 
 def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: list[str]):
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, title, wide=True)
         print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
@@ -407,7 +407,7 @@ def sweep_exit(days_list: list[int]):
         dict(rsi_sell=75, tp_pct=0.07, label="sell>75  TP=7%"),
         dict(rsi_sell=75, tp_pct=0.10, label="sell>75  TP=10%"),
     ]
-    _mark_current(scenarios, tp_pct=config.TAKE_PROFIT_PCT)
+    _mark_current(scenarios, tp_pct=config.SPOT_TAKE_PROFIT_PCT)
     _run_sweep(days_list, "Sell RSI + Take-profit sweep", scenarios, PAIRS)
 
 
@@ -419,7 +419,7 @@ def sweep_floor(days_list: list[int]):
         dict(floor_pct=0.04, label="floor=4%"),
         dict(floor_pct=0.05, label="floor=5%"),
     ]
-    _mark_current(scenarios, floor_pct=config.PROFIT_FLOOR_PCT)
+    _mark_current(scenarios, floor_pct=config.SPOT_PROFIT_FLOOR_PCT)
     _run_sweep(days_list, "Profit floor sweep", scenarios, PAIRS)
 
 
@@ -432,7 +432,7 @@ def sweep_trail(days_list: list[int]):
         dict(trail_pct=0.06, label="trail=6%"),
         dict(trail_pct=0.07, label="trail=7%"),
     ]
-    _mark_current(scenarios, trail_pct=config.TRAILING_STOP_PCT)
+    _mark_current(scenarios, trail_pct=config.SPOT_TRAILING_STOP_PCT)
     _run_sweep(days_list, "Trailing stop sweep", scenarios, PAIRS)
 
 
@@ -445,7 +445,7 @@ def sweep_buyrsi(days_list: list[int]):
         dict(rsi_buy=33, label="buy<33"),
         dict(rsi_buy=35, label="buy<35"),
     ]
-    _mark_current(scenarios, rsi_buy=config.RSI_OVERSOLD)
+    _mark_current(scenarios, rsi_buy=config.SPOT_RSI_OVERSOLD)
     _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS)
 
 
@@ -460,7 +460,7 @@ def sweep_min_exit(days_list: list[int]):
         dict(min_exit=0.030, label="min_exit=3%"),
         dict(min_exit=0.040, label="min_exit=4%"),
     ]
-    _mark_current(scenarios, min_exit=config.MIN_EXIT_PROFIT_PCT)
+    _mark_current(scenarios, min_exit=config.SPOT_MIN_EXIT_PROFIT_PCT)
     _run_sweep(days_list, "Min exit profit sweep", scenarios, PAIRS)
 
 
@@ -476,7 +476,7 @@ def sweep_rsiperiod(days_list: list[int]):
         dict(rsi_period=14, label="RSI(14)"),
         dict(rsi_period=21, label="RSI(21)"),
     ]
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, "RSI period sweep", wide=True)
         print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
@@ -572,7 +572,7 @@ def sweep_divergence(days_list: list[int]):
 
 
 def sweep_htf_rsi(days_list: list[int]):
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, "Multi-timeframe RSI sweep (15m signal + HTF confirmation)", wide=True)
         print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
@@ -584,7 +584,7 @@ def sweep_htf_rsi(days_list: list[int]):
             print(f"\n  ── {pair} (RSI({rp})) ──")
 
             # baseline
-            trades, _ = run_pair(pair, df, start, ema_gap=config.EMA_GAP_PCT)
+            trades, _ = run_pair(pair, df, start, ema_gap=config.SPOT_EMA_GAP_PCT)
             summarise("no HTF filter  (current)", trades, start, wide=True)
 
             for htf_ivl in ["1h", "4h"]:
@@ -593,7 +593,7 @@ def sweep_htf_rsi(days_list: list[int]):
                 for thresh in [30, 35, 40, 50]:
                     label = f"+ {htf_ivl} RSI({rp}) < {thresh}"
                     trades, _ = run_pair(pair, df, start,
-                                         ema_gap=config.EMA_GAP_PCT,
+                                         ema_gap=config.SPOT_EMA_GAP_PCT,
                                          htf_rsi_arr=arr,
                                          htf_rsi_threshold=thresh)
                     summarise(label, trades, start, wide=True)
@@ -601,7 +601,7 @@ def sweep_htf_rsi(days_list: list[int]):
 
 
 def sweep_interval(days_list: list[int]):
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     intervals = ["15m", "1h", "4h"]
     for days in days_list:
         _header(days, "Candle interval sweep", wide=True)
@@ -617,14 +617,14 @@ def sweep_interval(days_list: list[int]):
                 tag_cur = "  ◄ current" if ivl == INTERVAL else ""
                 label = f"{ivl}  RSI({rsi_p}){tag_cur}"
                 trades, _ = run_pair(pair, df, start,
-                                     ema_gap=config.EMA_GAP_PCT,
+                                     ema_gap=config.SPOT_EMA_GAP_PCT,
                                      interval=ivl)
                 summarise(label, trades, start, wide=True)
                 # also try RSI(14) on higher timeframes
                 if ivl != INTERVAL:
                     for rp in ([14] if rsi_p != 14 else []):
                         trades, _ = run_pair(pair, df, start,
-                                             ema_gap=config.EMA_GAP_PCT,
+                                             ema_gap=config.SPOT_EMA_GAP_PCT,
                                              rsi_period=rp,
                                              interval=ivl)
                         summarise(f"{ivl}  RSI({rp})", trades, start, wide=True)
@@ -632,7 +632,7 @@ def sweep_interval(days_list: list[int]):
 
 
 def sweep_daily_ema(days_list: list[int]):
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     ema_spans = [50, 100, 200]
     for days in days_list:
         _header(days, "Daily EMA filter sweep (secondary trend guard on 1d candles)", wide=True)
@@ -643,13 +643,13 @@ def sweep_daily_ema(days_list: list[int]):
             df = fetch(pair, days)
             print(f"\n  ── {pair} ──")
             # baseline — no daily filter
-            trades, _ = run_pair(pair, df, start, ema_gap=config.EMA_GAP_PCT)
+            trades, _ = run_pair(pair, df, start, ema_gap=config.SPOT_EMA_GAP_PCT)
             summarise("no daily filter  (current)", trades, start, wide=True)
             for span in ema_spans:
                 daily_ema = fetch_daily_ema(pair, days, ema_span=span)
                 arr = align_daily_ema(df, daily_ema)
                 label = f"+ daily EMA{span} filter"
-                trades, _ = run_pair(pair, df, start, ema_gap=config.EMA_GAP_PCT,
+                trades, _ = run_pair(pair, df, start, ema_gap=config.SPOT_EMA_GAP_PCT,
                                      daily_ema_arr=arr)
                 summarise(label, trades, start, wide=True)
         print()
@@ -683,7 +683,7 @@ def sweep_tieredsize(days_list: list[int]):
         dict(label="strong≥10%→75% weak→33%",  strong_gap=0.10, weak_pct=0.33),
         dict(label="flat 50%",                  pos_pct=0.50,   dca_pct=0.50),
     ]
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, "Tiered position size sweep (full size only when price well above EMA)", wide=True)
         print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
@@ -694,9 +694,9 @@ def sweep_tieredsize(days_list: list[int]):
             print(f"\n  ── {pair} ──")
             for s in scenarios:
                 kwargs = {k: v for k, v in s.items() if k != "label"}
-                kwargs.setdefault("ema_gap", config.EMA_GAP_PCT)
-                kwargs.setdefault("pos_pct", config.POSITION_SIZE_PCT)
-                kwargs.setdefault("dca_pct", config.POSITION_SIZE_PCT)
+                kwargs.setdefault("ema_gap", config.SPOT_EMA_GAP_PCT)
+                kwargs.setdefault("pos_pct", config.SPOT_POSITION_SIZE_PCT)
+                kwargs.setdefault("dca_pct", config.SPOT_POSITION_SIZE_PCT)
                 trades, _ = run_pair(pair, df, start, **kwargs)
                 summarise(s["label"], trades, start, wide=True)
         print()
@@ -728,7 +728,7 @@ def sweep_ema(days_list: list[int]):
 
 
 def sweep_dca(days_list: list[int]):
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, "DCA parameter sweep", wide=True)
         print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
@@ -741,8 +741,8 @@ def sweep_dca(days_list: list[int]):
             summarise("no DCA  (baseline)", base, start, wide=True)
             for drop in [0.01, 0.02, 0.03]:
                 for size in [0.50, 0.75]:
-                    cur = (abs(drop - config.DCA_DROP_PCT) < 1e-9 and
-                           abs(size - config.DCA_SIZE_PCT) < 1e-9)
+                    cur = (abs(drop - config.SPOT_DCA_DROP_PCT) < 1e-9 and
+                           abs(size - config.SPOT_DCA_SIZE_PCT) < 1e-9)
                     label = f"drop={drop*100:.0f}%  size={size*100:.0f}%{'  ◄ current' if cur else ''}"
                     trades, _ = run_pair(pair, df, start, dca_drop=drop, dca_pct=size)
                     summarise(label, trades, start, wide=True)
@@ -754,12 +754,12 @@ def sweep_dca(days_list: list[int]):
 # ---------------------------------------------------------------------------
 
 def run_topup(start: float, monthly: float, days: int):
-    fee       = config.BINANCE_FEE
-    pos_pct   = config.POSITION_SIZE_PCT
-    tp_pct    = config.TAKE_PROFIT_PCT
-    trail_pct = config.TRAILING_STOP_PCT
-    dca_drop  = config.DCA_DROP_PCT
-    floor_pct = config.PROFIT_FLOOR_PCT
+    fee       = config.SPOT_FEE
+    pos_pct   = config.SPOT_POSITION_SIZE_PCT
+    tp_pct    = config.SPOT_TAKE_PROFIT_PCT
+    trail_pct = config.SPOT_TRAILING_STOP_PCT
+    dca_drop  = config.SPOT_DCA_DROP_PCT
+    floor_pct = config.SPOT_PROFIT_FLOOR_PCT
 
     print(f"Loading candles…", flush=True)
     dfs = {p: fetch(p, days) for p in PAIRS}
@@ -820,7 +820,7 @@ def run_topup(start: float, monthly: float, days: int):
                     total_pnl += calc_pnl(pos, ep, bf, sf);  total_fees += bf + sf;  trades += 1
                     del positions[pair];  continue
 
-            rsi_buy  = config.RSI_OVERSOLD
+            rsi_buy  = config.SPOT_RSI_OVERSOLD
             rsi_sell = config.rsi_overbought_for(pair)
             min_exit = config.min_exit_for(pair)
 
@@ -913,14 +913,14 @@ def run_topup(start: float, monthly: float, days: int):
 # ---------------------------------------------------------------------------
 
 def run_combined(days_list: list[int]):
-    start = config.SIMULATION_BALANCE
+    start = config.SPOT_SIMULATION_BALANCE
     half  = start / 2
 
     print(f"\nPair comparison — current settings")
     print(f"ETHEUR RSI({config.rsi_period_for('ETHEUR')}) sell>{config.rsi_overbought_for('ETHEUR')}"
           f"  SOLEUR RSI({config.rsi_period_for('SOLEUR')}) sell>{config.rsi_overbought_for('SOLEUR')}"
-          f"  buy<{config.RSI_OVERSOLD}  floor={config.PROFIT_FLOOR_PCT*100:.0f}%"
-          f"  pos={config.POSITION_SIZE_PCT*100:.0f}%  DCA drop={config.DCA_DROP_PCT*100:.0f}%")
+          f"  buy<{config.SPOT_RSI_OVERSOLD}  floor={config.SPOT_PROFIT_FLOOR_PCT*100:.0f}%"
+          f"  pos={config.SPOT_POSITION_SIZE_PCT*100:.0f}%  DCA drop={config.SPOT_DCA_DROP_PCT*100:.0f}%")
 
     for days in days_list:
         _header(days, "solo vs combined")
@@ -985,7 +985,7 @@ if __name__ == "__main__":
         # positional floats after "topup": start monthly days
         num_args = [float(a) for a in str_args[1:] if a.replace(".", "").isdigit()]
         num_args += [float(a) for a in args if a.isdigit()]
-        start   = num_args[0] if len(num_args) > 0 else config.SIMULATION_BALANCE
+        start   = num_args[0] if len(num_args) > 0 else config.SPOT_SIMULATION_BALANCE
         monthly = num_args[1] if len(num_args) > 1 else 25.0
         days    = int(num_args[2]) if len(num_args) > 2 else 365
         run_topup(start, monthly, days)

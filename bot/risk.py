@@ -20,8 +20,8 @@ class Position:
         # Minimum exit price that clears both buy+sell fees AND the profit floor.
         # Dividing by (1 - fee) converts from "net proceeds needed" to "gross exit price"
         # because the sell fee is taken from proceeds, not added on top.
-        fee_plus_profit_floor = self.entry_price * (1 + config.BINANCE_FEE + config.PROFIT_FLOOR_PCT) / (1 - config.BINANCE_FEE)
-        return max(fee_plus_profit_floor, self.peak() * (1 - config.TRAILING_STOP_PCT))
+        fee_plus_profit_floor = self.entry_price * (1 + config.SPOT_FEE + config.SPOT_PROFIT_FLOOR_PCT) / (1 - config.SPOT_FEE)
+        return max(fee_plus_profit_floor, self.peak() * (1 - config.SPOT_TRAILING_STOP_PCT))
 
 
 def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> None:
@@ -32,15 +32,15 @@ def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> Non
     position.entry_price = total_value / total_amount
     position.amount = total_amount
     position.value_eur = total_value
-    position.take_profit_price = position.entry_price * (1 + config.TAKE_PROFIT_PCT)
+    position.take_profit_price = position.entry_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
     position.highest_price = dca_price  # reset peak from new blended entry; old peak is irrelevant after cost basis shifts
     position.dca_done = True
 
 
 def create_position(pair: str, entry_price: float, balance: float) -> Position:
-    size = balance * config.POSITION_SIZE_PCT
+    size = balance * config.SPOT_POSITION_SIZE_PCT
     amount = size / entry_price
-    take_profit_price = entry_price * (1 + config.TAKE_PROFIT_PCT)
+    take_profit_price = entry_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
     return Position(pair, entry_price, amount, size, take_profit_price, entry_price)
 
 
