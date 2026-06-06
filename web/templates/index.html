@@ -289,33 +289,36 @@
       <button class="tab" data-tab="futures" onclick="switchTab('futures')" id="futures-tab-btn" style="display:none">
         <span class="tab-dot" id="futures-tab-dot" style="background:var(--muted)"></span>Futures
       </button>
+      <button class="tab" data-tab="shadows" onclick="switchTab('shadows')" id="shadows-tab-btn" style="display:none">
+        <span class="tab-dot" style="background:#d29922"></span>Shadows
+      </button>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:20px;">
-    <!-- Spot info block -->
+    <!-- Shared: session + next tick + last tick -->
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+      <span id="uptime"    style="font-size:12px;color:var(--muted);">Session: —</span>
+      <span id="next-tick" style="font-size:12px;color:var(--muted);">Next tick: —</span>
+      <span id="last-tick" style="font-size:12px;color:var(--muted);">Last tick: —</span>
+    </div>
+    <!-- Spot block -->
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
       <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--blue);">Spot</span>
-      <span id="last-tick"     style="font-size:12px;color:var(--muted);">Last tick: —</span>
-      <span id="next-tick"     style="font-size:12px;color:var(--muted);">Next tick: —</span>
-      <span id="uptime"        style="font-size:12px;color:var(--muted);">Session: —</span>
-      <span id="live-since"    style="font-size:12px;color:var(--muted);"></span>
+      <span id="hdr-spot-mode"   style="font-size:10px;font-weight:600;color:var(--muted);">—</span>
+      <span id="hdr-spot-port"   style="font-size:12px;color:var(--muted);">—</span>
+      <span id="hdr-spot-pnl"    style="font-size:12px;color:var(--muted);">—</span>
+      <span id="hdr-spot-trades" style="font-size:12px;color:var(--muted);">—</span>
     </div>
-    <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
-      <span id="status-badge" class="badge stopped">stopped</span>
-      <span id="mode-badge" class="badge" style="background:#1c2128;color:var(--muted);">—</span>
-    </div>
-    <!-- Futures info block (hidden until futures enabled) -->
+    <!-- Futures block (hidden until enabled) -->
     <div id="f-header-block" style="display:none;flex-direction:column;align-items:flex-end;gap:2px;">
       <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--green);">Futures</span>
-      <span id="f-header-tick"     style="font-size:12px;color:var(--muted);">Last tick: —</span>
-      <span id="f-header-nexttick" style="font-size:12px;color:var(--muted);">Next tick: —</span>
-      <span id="f-header-uptime"   style="font-size:12px;color:var(--muted);">Session: —</span>
-      <span id="f-header-leverage" style="font-size:12px;color:var(--muted);">Leverage: —</span>
+      <span id="hdr-fut-mode"   style="font-size:10px;font-weight:600;color:var(--muted);">—</span>
+      <span id="hdr-fut-port"   style="font-size:12px;color:var(--muted);">—</span>
+      <span id="hdr-fut-pnl"    style="font-size:12px;color:var(--muted);">—</span>
+      <span id="hdr-fut-trades" style="font-size:12px;color:var(--muted);">—</span>
     </div>
-    <div id="f-badge-block" style="display:none;flex-direction:column;gap:4px;align-items:center;">
-      <span id="f-status-badge" class="badge stopped">stopped</span>
-      <span id="f-mode-badge" class="badge" style="background:#1c2128;color:var(--muted);">—</span>
-    </div>
+    <!-- Shadow info blocks (one per profile, injected by JS) -->
+    <div id="sh-header-blocks" style="display:contents"></div>
   </div>
 </header>
 
@@ -349,6 +352,7 @@
       <button onclick="control('resume')">↺ Resume</button>
       <button class="danger" onclick="control('stop')">■ Stop</button>
     </div>
+    <div id="live-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:-6px;"></div>
 
     <section>
       <h2>Performance</h2>
@@ -445,11 +449,6 @@
           </tbody>
         </table>
       </div>
-    </section>
-
-    <section id="shadows-section" style="display:none">
-      <h2>Shadow Simulations</h2>
-      <div id="shadows-container"></div>
     </section>
 
   </div><!-- /tab-spot -->
@@ -584,6 +583,107 @@
 
   </div><!-- /tab-futures -->
 
+  <!-- ═══════════════════════════ SHADOWS TAB ══════════════════════════ -->
+  <div id="tab-shadows" style="display:none">
+
+    <!-- profile selector — visible when >1 shadow -->
+    <div id="sh-selector-wrap" style="display:none;margin-bottom:16px">
+      <div class="btn-group" id="sh-selector"></div>
+    </div>
+
+    <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="stat-card">
+        <div class="label">Balance</div>
+        <div class="value"><span id="sh-balance">—</span><span id="sh-starting-balance" style="font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Portfolio Value</div>
+        <div class="value"><span id="sh-portfolio-value">—</span><span id="sh-portfolio-pct" style="font-size:13px;font-weight:400;margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card"><div class="label">Net P&L</div><div class="value" id="sh-pnl">—</div></div>
+      <div class="stat-card"><div class="label">Trades</div><div class="value" id="sh-trades">—</div></div>
+      <div class="stat-card"><div class="label">Fees</div><div class="value" id="sh-fees">—</div></div>
+    </div>
+
+    <section>
+      <h2>Overrides</h2>
+      <div id="sh-overrides" style="font-size:13px;color:var(--muted);padding:4px 0">—</div>
+    </section>
+
+    <section>
+      <h2>Performance</h2>
+      <div class="stats" id="sh-perf-stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="sh-stat-winrate">—</div></div>
+        <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="sh-stat-avgpnl">—</div></div>
+        <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="sh-stat-best">—</div></div>
+        <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="sh-stat-worst">—</div></div>
+        <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="sh-stat-hold">—</div></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="chart-controls">
+        <h2>Portfolio Value</h2>
+        <div class="btn-group" id="sh-balance-span-btns">
+          <button onclick="setShBalanceDays(0.167)" data-days="0.167">4h</button>
+          <button onclick="setShBalanceDays(1)"     data-days="1">1d</button>
+          <button onclick="setShBalanceDays(7)"     data-days="7">7d</button>
+          <button onclick="setShBalanceDays(30)"    data-days="30" class="active">30d</button>
+          <button onclick="setShBalanceDays(90)"    data-days="90">90d</button>
+          <button onclick="setShBalanceDays(0)"     data-days="0">All</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:160px"><canvas id="sh-balance-chart"></canvas></div>
+    </section>
+
+    <section>
+      <h2>Recent Trades</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time (Helsinki)</th><th>Pair</th><th>Side</th><th>Price</th>
+              <th>Amount</th><th>Value (EUR)</th><th>PnL</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="sh-trades-body">
+            <tr><td colspan="8" class="empty">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Market Conditions</h2>
+      <div class="signals-grid" id="sh-signals-grid">
+        <div class="signal-card"><div class="commentary">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-controls">
+        <h2>Price Chart</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="btn-group" id="sh-pair-btns"></div>
+          <div class="btn-group" id="sh-span-btns">
+            <button onclick="setShSpan('4h')"  data-span="4h">4h</button>
+            <button onclick="setShSpan('1d')"  data-span="1d" class="active">1d</button>
+            <button onclick="setShSpan('3d')"  data-span="3d">3d</button>
+            <button onclick="setShSpan('1w')"  data-span="1w">1w</button>
+            <button onclick="setShSpan('2w')"  data-span="2w">2w</button>
+            <button onclick="setShSpan('1m')"  data-span="1m">1m</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box price-box"><canvas id="sh-price-chart"></canvas></div>
+        <div class="chart-box candle-box"><canvas id="sh-candle-chart"></canvas></div>
+        <div class="chart-box rsi-box"><canvas id="sh-rsi-chart"></canvas></div>
+      </div>
+    </section>
+
+  </div><!-- /tab-shadows -->
+
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
   <section>
     <h2>Recent Activity</h2>
@@ -615,42 +715,17 @@
     _activeTab = name;
     document.getElementById('tab-spot').style.display    = name === 'spot'    ? '' : 'none';
     document.getElementById('tab-futures').style.display = name === 'futures' ? '' : 'none';
+    document.getElementById('tab-shadows').style.display = name === 'shadows' ? '' : 'none';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
+    if (name === 'shadows') refreshShadowTab();
   }
 
   function _syncSpotHeader() {
-    if (!_spotLastStatus) return;
-    const s = _spotLastStatus;
-    document.getElementById('status-badge').textContent = s.status;
-    document.getElementById('status-badge').className   = 'badge ' + s.status;
-    document.getElementById('mode-badge').textContent   = s.mode || '—';
-    document.getElementById('mode-badge').style.background = s.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-    document.getElementById('mode-badge').style.color      = s.mode === 'live' ? '#58a6ff' : '#bc8cff';
   }
 
-
-  function _updateFuturesHeaderSpans(d) {
-    document.getElementById('f-header-tick').textContent    = 'Last tick: ' + (d.last_tick || '—');
-    if (d.leverage) document.getElementById('f-header-leverage').textContent = `Leverage: ${d.leverage}x`;
-    if (d.uptime != null) {
-      const h = Math.floor(d.uptime / 3600);
-      const m = Math.floor((d.uptime % 3600) / 60);
-      document.getElementById('f-header-uptime').textContent =
-        `Session: ${h}h ${String(m).padStart(2,'0')}m`;
-    }
-  }
 
   function _syncFuturesHeader() {
-    if (!_fLastStatus) return;
-    const d = _fLastStatus;
-    const fStatus = !d.running ? 'stopped' : d.paused ? 'paused' : 'running';
-    document.getElementById('f-status-badge').textContent = fStatus;
-    document.getElementById('f-status-badge').className   = 'badge ' + fStatus;
-    document.getElementById('f-mode-badge').textContent   = d.mode || '—';
-    document.getElementById('f-mode-badge').style.background = d.mode === 'live' ? '#1a2a3a' : '#2a1a3a';
-    document.getElementById('f-mode-badge').style.color      = d.mode === 'live' ? '#58a6ff' : '#bc8cff';
-    _updateFuturesHeaderSpans(d);
   }
 
   async function control(action, pair) {
@@ -868,6 +943,20 @@
       const pnlEl = document.getElementById('pnl');
       pnlEl.innerHTML = fmtPnl(s.total_pnl);
 
+      // header block
+      const hModeEl = document.getElementById('hdr-spot-mode');
+      hModeEl.textContent = s.mode || '—';
+      hModeEl.style.color = s.mode === 'live' ? 'var(--blue)' : '#bc8cff';
+      if (s.starting_balance != null) {
+        const hPct = (portVal - s.starting_balance) / s.starting_balance * 100;
+        document.getElementById('hdr-spot-port').textContent = `€${fmt(portVal)} (${hPct >= 0 ? '+' : ''}${hPct.toFixed(1)}%)`;
+      }
+      const hPnl = s.total_pnl ?? 0;
+      const hPnlEl = document.getElementById('hdr-spot-pnl');
+      hPnlEl.textContent  = `${hPnl >= 0 ? '+' : ''}€${fmt(Math.abs(hPnl))} PnL`;
+      hPnlEl.style.color  = hPnl >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('hdr-spot-trades').textContent = `${trades.length} trades`;
+
       _positions = s.positions;
 
       // Trades
@@ -944,49 +1033,450 @@
     }
   }
 
-  async function refreshShadows() {
+  // ── Shadow tab ────────────────────────────────────────────────────────────
+  let _shNames        = [];
+  let _activeShadow   = null;
+  let _shSignals      = {};
+  let _shPositions    = {};
+  let _shChartPair    = null;
+  let _shChartSpan    = '1d';
+  let _shBalanceDays  = 30;
+  let _shPriceChart   = null;
+  let _shCandleChart  = null;
+  let _shRsiChart     = null;
+  let _shBalanceChart = null;
+
+  async function initShadowTab() {
     const res = await fetch('/api/shadows');
-    const shadows = await res.json();
-    const section   = document.getElementById('shadows-section');
-    const container = document.getElementById('shadows-container');
-    if (!shadows.length) { section.style.display = 'none'; return; }
-    section.style.display = '';
-    container.innerHTML = shadows.map(s => {
-      const pnlColor = s.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-      const posHtml = Object.entries(s.positions).map(([pair, pos]) => {
-        const upnl = pos.unrealized_pnl != null
-          ? ` · unrealized ${pos.unrealized_pnl >= 0 ? '+' : ''}€${pos.unrealized_pnl.toFixed(2)}`
-          : '';
-        const dcaStr = pos.dca_count > 0 ? ` · DCA×${pos.dca_count}` : '';
-        return `<span style="margin-right:16px">`
-          + `<strong>${pair}</strong> entry €${pos.entry_price.toFixed(2)}`
-          + ` → TP €${pos.take_profit || '—'} · stop €${pos.trailing_stop}`
-          + dcaStr + upnl
-          + `</span>`;
-      }).join('') || `<span style="color:var(--muted)">no open positions</span>`;
-      const overrides = Object.entries(s.overrides)
-        .filter(([k]) => k !== 'balance')
-        .map(([k, v]) => `${k}=${v}`)
-        .join('  ');
-      return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px">`
-        + `<div style="display:flex;align-items:baseline;gap:18px;margin-bottom:8px">`
-        + `<strong style="font-size:14px;letter-spacing:.03em">${s.name}</strong>`
-        + `<span style="color:${pnlColor};font-weight:600">${s.total_pnl >= 0 ? '+' : ''}€${s.total_pnl.toFixed(2)} P&L</span>`
-        + `<span>€${s.balance.toFixed(2)} balance</span>`
-        + `<span style="color:var(--muted)">${s.total_trades} trades</span>`
-        + `<span style="color:var(--muted);font-size:11px">${overrides || 'default params'}</span>`
-        + `</div>`
-        + `<div style="font-size:13px">${posHtml}</div>`
-        + `</div>`;
-    }).join('');
+    _shNames = (await res.json()).map(s => s.name);
+    if (!_shNames.length) return;
+    document.getElementById('shadows-tab-btn').style.display = '';
+    _activeShadow = _shNames[0];
+    const sel = document.getElementById('sh-selector');
+    sel.innerHTML = _shNames.map(n =>
+      `<button onclick="switchShadow('${n}')" data-shadow="${n}">${n}</button>`
+    ).join('');
+    if (_shNames.length > 1)
+      document.getElementById('sh-selector-wrap').style.display = '';
+    _markShSelector();
+
+    // inject one header block per shadow
+    const container = document.getElementById('sh-header-blocks');
+    container.innerHTML = _shNames.map(n => `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;" id="sh-hdr-${n}">
+        <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#d29922;">${n}</span>
+        <span style="font-size:10px;font-weight:600;color:#bc8cff;">sim</span>
+        <span id="sh-hdr-port-${n}"   style="font-size:12px;color:var(--muted);">—</span>
+        <span id="sh-hdr-pnl-${n}"    style="font-size:12px;color:var(--muted);">—</span>
+        <span id="sh-hdr-trades-${n}" style="font-size:12px;color:var(--muted);">—</span>
+      </div>`).join('');
+    refreshShHeaderBlocks();
+  }
+
+  async function refreshShHeaderBlocks() {
+    for (const name of _shNames) {
+      try {
+        const res = await fetch(`/api/shadow/${name}/status`);
+        const s   = await res.json();
+        const pnl = s.total_pnl ?? 0;
+        const pct = s.starting_balance ? (s.portfolio_value - s.starting_balance) / s.starting_balance * 100 : 0;
+        const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const portEl   = document.getElementById(`sh-hdr-port-${name}`);
+        const pnlEl    = document.getElementById(`sh-hdr-pnl-${name}`);
+        const trEl     = document.getElementById(`sh-hdr-trades-${name}`);
+        if (!portEl) continue;
+        portEl.textContent  = `€${fmt(s.portfolio_value)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
+        pnlEl.textContent   = `${pnl >= 0 ? '+' : ''}€${fmt(Math.abs(pnl))} PnL`;
+        pnlEl.style.color   = pnlColor;
+        trEl.textContent    = `${s.total_trades} trades`;
+      } catch(e) {}
+    }
+  }
+
+  function switchShadow(name) {
+    _activeShadow = name;
+    _markShSelector();
+    _shPriceChart = _shCandleChart = _shRsiChart = null;
+    refreshShadowTab();
+  }
+
+  function _markShSelector() {
+    document.querySelectorAll('#sh-selector button').forEach(b =>
+      b.classList.toggle('active', b.dataset.shadow === _activeShadow));
+  }
+
+  async function refreshShadowTab() {
+    if (!_activeShadow) return;
+    await Promise.all([
+      refreshShStatus(),
+      refreshShSignals(),
+      refreshShTrades(),
+      refreshShStats(),
+      refreshShBalanceChart(),
+    ]);
+  }
+
+  async function refreshShStatus() {
+    try {
+      const res = await fetch(`/api/shadow/${_activeShadow}/status`);
+      const s   = await res.json();
+      document.getElementById('sh-balance').textContent = fmt(s.balance);
+      document.getElementById('sh-pnl').innerHTML       = fmtPnl(s.total_pnl);
+      document.getElementById('sh-trades').textContent  = s.total_trades;
+      document.getElementById('sh-fees').textContent    = fmt(s.total_fees, 4);
+      document.getElementById('sh-portfolio-value').textContent = fmt(s.portfolio_value);
+      const pct = (s.portfolio_value - s.starting_balance) / s.starting_balance * 100;
+      const pctEl = document.getElementById('sh-portfolio-pct');
+      pctEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+      pctEl.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('sh-starting-balance').textContent = `· from ${fmt(s.starting_balance)}`;
+      const ov = Object.entries(s.overrides).map(([k,v]) => `<span style="margin-right:14px"><strong>${k}</strong> = ${v}</span>`).join('');
+      document.getElementById('sh-overrides').innerHTML = ov || '<span>all defaults from Spot config</span>';
+      _shPositions = s.positions;
+    } catch(e) {}
+  }
+
+  async function refreshShSignals() {
+    try {
+      const res     = await fetch(`/api/shadow/${_activeShadow}/signals`);
+      _shSignals    = await res.json();
+      const grid    = document.getElementById('sh-signals-grid');
+      const pb      = document.getElementById('sh-pair-btns');
+      const pairs   = Object.keys(_shSignals);
+
+      // init pair buttons if needed
+      if (!pb.innerHTML) {
+        pb.innerHTML = pairs.map(p => `<button onclick="setShPair('${p}')" data-pair="${p}">${p}</button>`).join('');
+        if (pairs.length) setShPair(pairs[0]);
+      }
+
+      grid.innerHTML = pairs.map(pair => {
+        const d = _shSignals[pair];
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+
+        const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
+        const trendLabel = d.above_trend
+          ? `↑ ${_fi(Math.abs(d.gap))} € above EMA200`
+          : `↓ ${_fi(Math.abs(d.gap))} € below EMA200`;
+        const rsiPct      = Math.min(100, Math.max(0, d.rsi));
+        const rsiBarColor = d.rsi < d.rsi_oversold ? 'var(--green)' : d.rsi > d.rsi_overbought ? 'var(--red)' : 'var(--blue)';
+
+        let posBlock = '';
+        const pos = d.position;
+        if (pos) {
+          const pct    = (pos.current_price - pos.entry_price) / pos.entry_price * 100;
+          const pnlEur = (pos.current_price - pos.entry_price) * pos.amount;
+          const pnlCls = pnlEur >= 0 ? 'pos' : 'neg';
+          const peakPct    = (pos.highest_price - pos.entry_price) / pos.entry_price * 100;
+          const minExitPct = (pos.trailing_stop  - pos.entry_price) / pos.entry_price * 100;
+          const tpPct      = (pos.take_profit    - pos.entry_price) / pos.entry_price * 100;
+          const bePct      = (pos.break_even     - pos.entry_price) / pos.entry_price * 100;
+          const ladderMin  = -1, ladderMax = Math.max(tpPct + 1, peakPct + 1, pct + 1);
+          const ladderRange = ladderMax - ladderMin;
+          const lp = v => Math.min(100, Math.max(0, ((v - ladderMin) / ladderRange) * 100)).toFixed(1);
+          const ladder = `<div class="price-ladder">
+            <div class="ladder-track"></div>
+            <div class="ladder-fill" style="width:${lp(Math.max(0, minExitPct))}%"></div>
+            <div class="ladder-pin pin-top" style="left:${lp(0)}%;color:#8b949e"><div class="pin-dot"></div><div class="pin-label">Entry</div></div>
+            <div class="ladder-pin" style="left:${lp(minExitPct)}%;color:#f85149"><div class="pin-dot"></div><div class="pin-label">exit ${minExitPct.toFixed(1)}%</div></div>
+            <div class="ladder-pin" style="left:${lp(bePct)}%;color:#e3b341"><div class="pin-dot"></div><div class="pin-label">BE +${bePct.toFixed(2)}%</div></div>
+            <div class="ladder-pin pin-top" style="left:${lp(pct)}%;color:#58a6ff"><div class="pin-dot"></div><div class="pin-label">now ${pct >= 0?'+':''}${pct.toFixed(1)}%</div></div>
+            <div class="ladder-pin" style="left:${lp(peakPct)}%;color:#3fb950"><div class="pin-dot"></div><div class="pin-label">peak +${peakPct.toFixed(1)}%</div></div>
+            <div class="ladder-pin pin-top" style="left:${lp(tpPct)}%;color:#d29922;opacity:0.5"><div class="pin-dot"></div><div class="pin-label">TP +${tpPct.toFixed(1)}%</div></div>
+          </div>`;
+          const dcaStr = pos.dca_trigger !== null
+            ? `${_fi(pos.dca_trigger)} € <span style="color:var(--muted);font-size:12px">(${pos.dca_count+1}/${pos.dca_max})</span>`
+            : `<span style="color:var(--muted)">used (${pos.dca_count}/${pos.dca_max})</span>`;
+          posBlock = `<div class="position-block">
+            <div class="pos-row"><span class="plabel">Entry</span><span class="pvalue">${_fi(pos.entry_price)} €</span></div>
+            ${ladder}
+            <div class="pos-row"><span class="plabel">Peak</span><span class="pvalue">${_fi(pos.highest_price)} € <span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span></div>
+            <div class="pos-row"><span class="plabel">Break even</span><span class="pvalue">${_fi(pos.break_even)} € <span class="${pnlCls}" style="font-size:12px">(${pct>=0?'+':''}${pct.toFixed(2)}% · ${pnlEur>=0?'+':''}${_fi(Math.abs(pnlEur))} €)</span></span></div>
+            <div class="pos-row"><span class="plabel">Min exit</span><span class="pvalue">${_fi(pos.trailing_stop)} €</span></div>
+            <div class="pos-row"><span class="plabel">DCA trigger</span><span class="pvalue">${dcaStr}</span></div>
+            <div class="pos-row" style="opacity:0.45;font-size:12px"><span class="plabel">TP (spike catch)</span><span class="pvalue">${_fi(pos.take_profit)} €</span></div>
+            <div class="pos-row" style="margin-top:8px"><span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span></div>
+          </div>`;
+        }
+
+        return `<div class="signal-card">
+          <div class="pair-name">${pair} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
+          <div class="metrics">
+            <div class="metric"><div class="mlabel">Price</div><div class="mvalue">${_fi(d.price)} €</div></div>
+            <div class="metric"><div class="mlabel">RSI (${d.rsi_period})</div><div class="mvalue" style="color:${rsiColor(d.rsi, d.rsi_overbought)}">${d.rsi}</div></div>
+            <div class="metric"><div class="mlabel">EMA200</div><div class="mvalue">${_fi(d.ema200)} €</div></div>
+          </div>
+          <div class="rsi-bar-wrap">
+            <div class="fill" style="width:${rsiPct}%;background:${rsiBarColor}"></div>
+            <div class="marker" style="left:${d.rsi_oversold}%"></div>
+            <div class="marker-label" style="left:${d.rsi_oversold}%">${d.rsi_oversold}</div>
+            <div class="marker" style="left:${d.rsi_overbought}%"></div>
+            <div class="marker-label" style="left:${d.rsi_overbought}%">${d.rsi_overbought}</div>
+          </div>
+          <div class="metric" style="margin-bottom:10px">
+            <div class="mlabel">Trend</div>
+            <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
+          </div>
+          <div class="commentary">${d.commentary}</div>
+          ${posBlock}
+        </div>`;
+      }).join('');
+    } catch(e) {}
+  }
+
+  async function refreshShTrades() {
+    try {
+      const res    = await fetch(`/api/shadow/${_activeShadow}/trades`);
+      const trades = await res.json();
+      const tb     = document.getElementById('sh-trades-body');
+      if (!trades.length) {
+        tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+      } else {
+        tb.innerHTML = trades.map(t => `<tr>
+          <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td>${t.pair}</td>
+          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${fmt(t.price)}</td>
+          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>${fmt(t.value_eur)}</td>
+          <td>${fmtPnl(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+        </tr>`).join('');
+      }
+    } catch(e) {}
+  }
+
+  async function refreshShStats() {
+    try {
+      const res  = await fetch(`/api/shadow/${_activeShadow}/stats`);
+      const stat = await res.json();
+      if (stat.total_trades) {
+        document.getElementById('sh-stat-winrate').textContent = stat.total_trades ? `${((stat.winning_trades||0)/stat.total_trades*100).toFixed(0)}%` : '—';
+        document.getElementById('sh-stat-avgpnl').innerHTML    = fmtPnl(stat.avg_pnl);
+        document.getElementById('sh-stat-best').innerHTML      = fmtPnl(stat.best_trade);
+        document.getElementById('sh-stat-worst').innerHTML     = fmtPnl(stat.worst_trade);
+        const h = Math.floor((stat.avg_hold_hours||0)); const m = Math.round(((stat.avg_hold_hours||0)-h)*60);
+        document.getElementById('sh-stat-hold').textContent    = stat.avg_hold_hours ? `${h}h ${String(m).padStart(2,'0')}m` : '—';
+      }
+    } catch(e) {}
+  }
+
+  function setShBalanceDays(days) {
+    _shBalanceDays = days;
+    document.querySelectorAll('#sh-balance-span-btns button').forEach(b =>
+      b.classList.toggle('active', parseFloat(b.dataset.days) === days));
+    refreshShBalanceChart();
+  }
+
+  async function refreshShBalanceChart() {
+    try {
+      const days = _shBalanceDays === 0 ? 9999 : _shBalanceDays;
+      const res  = await fetch(`/api/shadow/${_activeShadow}/balance_history?days=${days}`);
+      const data = await res.json();
+      if (!data.length) return;
+      const labels = data.map(r => r.t);
+      const values = data.map(r => r.balance);
+      if (_shBalanceChart) {
+        _shBalanceChart.data.labels           = labels;
+        _shBalanceChart.data.datasets[0].data = values;
+        _shBalanceChart.update('none');
+      } else {
+        const ctx = document.getElementById('sh-balance-chart').getContext('2d');
+        _shBalanceChart = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets: [{ data: values, borderColor: '#d29922', borderWidth: 1.5,
+            pointRadius: 0, tension: 0.3, fill: true,
+            backgroundColor: ctx => { const g = ctx.chart.ctx.createLinearGradient(0,0,0,160);
+              g.addColorStop(0,'#d2992233'); g.addColorStop(1,'#d2992200'); return g; } }] },
+          options: { ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins, legend: { display: false },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => ` €${Number(c.raw).toLocaleString('fi-FI',{minimumFractionDigits:2,maximumFractionDigits:2})}` } } },
+            scales: { x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks,
+                callback: v => Number(v).toLocaleString('fi-FI') + ' €' } } },
+          },
+        });
+      }
+    } catch(e) {}
+  }
+
+  function setShPair(p) {
+    _shChartPair = p;
+    document.querySelectorAll('#sh-pair-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.pair === p));
+    loadShChart();
+  }
+
+  function setShSpan(s) {
+    _shChartSpan = s;
+    document.querySelectorAll('#sh-span-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.span === s));
+    loadShChart();
+  }
+
+  async function loadShChart() {
+    if (!_shChartPair || !_activeShadow) return;
+    try {
+      const res  = await fetch(`/api/shadow/${_activeShadow}/chart/${_shChartPair}?span=${_shChartSpan}`);
+      const data = await res.json();
+      const _os  = data.rsi_oversold  ?? 30;
+      const _ob  = data.rsi_overbought ?? 75;
+
+      const buyDs  = { label: 'Buy signal',  data: data.buys,         backgroundColor: '#3fb950cc', pointRadius: 5, pointStyle: 'triangle', showLine: false, type: 'scatter' };
+      const sellDs = { label: 'Sell signal', data: data.sells,        backgroundColor: '#f85149cc', pointRadius: 5, pointStyle: 'triangle', showLine: false, type: 'scatter',
+        pointRotation: 180 };
+      const bkDs   = { label: 'Blocked buy', data: data.blocked_buys, backgroundColor: '#f0883e66', pointRadius: 4, pointStyle: 'circle',   showLine: false, type: 'scatter' };
+      const abDs   = { label: 'Actual buy',  data: data.actual_buys,  backgroundColor: '#3fb950',  pointRadius: 6, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
+      const asDs   = { label: 'Actual sell', data: data.actual_sells, backgroundColor: '#f85149',  pointRadius: 6, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
+      const adDs   = { label: 'Actual DCA',  data: data.actual_dcas,  backgroundColor: '#58a6ff',  pointRadius: 5, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
+
+      // Price chart
+      const shPos = _shPositions[_shChartPair] || null;
+      const shN   = data.labels.length;
+      const shPosLines = {
+        breakEven: shPos ? Array(shN).fill(shPos.break_even)    : [],
+        minExit:   shPos ? Array(shN).fill(shPos.trailing_stop) : [],
+        peak:      shPos ? Array(shN).fill(shPos.highest_price) : [],
+      };
+      if (_shPriceChart) {
+        _shPriceChart.data.labels              = data.labels;
+        _shPriceChart.data.datasets[0].data    = data.prices;
+        _shPriceChart.data.datasets[1].data    = data.ema200;
+        _shPriceChart.data.datasets[2].data    = data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _shPriceChart.data.datasets[3].data    = data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _shPriceChart.data.datasets[4].data    = data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _shPriceChart.data.datasets[5].data    = data.actual_buys;
+        _shPriceChart.data.datasets[6].data    = data.actual_sells;
+        _shPriceChart.data.datasets[7].data    = data.actual_dcas;
+        _shPriceChart.data.datasets[8].data    = shPosLines.breakEven;
+        _shPriceChart.data.datasets[9].data    = shPosLines.minExit;
+        _shPriceChart.data.datasets[10].data   = shPosLines.peak;
+        _shPriceChart.data.datasets[11].data   = data.bb_upper;
+        _shPriceChart.data.datasets[12].data   = data.bb_lower;
+        _shPriceChart.data.datasets[13].data   = data.volume;
+        _shPriceChart.data.datasets[13].backgroundColor = data.vol_colors;
+        _shPriceChart.update('none');
+      } else {
+        const ctx = document.getElementById('sh-price-chart').getContext('2d');
+        _shPriceChart = new Chart(ctx, {
+          data: {
+            labels: data.labels,
+            datasets: [
+              { type: 'line',    label: 'Price',  data: data.prices, borderColor: '#58a6ff', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+              { type: 'line',    label: 'EMA200', data: data.ema200, borderColor: '#d29922', borderWidth: 1.5, borderDash: [4,3], pointRadius: 0, tension: 0.1 },
+              { type: 'scatter', label: 'BUY',    data: data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#3fb950', pointRadius: 5, pointStyle: 'triangle' },
+              { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
+              { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+              { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
+                backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+              { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
+                backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
+              { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+              { type: 'line', label: 'Break-even', data: shPosLines.breakEven, borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
+              { type: 'line', label: 'Min exit',   data: shPosLines.minExit,   borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
+              { type: 'line', label: 'Peak',       data: shPosLines.peak,      borderColor: '#3fb950', borderWidth: 1, borderDash: [2,3], pointRadius: 0 },
+              { type: 'line', label: 'BB Upper', data: data.bb_upper, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '+1', backgroundColor: '#8b949e18' },
+              { type: 'line', label: 'BB Lower', data: data.bb_lower, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1 },
+              { type: 'bar',  label: 'Volume', data: data.volume, backgroundColor: data.vol_colors, yAxisID: 'y1', borderWidth: 0 },
+            ],
+          },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
+              callbacks: { label: c => {
+                if (c.dataset.label === 'Volume')  return ` Vol: ${Number(c.raw).toLocaleString('fi-FI', {maximumFractionDigits: 2})}`;
+                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                return c.dataset.type === 'scatter'
+                  ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+                  : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+              }}
+            }},
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' } },
+              y1: { display: false, position: 'right', grid: { drawOnChartArea: false },
+                    afterDataLimits: axis => { axis.max = axis.max * 4; } },
+            },
+          },
+        });
+      }
+
+      // Candle chart
+      const ohlcMin = Math.min(...data.ohlc.map(d => d.l));
+      const ohlcMax = Math.max(...data.ohlc.map(d => d.h));
+      const ohlcPad = (ohlcMax - ohlcMin) * 0.05;
+      if (_shCandleChart) {
+        _shCandleChart.data.labels  = data.labels;
+        _shCandleChart.data._ohlc   = data.ohlc;
+        _shCandleChart.options.scales.y.min = ohlcMin - ohlcPad;
+        _shCandleChart.options.scales.y.max = ohlcMax + ohlcPad;
+        _shCandleChart.update('none');
+      } else {
+        const ctx2 = document.getElementById('sh-candle-chart').getContext('2d');
+        _shCandleChart = new Chart(ctx2, {
+          type: 'line',
+          data: { labels: data.labels, _ohlc: data.ohlc, datasets: [] },
+          options: {
+            ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { display: false },
+              tooltip: { enabled: false },
+            },
+            scales: {
+              x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y,
+                min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad,
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' },
+              },
+            },
+          },
+        });
+      }
+
+      // RSI chart
+      if (_shRsiChart) {
+        _shRsiChart.data.labels = data.labels;
+        _shRsiChart.data.datasets[0].data = data.rsi;
+        _shRsiChart.data.datasets[1].data = Array(data.labels.length).fill(_os);
+        _shRsiChart.data.datasets[2].data = Array(data.labels.length).fill(_ob);
+        _shRsiChart.update('none');
+      } else {
+        const ctx3 = document.getElementById('sh-rsi-chart').getContext('2d');
+        _shRsiChart = new Chart(ctx3, {
+          type: 'line',
+          data: { labels: data.labels, datasets: [
+            { label: `RSI(${_shSignals[_shChartPair]?.rsi_period ?? 7})`, data: data.rsi, borderColor: '#8b949e', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
+            { label: `Oversold (${_os})`,   data: Array(data.labels.length).fill(_os), borderColor: '#3fb95066', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+            { label: `Overbought (${_ob})`, data: Array(data.labels.length).fill(_ob), borderColor: '#f8514966', borderWidth: 1, borderDash: [3,3], pointRadius: 0 },
+          ] },
+          options: { ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { labels: { color: '#8b949e', boxWidth: 16, font: { size: 10 },
+                filter: item => item.text.startsWith('RSI(') } },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => c.datasetIndex === 0 ? ` RSI: ${Number(c.raw).toFixed(1)}` : null,
+                            filter: item => item.datasetIndex === 0 } } },
+            scales: { x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y, min: 0, max: 100,
+                ticks: { color: '#8b949e', font: { size: 10 }, stepSize: 25 } } },
+          },
+        });
+      }
+    } catch(e) { console.error(e); }
   }
 
   refresh();
   refreshSignals();
-  refreshShadows();
+  initShadowTab();
   setInterval(refresh, 60000);
   setInterval(refreshSignals, 60000);
-  setInterval(refreshShadows, 60000);
+  setInterval(() => { if (_activeTab === 'shadows') refreshShadowTab(); }, 60000);
+  setInterval(refreshShHeaderBlocks, 60000);
 
   // ── candlestick plugin ─────────────────────────────────────────────────────
   Chart.register({
@@ -994,9 +1484,13 @@
     afterDatasetsDraw(chart) {
       const ohlc = chart.data._ohlc;
       if (!ohlc || !ohlc.length) return;
-      const { ctx, scales: { x: xs, y: ys } } = chart;
+      const { ctx, chartArea, scales: { x: xs, y: ys } } = chart;
       const step = ohlc.length > 1 ? xs.getPixelForValue(1) - xs.getPixelForValue(0) : 8;
       const barW = Math.max(2, Math.abs(step) * 0.6);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+      ctx.clip();
       ohlc.forEach((d, i) => {
         const px   = xs.getPixelForValue(i);
         const isUp = d.c >= d.o;
@@ -1006,15 +1500,14 @@
         const cY   = ys.getPixelForValue(d.c);
         const top  = Math.min(oY, cY);
         const bH   = Math.max(Math.abs(cY - oY), 1);
-        ctx.save();
         ctx.strokeStyle = isUp ? '#3fb950' : '#f85149';
         ctx.fillStyle   = isUp ? '#3fb95055' : '#f8514955';
         ctx.lineWidth   = 1;
         ctx.beginPath(); ctx.moveTo(px, hY); ctx.lineTo(px, lY); ctx.stroke();
         ctx.fillRect(px - barW / 2, top, barW, bH);
         ctx.strokeRect(px - barW / 2, top, barW, bH);
-        ctx.restore();
       });
+      ctx.restore();
     }
   });
 
@@ -1225,8 +1718,7 @@
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     const txt = `Next tick: ${m}m ${String(s).padStart(2,'0')}s`;
-    document.getElementById('next-tick').textContent        = txt;
-    document.getElementById('f-header-nexttick').textContent = txt;
+    document.getElementById('next-tick').textContent = txt;
   }
   updateCountdown();
   setInterval(updateCountdown, 1000);
@@ -1566,6 +2058,7 @@
   async function loadFuturesTrades() {
     try {
       const trades = await fetch('/api/futures/trades').then(r => r.json());
+      document.getElementById('hdr-fut-trades').textContent = `${trades.length} trades`;
       const tb = document.getElementById('f-trades-body');
       if (!trades.length) {
         tb.innerHTML = '<tr><td colspan="8" class="empty">No futures trades yet</td></tr>';
@@ -1641,7 +2134,6 @@
       // Reveal futures tab button and header blocks
       document.getElementById('futures-tab-btn').style.display = '';
       document.getElementById('f-header-block').style.display = 'flex';
-      document.getElementById('f-badge-block').style.display = 'flex';
 
       // Update status dot colour
       const dot = document.getElementById('futures-tab-dot');
@@ -1665,9 +2157,23 @@
       }
       document.getElementById('f-pnl').innerHTML       = fmtPnlUsdt(d.total_pnl);
       document.getElementById('f-trades').textContent  = d.total_trades;
+
+      // futures header block
+      const fhModeEl = document.getElementById('hdr-fut-mode');
+      fhModeEl.textContent = d.mode || '—';
+      fhModeEl.style.color = d.mode === 'live' ? 'var(--blue)' : '#bc8cff';
+      if (d.starting_balance != null) {
+        const fhPct = (fPortVal - d.starting_balance) / d.starting_balance * 100;
+        document.getElementById('hdr-fut-port').textContent = `$${fmtUsdt(fPortVal)} (${fhPct >= 0 ? '+' : ''}${fhPct.toFixed(1)}%)`;
+      }
+      const fhPnl = d.total_pnl ?? 0;
+      const fhPnlEl = document.getElementById('hdr-fut-pnl');
+      fhPnlEl.textContent = `${fhPnl >= 0 ? '+' : ''}$${fmtUsdt(Math.abs(fhPnl))} PnL`;
+      fhPnlEl.style.color = fhPnl >= 0 ? 'var(--green)' : 'var(--red)';
+
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
       document.getElementById('f-fees').innerHTML      = fmtPnlUsdt(-feesAndFunding);
-      document.getElementById('f-last-tick').textContent = d.last_tick || '—';
+      document.getElementById('last-tick').textContent = 'Last tick: ' + (d.last_tick || '—');
 
       loadFuturesStats();
       loadFuturesTrades();

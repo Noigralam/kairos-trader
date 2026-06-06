@@ -199,27 +199,270 @@ def api_signals():
 @app.route("/api/shadows")
 def api_shadows():
     from bot.spot_simulator import get_shadows
-    shadows = get_shadows()
-    if not shadows:
-        return jsonify([])
+    return jsonify([{"name": s.name, "overrides": s.overrides} for s in get_shadows()])
+
+
+def _get_shadow(name: str):
+    from bot.spot_simulator import get_shadows
+    return next((s for s in get_shadows() if s.name.upper() == name.upper()), None)
+
+
+@app.route("/api/shadow/<name>/status")
+def api_shadow_status(name):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify({"error": "not found"}), 404
     prices = {}
-    for s in shadows:
-        for pair in s.positions:
-            if pair not in prices:
-                try:
-                    prices[pair] = get_price(pair)
-                except Exception:
-                    pass
+    for pair in config.SPOT_TRADING_PAIRS:
+        try:
+            prices[pair] = get_price(pair)
+        except Exception:
+            pass
+    open_val = sum(prices.get(p, pos.value_eur) * pos.amount for p, pos in s.positions.items())
+    starting = float(s.overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+    fee      = config.SPOT_FEE
+    positions_out = {}
+    for pair, pos in s.positions.items():
+        price = prices.get(pair, pos.entry_price)
+        positions_out[pair] = {
+            "entry_price":   pos.entry_price,
+            "amount":        pos.amount,
+            "value_eur":     round(pos.value_eur, 2),
+            "highest_price": pos.peak(),
+            "trailing_stop": round(s._trailing_stop_level(pos), 2),
+            "take_profit":   round(pos.take_profit_price, 2),
+            "break_even":    round(pos.entry_price * (1 + fee) / (1 - fee), 2),
+            "dca_count":     pos.dca_count,
+            "dca_max":       s._o("dca_max", config.SPOT_DCA_MAX),
+            "dca_trigger":   round(pos.entry_price * (1 - (s._o("dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("dca_step", config.SPOT_DCA_STEP_PCT))), 2)
+                             if pos.dca_count < s._o("dca_max", config.SPOT_DCA_MAX) else None,
+            "current_price": round(price, 2),
+        }
+    return jsonify({
+        "name":             s.name,
+        "overrides":        s.overrides,
+        "balance":          round(s.balance, 2),
+        "total_trades":     s.total_trades,
+        "total_pnl":        round(s.total_pnl, 2),
+        "total_fees":       round(s.total_fees, 4),
+        "portfolio_value":  round(s.balance + open_val, 2),
+        "starting_balance": starting,
+        "positions":        positions_out,
+    })
+
+
+@app.route("/api/shadow/<name>/trades")
+def api_shadow_trades(name):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify([])
+    cols = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
+    rows = db.get_trades(50, mode=s._db_mode)
+    return jsonify([dict(zip(cols, row)) for row in rows])
+
+
+@app.route("/api/shadow/<name>/balance_history")
+def api_shadow_balance_history(name):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify([])
+    days = float(request.args.get("days", 30))
+    rows = db.get_balance_history(s._db_mode, max(days, 0))
+    import zoneinfo as _zi, datetime as _dt
+    tz = _zi.ZoneInfo("Europe/Helsinki")
     out = []
-    for s in shadows:
-        state = s.get_state()
-        for pair, pos in state["positions"].items():
-            pos["current_price"] = round(prices.get(pair, 0), 2)
-            if prices.get(pair):
-                pnl = (prices[pair] - s.positions[pair].entry_price) * s.positions[pair].amount
-                pos["unrealized_pnl"] = round(pnl, 2)
-        out.append(state)
+    for ts, bal in rows:
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+        except Exception:
+            t = ts
+        out.append({"t": t, "balance": bal})
     return jsonify(out)
+
+
+@app.route("/api/shadow/<name>/stats")
+def api_shadow_stats(name):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify({})
+    return jsonify(db.get_trade_stats(s._db_mode))
+
+
+@app.route("/api/shadow/<name>/signals")
+def api_shadow_signals(name):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify({"error": "not found"}), 404
+    out = {}
+    for pair in config.SPOT_TRADING_PAIRS:
+        try:
+            price  = get_price(pair)
+            rsi_period   = s._o("rsi_period",   config.rsi_period_for(pair))
+            rsi_oversold = s._o("rsi_oversold",  config.rsi_oversold_for(pair))
+            rsi_ob       = s._o("rsi_overbought", config.rsi_overbought_for(pair))
+            ema_gap      = s._o("ema_gap",        config.ema_gap_for(pair))
+            result = compute_signal(get_df(pair, config.SPOT_INTERVAL),
+                                    rsi_period=rsi_period, rsi_oversold=rsi_oversold,
+                                    rsi_overbought=rsi_ob, ema_gap=ema_gap)
+            ema_threshold = result.ema_trend * (1 + ema_gap)
+            above_trend   = price >= ema_threshold
+            gap           = price - result.ema_trend
+            has_position  = pair in s.positions
+
+            if result.signal == Signal.BUY and not has_position:
+                commentary = f"RSI hit oversold ({result.rsi:.1f}) and price is above EMA200 — buy signal."
+            elif result.signal == Signal.SELL and has_position:
+                commentary = f"RSI recovered ({result.rsi:.1f}) — sell signal."
+            elif not above_trend:
+                commentary = (f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active."
+                              if price < result.ema_trend else
+                              f"Price above EMA200 but within {ema_gap*100:.0f}% gap filter.")
+            elif result.rsi >= rsi_oversold:
+                commentary = (f"Holding — RSI {result.rsi:.1f}, watching for {rsi_ob}." if has_position
+                              else f"Trend healthy, RSI {result.rsi:.1f} — waiting for dip below {rsi_oversold}.")
+            else:
+                commentary = result.reason
+
+            pos_data = None
+            if pair in s.positions:
+                pos  = s.positions[pair]
+                fee  = config.SPOT_FEE
+                pos_data = {
+                    "entry_price":   pos.entry_price,
+                    "amount":        pos.amount,
+                    "value_eur":     round(pos.value_eur, 2),
+                    "highest_price": pos.peak(),
+                    "trailing_stop": round(s._trailing_stop_level(pos), 2),
+                    "take_profit":   round(pos.take_profit_price, 2),
+                    "break_even":    round(pos.entry_price * (1 + fee) / (1 - fee), 2),
+                    "dca_count":     pos.dca_count,
+                    "dca_max":       s._o("dca_max", config.SPOT_DCA_MAX),
+                    "dca_trigger":   round(pos.entry_price * (1 - (s._o("dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("dca_step", config.SPOT_DCA_STEP_PCT))), 2)
+                                     if pos.dca_count < s._o("dca_max", config.SPOT_DCA_MAX) else None,
+                    "current_price": round(price, 2),
+                }
+
+            out[pair] = {
+                "price":          round(price, 2),
+                "rsi":            round(result.rsi, 1),
+                "rsi_period":     rsi_period,
+                "rsi_oversold":   rsi_oversold,
+                "rsi_overbought": rsi_ob,
+                "ema200":         round(result.ema_trend, 2),
+                "ema_threshold":  round(ema_threshold, 2),
+                "above_trend":    above_trend,
+                "gap":            round(gap, 2),
+                "signal":         result.signal.value,
+                "commentary":     commentary,
+                "has_position":   has_position,
+                "position":       pos_data,
+            }
+        except Exception as e:
+            out[pair] = {"error": str(e)}
+    return jsonify(out)
+
+
+@app.route("/api/shadow/<name>/chart/<pair>")
+def api_shadow_chart(name, pair):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify({"error": "not found"}), 404
+    import pandas as pd
+    span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672, "2w": 1344, "1m": 2880}
+    span  = request.args.get("span", "1d")
+    limit = span_candles.get(span, 96)
+    pair  = pair.upper()
+
+    df = get_df(pair, config.SPOT_INTERVAL, limit=limit + 210)
+    if df.empty:
+        return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
+
+    close = df["close"]
+    ema   = close.ewm(span=200, adjust=False).mean()
+
+    _bb_period = 20
+    bb_mid   = close.rolling(_bb_period).mean()
+    bb_std   = close.rolling(_bb_period).std()
+    bb_upper = bb_mid + 2 * bb_std
+    bb_lower = bb_mid - 2 * bb_std
+
+    _rp      = s._o("rsi_period",    config.rsi_period_for(pair))
+    _ros     = s._o("rsi_oversold",  config.rsi_oversold_for(pair))
+    _rob     = s._o("rsi_overbought", config.rsi_overbought_for(pair))
+    _egap    = s._o("ema_gap",        config.ema_gap_for(pair))
+    delta    = close.diff()
+    gain     = delta.clip(lower=0)
+    loss     = -delta.clip(upper=0)
+    avg_gain = gain.ewm(com=_rp - 1, min_periods=_rp).mean()
+    avg_loss = loss.ewm(com=_rp - 1, min_periods=_rp).mean()
+    rsi_s    = 100 - (100 / (1 + avg_gain / avg_loss))
+
+    buy_prices = [None] * len(df); sell_prices = [None] * len(df); blocked_buys = [None] * len(df)
+    for i in range(210, len(df)):
+        r = rsi_s.iloc[i]; e = ema.iloc[i]; p = close.iloc[i]
+        if r < _ros and p >= e * (1 + _egap):
+            buy_prices[i] = round(p, 4)
+        elif r < _ros:
+            blocked_buys[i] = round(p, 4)
+        elif r > _rob:
+            sell_prices[i] = round(p, 4)
+
+    import zoneinfo as _zi, datetime as _dt
+    _tz = _zi.ZoneInfo("Europe/Helsinki")
+    sl  = slice(-limit, None)
+    labels = (df["open_time"].iloc[sl]
+              .dt.tz_convert(_tz)
+              .dt.strftime("%m-%d %H:%M").tolist())
+    label_set = set(labels)
+
+    _interval_mins = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
+    _candle_mins   = _interval_mins.get(config.SPOT_INTERVAL, 15)
+    actual_buys = []; actual_sells = []; actual_dcas = []
+    for row in db.get_trades(200, mode=s._db_mode):
+        _, ts, tpair, side, price, *_ = row
+        notes = row[-1] or ""
+        if tpair != pair:
+            continue
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
+            t = t.replace(minute=(t.minute // _candle_mins) * _candle_mins, second=0, microsecond=0)
+            label = t.strftime("%m-%d %H:%M")
+        except Exception:
+            continue
+        if label not in label_set:
+            continue
+        pt = {"x": label, "y": round(price, 4)}
+        if side == "BUY" and "dca" in notes.lower():
+            actual_dcas.append(pt)
+        elif side == "BUY":
+            actual_buys.append(pt)
+        elif side == "SELL":
+            actual_sells.append(pt)
+
+    vol_up     = (close >= df["open"]).iloc[sl]
+    vol_colors = ['#3fb95066' if u else '#f8514966' for u in vol_up]
+    ohlc = [{"x": lbl, "o": round(o, 4), "h": round(h, 4), "l": round(l, 4), "c": round(c, 4)}
+            for lbl, o, h, l, c in zip(labels, df["open"].iloc[sl].tolist(), df["high"].iloc[sl].tolist(),
+                                        df["low"].iloc[sl].tolist(), close.iloc[sl].tolist())]
+    return jsonify({
+        "labels":       labels,
+        "prices":       close.iloc[sl].round(4).tolist(),
+        "ema200":       ema.iloc[sl].round(4).tolist(),
+        "bb_upper":     bb_upper.iloc[sl].round(4).tolist(),
+        "bb_lower":     bb_lower.iloc[sl].round(4).tolist(),
+        "ohlc":         ohlc,
+        "volume":       df["volume"].iloc[sl].round(4).tolist(),
+        "vol_colors":   vol_colors,
+        "rsi":          rsi_s.iloc[sl].round(2).tolist(),
+        "rsi_oversold": _ros,
+        "rsi_overbought": _rob,
+        "buys":         buy_prices[-limit:],
+        "sells":        sell_prices[-limit:],
+        "blocked_buys": blocked_buys[-limit:],
+        "actual_buys":  actual_buys,
+        "actual_sells": actual_sells,
+        "actual_dcas":  actual_dcas,
+    })
 
 
 @app.route("/api/futures/signals")

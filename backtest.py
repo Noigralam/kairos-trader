@@ -1066,6 +1066,90 @@ def run_combined(days_list: list[int]):
 
 
 # ---------------------------------------------------------------------------
+# SOLEUR-focused strategy comparison
+# ---------------------------------------------------------------------------
+
+def sweep_solfocus(days_list: list[int]):
+    """Compare SOLEUR strategies: SPOT current, ACTIVE, and DCA variants tuned for SOL."""
+    start = config.SPOT_SIMULATION_BALANCE
+    half  = start / 2
+
+    # SOLEUR-specific current params
+    sol_rsi_period = config.rsi_period_for("SOLEUR")
+    sol_rsi_ob     = config.rsi_overbought_for("SOLEUR")
+    sol_min_exit   = config.SPOT_MIN_EXIT_PROFIT_PCT  # SOLEUR override
+
+    scenarios = [
+        # label, run_pair kwargs
+        ("SPOT current",
+         dict(rsi_period=sol_rsi_period, rsi_buy=config.SPOT_RSI_OVERSOLD, rsi_sell=sol_rsi_ob,
+              floor_pct=config.SPOT_PROFIT_FLOOR_PCT, trail_pct=config.SPOT_TRAILING_STOP_PCT,
+              min_exit=0.03, ema_gap=config.SPOT_EMA_GAP_PCT,
+              max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)),
+
+        ("ACTIVE (no DCA)",
+         dict(rsi_period=sol_rsi_period, rsi_buy=40, rsi_sell=58,
+              floor_pct=0.003, trail_pct=0.012, min_exit=0.003, ema_gap=0.0,
+              max_dca=0, enable_dca=False)),
+
+        ("FREQ+DCA  rsi<38 trail=3% floor=1.5%",
+         dict(rsi_period=sol_rsi_period, rsi_buy=38, rsi_sell=65,
+              floor_pct=0.015, trail_pct=0.030, min_exit=0.010, ema_gap=0.0,
+              max_dca=3, dca_step=config.SPOT_DCA_STEP_PCT)),
+
+        ("ACTIVE+DCA  rsi<40 trail=2% floor=0.8%",
+         dict(rsi_period=sol_rsi_period, rsi_buy=40, rsi_sell=62,
+              floor_pct=0.008, trail_pct=0.020, min_exit=0.005, ema_gap=0.0,
+              max_dca=3, dca_step=config.SPOT_DCA_STEP_PCT)),
+
+        ("HYBRID  rsi<33 trail=3.5% floor=2% DCA×2",
+         dict(rsi_period=sol_rsi_period, rsi_buy=33, rsi_sell=70,
+              floor_pct=0.020, trail_pct=0.035, min_exit=0.015, ema_gap=0.0,
+              max_dca=2, dca_step=config.SPOT_DCA_STEP_PCT)),
+    ]
+
+    for days in days_list:
+        _header(days, "SOLEUR strategy focus — DCA variants", wide=True)
+        print(f"  {'Scenario':<48}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*48}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+
+        df_sol = fetch("SOLEUR", days)
+        df_eth = fetch("ETHEUR", days)
+
+        print(f"\n  ── SOLEUR only (€{start:.0f}) ──")
+        for label, kwargs in scenarios:
+            trades, _ = run_pair("SOLEUR", df_sol, start, **kwargs)
+            summarise(label, trades, start, wide=True)
+
+        print(f"\n  ── allocation: where to put €{start:.0f} ──")
+        sol_full, _ = run_pair("SOLEUR", df_sol, start,
+                               rsi_period=sol_rsi_period, rsi_buy=config.SPOT_RSI_OVERSOLD,
+                               rsi_sell=sol_rsi_ob, floor_pct=config.SPOT_PROFIT_FLOOR_PCT,
+                               trail_pct=config.SPOT_TRAILING_STOP_PCT, min_exit=0.03,
+                               ema_gap=config.SPOT_EMA_GAP_PCT,
+                               max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)
+        eth_half, _ = run_pair("ETHEUR", df_eth, half)
+        sol_half, _ = run_pair("SOLEUR", df_sol, half,
+                               rsi_period=sol_rsi_period, rsi_buy=config.SPOT_RSI_OVERSOLD,
+                               rsi_sell=sol_rsi_ob, floor_pct=config.SPOT_PROFIT_FLOOR_PCT,
+                               trail_pct=config.SPOT_TRAILING_STOP_PCT, min_exit=0.03,
+                               ema_gap=config.SPOT_EMA_GAP_PCT,
+                               max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)
+        eth_q, _  = run_pair("ETHEUR", df_eth, start * 0.25)
+        sol_3q, _ = run_pair("SOLEUR", df_sol, start * 0.75,
+                              rsi_period=sol_rsi_period, rsi_buy=config.SPOT_RSI_OVERSOLD,
+                              rsi_sell=sol_rsi_ob, floor_pct=config.SPOT_PROFIT_FLOOR_PCT,
+                              trail_pct=config.SPOT_TRAILING_STOP_PCT, min_exit=0.03,
+                              ema_gap=config.SPOT_EMA_GAP_PCT,
+                              max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)
+        summarise("100% SOL  (SPOT current params)", sol_full,          start, wide=True)
+        summarise("50% ETH + 50% SOL  (current)",   eth_half + sol_half, start, wide=True)
+        summarise("25% ETH + 75% SOL  (SOL primary)", eth_q + sol_3q,   start, wide=True)
+        print()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1099,6 +1183,7 @@ if __name__ == "__main__":
             "cooldown":    sweep_cooldown,
             "divergence":  sweep_divergence,
             "multipos":    sweep_multipos,
+            "solfocus":    sweep_solfocus,
         }
         if mode == "all":
             for fn in sweeps.values():

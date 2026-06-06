@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from . import config
 from .spot_risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert, notify
-from .db import log_trade
+from .db import log_trade, log_balance
 from .spot_exchange import round_qty, get_min_notional, get_eur_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
@@ -473,6 +473,10 @@ class SpotShadowSimulator:
         except Exception:
             pass
 
+    @property
+    def _db_mode(self) -> str:
+        return f"shadow_{self.name.lower()}"
+
     # --- internal trade ops (simulation only, no exchange) ---
 
     def _open(self, pair: str, price: float):
@@ -490,6 +494,7 @@ class SpotShadowSimulator:
         self.positions[pair]  = pos
         self.balance         -= size + buy_fee
         self.total_fees      += buy_fee
+        log_trade(pair, "BUY", price, amount, size, buy_fee, mode=self._db_mode)
 
     def _dca(self, pair: str, price: float):
         pos = self.positions.get(pair)
@@ -504,11 +509,13 @@ class SpotShadowSimulator:
         size   = min(self.balance * pct, max_sz)
         if size < 1:
             return
+        bought  = size / price
         buy_fee = size * SPOT_FEE
         apply_dca(pos, price, size)
         pos.take_profit_price = pos.entry_price * (1 + tp_pct)
         self.balance     -= size + buy_fee
         self.total_fees  += buy_fee
+        log_trade(pair, "BUY", price, bought, size, buy_fee, mode=self._db_mode, notes="dca")
 
     def _close(self, pair: str, price: float, reason: str = "signal"):
         pos = self.positions.pop(pair, None)
@@ -522,6 +529,7 @@ class SpotShadowSimulator:
         self.total_trades   += 1
         self.total_pnl      += pnl
         self.total_fees     += sell_fee
+        log_trade(pair, "SELL", price, pos.amount, exit_value, sell_fee, mode=self._db_mode, pnl=pnl, notes=reason)
 
     # --- public API ---
 
@@ -573,12 +581,13 @@ class SpotShadowSimulator:
                     if price >= pos.entry_price * (1 + min_exit):
                         self._close(pair, price, "signal")
 
-            # update portfolio peak
+            # update portfolio peak and log balance history
             port_val = self.balance + sum(
                 prices[p] * p2.amount for p, p2 in self.positions.items() if p in prices
             )
             if port_val > self.portfolio_peak:
                 self.portfolio_peak = port_val
+            log_balance(round(port_val, 2), self._db_mode)
 
             self._save()
 
