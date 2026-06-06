@@ -447,6 +447,11 @@
       </div>
     </section>
 
+    <section id="shadows-section" style="display:none">
+      <h2>Shadow Simulations</h2>
+      <div id="shadows-container"></div>
+    </section>
+
   </div><!-- /tab-spot -->
 
   <!-- ═══════════════════════════ FUTURES TAB ═══════════════════════════ -->
@@ -939,10 +944,49 @@
     }
   }
 
+  async function refreshShadows() {
+    const res = await fetch('/api/shadows');
+    const shadows = await res.json();
+    const section   = document.getElementById('shadows-section');
+    const container = document.getElementById('shadows-container');
+    if (!shadows.length) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    container.innerHTML = shadows.map(s => {
+      const pnlColor = s.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      const posHtml = Object.entries(s.positions).map(([pair, pos]) => {
+        const upnl = pos.unrealized_pnl != null
+          ? ` · unrealized ${pos.unrealized_pnl >= 0 ? '+' : ''}€${pos.unrealized_pnl.toFixed(2)}`
+          : '';
+        const dcaStr = pos.dca_count > 0 ? ` · DCA×${pos.dca_count}` : '';
+        return `<span style="margin-right:16px">`
+          + `<strong>${pair}</strong> entry €${pos.entry_price.toFixed(2)}`
+          + ` → TP €${pos.take_profit || '—'} · stop €${pos.trailing_stop}`
+          + dcaStr + upnl
+          + `</span>`;
+      }).join('') || `<span style="color:var(--muted)">no open positions</span>`;
+      const overrides = Object.entries(s.overrides)
+        .filter(([k]) => k !== 'balance')
+        .map(([k, v]) => `${k}=${v}`)
+        .join('  ');
+      return `<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px">`
+        + `<div style="display:flex;align-items:baseline;gap:18px;margin-bottom:8px">`
+        + `<strong style="font-size:14px;letter-spacing:.03em">${s.name}</strong>`
+        + `<span style="color:${pnlColor};font-weight:600">${s.total_pnl >= 0 ? '+' : ''}€${s.total_pnl.toFixed(2)} P&L</span>`
+        + `<span>€${s.balance.toFixed(2)} balance</span>`
+        + `<span style="color:var(--muted)">${s.total_trades} trades</span>`
+        + `<span style="color:var(--muted);font-size:11px">${overrides || 'default params'}</span>`
+        + `</div>`
+        + `<div style="font-size:13px">${posHtml}</div>`
+        + `</div>`;
+    }).join('');
+  }
+
   refresh();
   refreshSignals();
+  refreshShadows();
   setInterval(refresh, 60000);
   setInterval(refreshSignals, 60000);
+  setInterval(refreshShadows, 60000);
 
   // ── candlestick plugin ─────────────────────────────────────────────────────
   Chart.register({

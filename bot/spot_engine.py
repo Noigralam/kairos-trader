@@ -9,7 +9,7 @@ log = logging.getLogger("cryptobot")
 from .spot_exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
-from .spot_simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add
+from .spot_simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add, init_shadows, get_shadows
 from .notifier import notify, notify_tick, bot_status_alert, build_chart, extreme_alert, daily_summary
 from . import db as _db
 
@@ -164,14 +164,14 @@ def _loop():
             for pair, result in results.items():
                 has_position = pair in state.positions
                 if result.signal == Signal.BUY and not has_position:
-                    open_position(pair, prices[pair])
+                    open_position(pair, prices[pair], prices=prices)
                 elif has_position:
                     pos = state.positions[pair]
                     drop = (pos.entry_price - prices[pair]) / pos.entry_price
                     next_drop = config.SPOT_DCA_DROP_PCT + pos.dca_count * config.SPOT_DCA_STEP_PCT
                     if pos.dca_count < config.SPOT_DCA_MAX and drop >= next_drop:
                         prev_count = pos.dca_count
-                        dca_position(pair, prices[pair])
+                        dca_position(pair, prices[pair], prices=prices)
                         if pos.dca_count > prev_count:
                             notify(f"[DCA {pos.dca_count}/{config.SPOT_DCA_MAX}] {pair} down {drop*100:.1f}% from entry, RSI={result.rsi:.1f} — averaged down", discord=False)
                 if result.signal == Signal.SELL and has_position:
@@ -182,6 +182,11 @@ def _loop():
                         close_position(pair, prices[pair], reason="signal")
                     else:
                         notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below min exit €{min_exit:,.2f} (entry €{pos.entry_price:,.2f} +{min_exit_pct*100:.1f}%)", discord=False)
+
+            # tick all shadow simulators with the same candle data
+            for shadow in get_shadows():
+                for pair in config.SPOT_TRADING_PAIRS:
+                    shadow.tick(pair, prices)
 
             # snapshot portfolio value (cash + open position mark-to-market)
             snap_state = get_state()
@@ -215,6 +220,8 @@ def _stop_loop():
                     log.warning(f"[SPOT STOP-CHECK] {pair} price fetch failed: {e}")
             if prices:
                 check_stops(prices)
+                for shadow in get_shadows():
+                    shadow.check_stops(prices)
         except Exception as e:
             log.error(f"[SPOT STOP-CHECK] {e}", exc_info=True)
 
@@ -249,6 +256,7 @@ def start():
     if _status == BotStatus.RUNNING:
         return
     _ensure_live_since()
+    init_shadows()
     _start_time = time.time()
     _set_status(BotStatus.RUNNING)
     _thread      = threading.Thread(target=_loop,       daemon=True, name="spot-engine")

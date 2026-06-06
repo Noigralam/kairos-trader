@@ -107,7 +107,16 @@ def reset():
 # Position management
 # ---------------------------------------------------------------------------
 
-def open_position(pair: str, price: float, size_pct: float = None):
+def _portfolio_value(balance: float, prices: dict | None) -> float:
+    """Cash balance plus open position market values. Uses value_eur as fallback when price unavailable."""
+    pos_val = sum(
+        (prices[p] * pos.amount) if prices and p in prices else pos.value_eur
+        for p, pos in _state.positions.items()
+    )
+    return balance + pos_val
+
+
+def open_position(pair: str, price: float, size_pct: float = None, prices: dict | None = None):
     if pair in _state.positions:
         return
     pct = size_pct if size_pct is not None else config.SPOT_POSITION_SIZE_PCT
@@ -119,7 +128,8 @@ def open_position(pair: str, price: float, size_pct: float = None):
         balance = _state.balance
 
     if config.SPOT_MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
-        drawdown = (_state.portfolio_peak - balance) / _state.portfolio_peak
+        portfolio_value = _portfolio_value(balance, prices or {pair: price})
+        drawdown = (_state.portfolio_peak - portfolio_value) / _state.portfolio_peak
         if drawdown > config.SPOT_MAX_DRAWDOWN_PCT:
             notify(f"[SKIP] {pair} buy blocked — portfolio drawdown {drawdown*100:.1f}% exceeds limit {config.SPOT_MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
             return
@@ -232,7 +242,7 @@ def manual_add(pair: str, price: float, size_pct: float):
             log_trade(pair, "BUY", price, bought, size, buy_fee, mode="simulation", notes="manual_add")
 
 
-def dca_position(pair: str, price: float):
+def dca_position(pair: str, price: float, prices: dict | None = None):
     if pair not in _state.positions:
         return
     pos = _state.positions[pair]
@@ -246,7 +256,8 @@ def dca_position(pair: str, price: float):
         balance = _state.balance
 
     if config.SPOT_MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
-        drawdown = (_state.portfolio_peak - balance) / _state.portfolio_peak
+        portfolio_value = _portfolio_value(balance, prices or {pair: price})
+        drawdown = (_state.portfolio_peak - portfolio_value) / _state.portfolio_peak
         if drawdown > config.SPOT_MAX_DRAWDOWN_PCT:
             notify(f"[SKIP] {pair} DCA blocked — portfolio drawdown {drawdown*100:.1f}% exceeds limit {config.SPOT_MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
             return
@@ -369,3 +380,277 @@ def check_stops(prices: dict):
             if portfolio_value > _state.portfolio_peak:
                 _state.portfolio_peak = portfolio_value
                 _save()
+
+
+# ---------------------------------------------------------------------------
+# Shadow simulation
+# ---------------------------------------------------------------------------
+
+_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+
+class SpotShadowSimulator:
+    """A lightweight simulation-only instance running a different strategy config.
+    Receives the same candle ticks as the main engine but never touches the exchange.
+    Each shadow has its own state file and balance."""
+
+    def __init__(self, name: str, state_path: str, overrides: dict):
+        self.name       = name
+        self.state_path = state_path
+        self.overrides  = overrides
+        self._lock      = threading.Lock()
+        self.balance        = float(overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+        self.positions: dict[str, Position] = {}
+        self.total_trades   = 0
+        self.total_pnl      = 0.0
+        self.total_fees     = 0.0
+        self.portfolio_peak = 0.0
+        self._load()
+
+    # --- override helpers ---
+
+    def _o(self, key: str, default):
+        return self.overrides.get(key, default)
+
+    def _trailing_stop_level(self, pos: Position) -> float:
+        fee   = config.SPOT_FEE
+        floor = self._o("floor_pct", config.SPOT_PROFIT_FLOOR_PCT)
+        trail = self._o("trail_pct", config.SPOT_TRAILING_STOP_PCT)
+        return max(
+            pos.entry_price * (1 + fee + floor) / (1 - fee),
+            pos.peak() * (1 - trail),
+        )
+
+    # --- persistence ---
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+        data = {
+            "name": self.name,
+            "overrides": self.overrides,
+            "balance": self.balance,
+            "total_trades": self.total_trades,
+            "total_pnl": self.total_pnl,
+            "total_fees": self.total_fees,
+            "portfolio_peak": self.portfolio_peak,
+            "positions": {
+                pair: {
+                    "pair":               pos.pair,
+                    "entry_price":        pos.entry_price,
+                    "amount":             pos.amount,
+                    "value_eur":          pos.value_eur,
+                    "take_profit_price":  pos.take_profit_price,
+                    "highest_price":      pos.highest_price,
+                    "dca_count":          pos.dca_count,
+                    "opened_at":          pos.opened_at,
+                }
+                for pair, pos in self.positions.items()
+            },
+        }
+        with open(self.state_path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def _load(self):
+        if not os.path.exists(self.state_path):
+            return
+        try:
+            with open(self.state_path) as f:
+                data = json.load(f)
+            self.balance        = data.get("balance", float(self.overrides.get("balance", config.SPOT_SIMULATION_BALANCE)))
+            self.total_trades   = data.get("total_trades",   0)
+            self.total_pnl      = data.get("total_pnl",      0.0)
+            self.total_fees     = data.get("total_fees",     0.0)
+            self.portfolio_peak = data.get("portfolio_peak", 0.0)
+            self.positions      = {}
+            for pair, pos in data.get("positions", {}).items():
+                pos.pop("stop_cooldown", None)
+                if "dca_done" in pos:
+                    pos["dca_count"] = 1 if pos.pop("dca_done") else 0
+                p = Position(**pos)
+                if p.highest_price == 0.0:
+                    p.highest_price = p.entry_price
+                self.positions[pair] = p
+        except Exception:
+            pass
+
+    # --- internal trade ops (simulation only, no exchange) ---
+
+    def _open(self, pair: str, price: float):
+        if pair in self.positions:
+            return
+        pct    = self._o("pos_pct", config.SPOT_POSITION_SIZE_PCT)
+        tp_pct = self._o("tp_pct",  config.SPOT_TAKE_PROFIT_PCT)
+        max_sz = self.balance / (1 + SPOT_FEE)
+        size   = min(self.balance * pct, max_sz)
+        if size < 1:
+            return
+        buy_fee = size * SPOT_FEE
+        amount  = size / price
+        pos     = Position(pair, price, amount, size, price * (1 + tp_pct), price, opened_at=_time.time())
+        self.positions[pair]  = pos
+        self.balance         -= size + buy_fee
+        self.total_fees      += buy_fee
+
+    def _dca(self, pair: str, price: float):
+        pos = self.positions.get(pair)
+        if pos is None:
+            return
+        dca_max = self._o("dca_max", config.SPOT_DCA_MAX)
+        tp_pct  = self._o("tp_pct",  config.SPOT_TAKE_PROFIT_PCT)
+        if pos.dca_count >= dca_max:
+            return
+        pct    = self._o("dca_pct", config.SPOT_DCA_SIZE_PCT)
+        max_sz = self.balance / (1 + SPOT_FEE)
+        size   = min(self.balance * pct, max_sz)
+        if size < 1:
+            return
+        buy_fee = size * SPOT_FEE
+        apply_dca(pos, price, size)
+        pos.take_profit_price = pos.entry_price * (1 + tp_pct)
+        self.balance     -= size + buy_fee
+        self.total_fees  += buy_fee
+
+    def _close(self, pair: str, price: float, reason: str = "signal"):
+        pos = self.positions.pop(pair, None)
+        if pos is None:
+            return
+        exit_value  = pos.amount * price
+        buy_fee     = pos.value_eur * SPOT_FEE
+        sell_fee    = exit_value * SPOT_FEE
+        pnl         = calc_pnl(pos, price, buy_fee=buy_fee, sell_fee=sell_fee)
+        self.balance        += exit_value - sell_fee
+        self.total_trades   += 1
+        self.total_pnl      += pnl
+        self.total_fees     += sell_fee
+
+    # --- public API ---
+
+    def tick(self, pair: str, prices: dict):
+        """Process one candle for one pair. Called from the engine's main loop."""
+        from .candles import get_df
+        from .strategy import compute_signal, Signal
+
+        price = prices.get(pair)
+        if price is None:
+            return
+
+        with self._lock:
+            # stops first (same logic as between-candle check)
+            pos = self.positions.get(pair)
+            if pos:
+                update_peak(pos, price)
+                stop = self._trailing_stop_level(pos)
+                if price >= pos.take_profit_price > 0:
+                    self._close(pair, price, "take_profit")
+                    self._save()
+                    return
+                if pos.peak() > stop and price <= stop:
+                    self._close(pair, price, "trailing_stop")
+                    self._save()
+                    return
+
+            df     = get_df(pair, config.SPOT_INTERVAL)
+            result = compute_signal(
+                df,
+                rsi_period   = self._o("rsi_period",   config.rsi_period_for(pair)),
+                rsi_oversold = self._o("rsi_oversold",  config.rsi_oversold_for(pair)),
+                rsi_overbought = self._o("rsi_overbought", config.rsi_overbought_for(pair)),
+                ema_gap      = self._o("ema_gap",       config.ema_gap_for(pair)),
+            )
+
+            if result.signal == Signal.BUY and pair not in self.positions:
+                self._open(pair, price)
+            elif pair in self.positions:
+                pos      = self.positions[pair]
+                dca_drop = self._o("dca_drop", config.SPOT_DCA_DROP_PCT)
+                dca_step = self._o("dca_step", config.SPOT_DCA_STEP_PCT)
+                drop     = (pos.entry_price - price) / pos.entry_price
+                next_drop = dca_drop + pos.dca_count * dca_step
+                if pos.dca_count < self._o("dca_max", config.SPOT_DCA_MAX) and drop >= next_drop:
+                    self._dca(pair, price)
+                if result.signal == Signal.SELL:
+                    min_exit = self._o("min_exit", config.min_exit_for(pair))
+                    if price >= pos.entry_price * (1 + min_exit):
+                        self._close(pair, price, "signal")
+
+            # update portfolio peak
+            port_val = self.balance + sum(
+                prices[p] * p2.amount for p, p2 in self.positions.items() if p in prices
+            )
+            if port_val > self.portfolio_peak:
+                self.portfolio_peak = port_val
+
+            self._save()
+
+    def check_stops(self, prices: dict):
+        """Between-candle stop check — trailing stop and take-profit only."""
+        with self._lock:
+            changed = False
+            for pair, pos in list(self.positions.items()):
+                price = prices.get(pair)
+                if price is None:
+                    continue
+                updated = update_peak(pos, price)
+                stop    = self._trailing_stop_level(pos)
+                if price >= pos.take_profit_price > 0:
+                    self._close(pair, price, "take_profit")
+                    changed = True
+                elif pos.peak() > stop and price <= stop:
+                    self._close(pair, price, "trailing_stop")
+                    changed = True
+                elif updated:
+                    changed = True
+
+            port_val = self.balance + sum(
+                prices[p] * p2.amount for p, p2 in self.positions.items() if p in prices
+            )
+            if port_val > self.portfolio_peak:
+                self.portfolio_peak = port_val
+                changed = True
+
+            if changed:
+                self._save()
+
+    def get_state(self) -> dict:
+        return {
+            "name":           self.name,
+            "overrides":      self.overrides,
+            "balance":        round(self.balance,        2),
+            "total_trades":   self.total_trades,
+            "total_pnl":      round(self.total_pnl,      2),
+            "total_fees":     round(self.total_fees,     4),
+            "portfolio_peak": round(self.portfolio_peak, 2),
+            "positions": {
+                pair: {
+                    "entry_price":   pos.entry_price,
+                    "amount":        pos.amount,
+                    "value_eur":     round(pos.value_eur, 2),
+                    "dca_count":     pos.dca_count,
+                    "trailing_stop": round(self._trailing_stop_level(pos), 2),
+                    "take_profit":   round(pos.take_profit_price, 2),
+                }
+                for pair, pos in self.positions.items()
+            },
+        }
+
+
+# --- module-level shadow registry ---
+
+_shadows: list[SpotShadowSimulator] = []
+
+
+def init_shadows() -> list[SpotShadowSimulator]:
+    global _shadows
+    _shadows = []
+    for name in config.get_shadow_profiles():
+        overrides   = config.get_shadow_overrides(name)
+        state_path  = os.path.join(_DATA_DIR, f"spot_state_shadow_{name.lower()}.json")
+        _shadows.append(SpotShadowSimulator(name, state_path, overrides))
+    if _shadows:
+        names = ", ".join(s.name for s in _shadows)
+        notify(f"[SHADOW] {len(_shadows)} shadow sim(s) loaded: {names}", discord=False)
+    return _shadows
+
+
+def get_shadows() -> list[SpotShadowSimulator]:
+    return _shadows

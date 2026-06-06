@@ -196,6 +196,32 @@ def api_signals():
     return jsonify(out)
 
 
+@app.route("/api/shadows")
+def api_shadows():
+    from bot.spot_simulator import get_shadows
+    shadows = get_shadows()
+    if not shadows:
+        return jsonify([])
+    prices = {}
+    for s in shadows:
+        for pair in s.positions:
+            if pair not in prices:
+                try:
+                    prices[pair] = get_price(pair)
+                except Exception:
+                    pass
+    out = []
+    for s in shadows:
+        state = s.get_state()
+        for pair, pos in state["positions"].items():
+            pos["current_price"] = round(prices.get(pair, 0), 2)
+            if prices.get(pair):
+                pnl = (prices[pair] - s.positions[pair].entry_price) * s.positions[pair].amount
+                pos["unrealized_pnl"] = round(pnl, 2)
+        out.append(state)
+    return jsonify(out)
+
+
 @app.route("/api/futures/signals")
 def api_futures_signals():
     if not config.FUTURES_ENABLED:

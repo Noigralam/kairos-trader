@@ -655,6 +655,132 @@ def sweep_daily_ema(days_list: list[int]):
         print()
 
 
+def run_pair_multipos(
+    pair: str, df: pd.DataFrame, start_balance: float,
+    max_slots:  int   = 3,
+    pos_pct:    float = None,
+    tp_pct:     float = None,
+    trail_pct:  float = None,
+    floor_pct:  float = None,
+    rsi_buy:    int   = None,
+    rsi_sell:   int   = None,
+    rsi_period: int   = None,
+    min_exit:   float = None,
+    ema_gap:    float = 0.0,
+) -> tuple[list[Trade], float]:
+    """Like run_pair but allows up to max_slots independent open positions; no DCA."""
+    fee_rate   = config.SPOT_FEE
+    pos_pct    = pos_pct    if pos_pct    is not None else config.SPOT_POSITION_SIZE_PCT
+    tp_pct     = tp_pct     if tp_pct     is not None else config.SPOT_TAKE_PROFIT_PCT
+    trail_pct  = trail_pct  if trail_pct  is not None else config.SPOT_TRAILING_STOP_PCT
+    floor_pct  = floor_pct  if floor_pct  is not None else config.SPOT_PROFIT_FLOOR_PCT
+    rsi_buy    = rsi_buy    if rsi_buy    is not None else config.SPOT_RSI_OVERSOLD
+    rsi_sell   = rsi_sell   if rsi_sell   is not None else config.rsi_overbought_for(pair)
+    rsi_period = rsi_period if rsi_period is not None else config.rsi_period_for(pair)
+    min_exit   = min_exit   if min_exit   is not None else config.SPOT_MIN_EXIT_PROFIT_PCT
+
+    rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precompute(df, rsi_period)
+
+    balance:   float         = start_balance
+    positions: list[Position] = []
+    trades:    list[Trade]    = []
+
+    for i in range(WARMUP, len(close_arr)):
+        price = float(close_arr[i])
+        rsi   = float(rsi_arr[i])
+        ema   = float(ema_arr[i])
+        hi    = float(hi_arr[i])
+        lo    = float(lo_arr[i])
+
+        still_open: list[Position] = []
+        for pos in positions:
+            update_peak(pos, hi)
+            stop_level = max(
+                pos.entry_price * (1 + fee_rate + floor_pct) / (1 - fee_rate),
+                pos.peak() * (1 - trail_pct),
+            )
+            if hi >= pos.entry_price * (1 + tp_pct):
+                ep = pos.entry_price * (1 + tp_pct)
+                bf = pos.value_eur * fee_rate
+                sf = pos.amount * ep * fee_rate
+                balance += pos.amount * ep - sf
+                trades.append(Trade(calc_pnl(pos, ep, bf, sf), bf + sf, "take_profit"))
+                continue
+            if pos.peak() > stop_level and lo <= stop_level:
+                ep = stop_level
+                bf = pos.value_eur * fee_rate
+                sf = pos.amount * ep * fee_rate
+                balance += pos.amount * ep - sf
+                trades.append(Trade(calc_pnl(pos, ep, bf, sf), bf + sf, "trailing_stop"))
+                continue
+            if rsi > rsi_sell and price >= pos.entry_price * (1 + min_exit):
+                bf = pos.value_eur * fee_rate
+                sf = pos.amount * price * fee_rate
+                balance += pos.amount * price - sf
+                trades.append(Trade(calc_pnl(pos, price, bf, sf), bf + sf, "signal"))
+                continue
+            still_open.append(pos)
+        positions = still_open
+
+        if len(positions) < max_slots and rsi < rsi_buy and price > ema * (1 + ema_gap):
+            max_size = balance / (1 + fee_rate)
+            size = min(balance * pos_pct, max_size)
+            if size >= 1:
+                positions.append(Position(pair, price, size / price, size,
+                                          price * (1 + tp_pct), price))
+                balance -= size + size * fee_rate
+
+    for pos in positions:
+        price = float(close_arr[-1])
+        bf = pos.value_eur * fee_rate
+        sf = pos.amount * price * fee_rate
+        balance += pos.amount * price - sf
+        trades.append(Trade(calc_pnl(pos, price, bf, sf), bf + sf, "end_of_data"))
+
+    return trades, balance
+
+
+def sweep_multipos(days_list: list[int]):
+    start = config.SPOT_SIMULATION_BALANCE
+    half  = start / 2
+
+    for days in days_list:
+        _header(days, "Multi-position sweep (N independent slots per pair, no DCA within slots)", wide=True)
+        print(f"  {'Scenario':<44}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}"
+              f"  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*44}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+
+        dfs = {p: fetch(p, days) for p in ["ETHEUR", "SOLEUR"]}
+
+        for pair in ["ETHEUR", "SOLEUR"]:
+            df = dfs[pair]
+            print(f"\n  ── {pair} (start=€{start:.0f}) ──")
+            t, _ = run_pair(pair, df, start, max_dca=config.SPOT_DCA_MAX,
+                            dca_step=config.SPOT_DCA_STEP_PCT)
+            summarise(f"1 slot + {config.SPOT_DCA_MAX} DCA  (current)", t, start, wide=True)
+            for slots in [1, 2, 3]:
+                t, _ = run_pair_multipos(pair, df, start, max_slots=slots)
+                label = f"{slots} slot{'s' if slots > 1 else ''}  no DCA"
+                if slots == 1:
+                    label += "  (baseline)"
+                summarise(label, t, start, wide=True)
+
+        print(f"\n  ── ETH+SOL combined (€{half:.0f} each) ──")
+        eth_cur, _ = run_pair("ETHEUR", dfs["ETHEUR"], half,
+                               max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)
+        sol_cur, _ = run_pair("SOLEUR", dfs["SOLEUR"], half,
+                               max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)
+        summarise(f"1 slot + {config.SPOT_DCA_MAX} DCA  (current)", eth_cur + sol_cur, start, wide=True)
+        for slots in [1, 2, 3]:
+            eth_t, _ = run_pair_multipos("ETHEUR", dfs["ETHEUR"], half, max_slots=slots)
+            sol_t, _ = run_pair_multipos("SOLEUR", dfs["SOLEUR"], half, max_slots=slots)
+            label = f"{slots} slot{'s' if slots > 1 else ''}  no DCA"
+            if slots == 1:
+                label += "  (baseline)"
+            summarise(label, eth_t + sol_t, start, wide=True)
+        print()
+
+
 def sweep_multidca(days_list: list[int]):
     scenarios = [
         dict(max_dca=0,                         label="no DCA"),
@@ -972,6 +1098,7 @@ if __name__ == "__main__":
             "volume":      sweep_volume,
             "cooldown":    sweep_cooldown,
             "divergence":  sweep_divergence,
+            "multipos":    sweep_multipos,
         }
         if mode == "all":
             for fn in sweeps.values():

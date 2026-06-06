@@ -89,6 +89,43 @@ def futures_ema_gap_for(pair: str) -> float:
     return float(os.getenv(f"FUTURES_EMA_GAP_PCT_{pair}", os.getenv("FUTURES_EMA_GAP_PCT", "0.02")))
 
 # ---------------------------------------------------------------------------
+# Shadow simulation profiles
+# ---------------------------------------------------------------------------
+
+def get_shadow_profiles() -> list[str]:
+    raw = os.getenv("SPOT_SHADOW_PROFILES", "")
+    return [p.strip().upper() for p in raw.split(",") if p.strip()]
+
+
+def get_shadow_overrides(name: str) -> dict:
+    prefix = f"SPOT_SHADOW_{name.upper()}_"
+    _param_map: dict[str, tuple[str, type]] = {
+        "RSI_OVERSOLD":        ("rsi_oversold",   int),
+        "RSI_OVERBOUGHT":      ("rsi_overbought",  int),
+        "RSI_PERIOD":          ("rsi_period",      int),
+        "TRAILING_STOP_PCT":   ("trail_pct",       float),
+        "PROFIT_FLOOR_PCT":    ("floor_pct",       float),
+        "TAKE_PROFIT_PCT":     ("tp_pct",          float),
+        "POSITION_SIZE_PCT":   ("pos_pct",         float),
+        "DCA_DROP_PCT":        ("dca_drop",        float),
+        "DCA_SIZE_PCT":        ("dca_pct",         float),
+        "DCA_MAX":             ("dca_max",         int),
+        "DCA_STEP_PCT":        ("dca_step",        float),
+        "EMA_GAP_PCT":         ("ema_gap",         float),
+        "MIN_EXIT_PROFIT_PCT": ("min_exit",        float),
+        "BALANCE":             ("balance",         float),
+    }
+    result: dict = {}
+    for env_suffix, (key, cast) in _param_map.items():
+        val = os.getenv(f"{prefix}{env_suffix}")
+        if val is not None:
+            try:
+                result[key] = cast(val)
+            except ValueError:
+                pass
+    return result
+
+# ---------------------------------------------------------------------------
 # Web dashboard
 # ---------------------------------------------------------------------------
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")  # 0.0.0.0 to expose on LAN
