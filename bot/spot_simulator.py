@@ -197,7 +197,7 @@ def manual_add(pair: str, price: float, size_pct: float):
         value = amount * avg_price
         if pair not in _state.positions:
             tp_price = avg_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
-            pos = Position(pair, avg_price, amount, value, tp_price, avg_price)
+            pos = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
             _state.positions[pair] = pos
         else:
             apply_dca(_state.positions[pair], avg_price, value)
@@ -212,7 +212,7 @@ def manual_add(pair: str, price: float, size_pct: float):
             value    = amount * price
             buy_fee  = value * SPOT_FEE
             tp_price = price * (1 + config.SPOT_TAKE_PROFIT_PCT)
-            pos      = Position(pair, price, amount, value, tp_price, price)
+            pos      = Position(pair, price, amount, value, tp_price, price, opened_at=_time.time())
             _state.positions[pair] = pos
             _state.balance -= value + buy_fee
             _state.total_fees += buy_fee
@@ -242,6 +242,12 @@ def dca_position(pair: str, price: float):
         _state.balance = balance
     else:
         balance = _state.balance
+
+    if config.SPOT_MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
+        drawdown = (_state.portfolio_peak - balance) / _state.portfolio_peak
+        if drawdown > config.SPOT_MAX_DRAWDOWN_PCT:
+            notify(f"[SKIP] {pair} DCA blocked — portfolio drawdown {drawdown*100:.1f}% exceeds limit {config.SPOT_MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
+            return
 
     max_size  = balance / (1 + SPOT_FEE)
     min_notional = get_min_notional(pair)

@@ -449,7 +449,7 @@ def api_futures_chart(symbol):
     _ema_gap     = config.futures_ema_gap_for(sym)
     for i in range(210, len(df)):
         r = rsi.iloc[i]; e = ema.iloc[i]; p = close.iloc[i]
-        if r < config.futures_rsi_oversold_for(sym) and p > e * (1 + _ema_gap):
+        if r < config.futures_rsi_oversold_for(sym) and p >= e * (1 + _ema_gap):
             buy_prices[i] = round(p, 4)
         elif r < config.futures_rsi_oversold_for(sym):
             blocked_buys[i] = round(p, 4)

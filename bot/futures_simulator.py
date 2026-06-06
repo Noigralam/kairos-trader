@@ -206,6 +206,12 @@ def dca_long(symbol: str, price: float):
     else:
         balance = _state.balance
 
+    if config.FUTURES_MAX_DRAWDOWN_PCT > 0 and _state.portfolio_peak > 0:
+        drawdown = (_state.portfolio_peak - balance) / _state.portfolio_peak
+        if drawdown > config.FUTURES_MAX_DRAWDOWN_PCT:
+            notify(f"[FUTURES SKIP] {symbol} DCA blocked — drawdown {drawdown*100:.1f}% exceeds {config.FUTURES_MAX_DRAWDOWN_PCT*100:.0f}%", discord=False)
+            return
+
     dca_margin  = min(balance * config.FUTURES_DCA_SIZE_PCT, balance)
     if dca_margin < 1:
         return
@@ -310,7 +316,7 @@ def check_stops(prices: dict):
                     f"[FUTURES LIQUIDATION] {symbol} — price ${price:,.4f} hit "
                     f"liquidation ${pos.liquidation_price():,.2f}. Closing."
                 )
-                close_long(symbol, pos.liquidation_price(), reason="liquidation")
+                close_long(symbol, price, reason="liquidation")
 
             elif check_take_profit(pos, price):
                 close_long(symbol, price, reason="take_profit")

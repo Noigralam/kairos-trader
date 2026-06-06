@@ -23,7 +23,7 @@ CANDLES_PER_REQUEST = 1000
 
 def _insert(conn: sqlite3.Connection, pair: str, interval: str, rows: list):
     conn.executemany(
-        "INSERT OR IGNORE INTO candles (pair, interval, open_time, open, high, low, close, volume) "
+        "INSERT OR REPLACE INTO candles (pair, interval, open_time, open, high, low, close, volume) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (pair, interval, int(r[0]), float(r[1]), float(r[2]),
