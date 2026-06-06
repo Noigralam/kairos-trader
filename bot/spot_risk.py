@@ -10,7 +10,7 @@ class Position:
     value_eur: float
     take_profit_price: float = 0.0
     highest_price: float = 0.0  # tracks peak for trailing stop; 0.0 means use entry_price
-    dca_done: bool = False
+    dca_count: int = 0
     opened_at: float = 0.0      # unix timestamp of entry (0 = unknown)
 
     def peak(self) -> float:
@@ -34,7 +34,7 @@ def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> Non
     position.value_eur = total_value
     position.take_profit_price = position.entry_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
     position.highest_price = dca_price  # reset peak from new blended entry; old peak is irrelevant after cost basis shifts
-    position.dca_done = True
+    position.dca_count += 1
 
 
 def create_position(pair: str, entry_price: float, balance: float) -> Position:

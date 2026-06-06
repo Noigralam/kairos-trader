@@ -130,8 +130,10 @@ See `.env.example` for the full annotated list. Key settings:
 | `SPOT_FEE` | `0.001` | Binance maker/taker fee rate (0.1%) |
 | `SPOT_INTERVAL` | `15m` | Candle interval |
 | `SPOT_POSITION_SIZE_PCT` | `0.75` | Fraction of balance per trade |
-| `SPOT_DCA_DROP_PCT` | `0.01` | Drop from entry to trigger DCA |
-| `SPOT_DCA_SIZE_PCT` | `0.75` | Fraction of balance for DCA buy |
+| `SPOT_DCA_MAX` | `3` | Max DCA tranches per position |
+| `SPOT_DCA_DROP_PCT` | `0.01` | Drop from entry to trigger first DCA |
+| `SPOT_DCA_STEP_PCT` | `0.01` | Additional drop per subsequent tranche |
+| `SPOT_DCA_SIZE_PCT` | `0.75` | Fraction of balance per DCA tranche |
 | `SPOT_TAKE_PROFIT_PCT` | `0.05` | Take-profit target |
 | `SPOT_TRAILING_STOP_PCT` | `0.05` | Trailing stop distance from peak |
 | `SPOT_PROFIT_FLOOR_PCT` | `0.03` | Min profit before trailing stop can fire |

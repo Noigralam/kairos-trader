@@ -168,10 +168,12 @@ def _loop():
                 elif has_position:
                     pos = state.positions[pair]
                     drop = (pos.entry_price - prices[pair]) / pos.entry_price
-                    if not pos.dca_done and drop >= config.SPOT_DCA_DROP_PCT:
+                    next_drop = config.SPOT_DCA_DROP_PCT + pos.dca_count * config.SPOT_DCA_STEP_PCT
+                    if pos.dca_count < config.SPOT_DCA_MAX and drop >= next_drop:
+                        prev_count = pos.dca_count
                         dca_position(pair, prices[pair])
-                        if pos.dca_done:
-                            notify(f"[DCA] {pair} down {drop*100:.1f}% from entry, RSI={result.rsi:.1f} — averaged down", discord=False)
+                        if pos.dca_count > prev_count:
+                            notify(f"[DCA {pos.dca_count}/{config.SPOT_DCA_MAX}] {pair} down {drop*100:.1f}% from entry, RSI={result.rsi:.1f} — averaged down", discord=False)
                 if result.signal == Signal.SELL and has_position:
                     pos = state.positions[pair]
                     min_exit_pct = config.min_exit_for(pair)

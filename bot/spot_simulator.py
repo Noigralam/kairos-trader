@@ -47,7 +47,7 @@ def _save():
                 "value_eur": pos.value_eur,
                 "take_profit_price": pos.take_profit_price,
                 "highest_price": pos.highest_price,
-                "dca_done": pos.dca_done,
+                "dca_count": pos.dca_count,
                 "opened_at": pos.opened_at,
             }
             for pair, pos in _state.positions.items()
@@ -72,6 +72,8 @@ def _load():
         _state.positions = {}
         for pair, pos in data.get("positions", {}).items():
             pos.pop("stop_cooldown", None)  # removed field; silently discard so old state files still load
+            if "dca_done" in pos:           # legacy field: map to dca_count
+                pos["dca_count"] = 1 if pos.pop("dca_done") else 0
             p = Position(**pos)
             if p.highest_price == 0.0:
                 p.highest_price = p.entry_price
@@ -234,7 +236,7 @@ def dca_position(pair: str, price: float):
     if pair not in _state.positions:
         return
     pos = _state.positions[pair]
-    if pos.dca_done:
+    if pos.dca_count >= config.SPOT_DCA_MAX:
         return
 
     if config.SPOT_MODE == "live":
