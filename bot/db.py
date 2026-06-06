@@ -169,7 +169,7 @@ def get_trade_stats(mode: str):
 
 
 def get_tax_summary(mode="live"):
-    """Realized P&L grouped by year for Finnish Vero tax reporting."""
+    """Realized P&L grouped by year for tax reporting."""
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute("""
         SELECT
