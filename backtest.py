@@ -220,7 +220,7 @@ def run_pair(
                 bf = position.value_eur * fee_rate
                 sf = position.amount * ep * fee_rate
                 balance += position.amount * ep - sf
-                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "take_profit", position.dca_done))
+                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "take_profit", position.dca_count > 0))
                 position = None
                 continue
 
@@ -229,7 +229,7 @@ def run_pair(
                 bf = position.value_eur * fee_rate
                 sf = position.amount * ep * fee_rate
                 balance += position.amount * ep - sf
-                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "trailing_stop", position.dca_done))
+                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "trailing_stop", position.dca_count > 0))
                 position = None
                 if stop_cooldown > 0:
                     cooldown_until = i + stop_cooldown
@@ -240,7 +240,7 @@ def run_pair(
                 bf = position.value_eur * fee_rate
                 sf = position.amount * ep * fee_rate
                 balance += position.amount * ep - sf
-                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "hard_stop", position.dca_done))
+                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "hard_stop", position.dca_count > 0))
                 position = None
                 continue
 
@@ -250,7 +250,7 @@ def run_pair(
                 bf = position.value_eur * fee_rate
                 sf = position.amount * price * fee_rate
                 balance += position.amount * price - sf
-                trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "time_stop", position.dca_done))
+                trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "time_stop", position.dca_count > 0))
                 position = None
                 continue
 
@@ -304,7 +304,7 @@ def run_pair(
                 bf = position.value_eur * fee_rate
                 sf = position.amount * price * fee_rate
                 balance += position.amount * price - sf
-                trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "signal", position.dca_done))
+                trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "signal", position.dca_count > 0))
                 position = None
 
     if position is not None:
@@ -312,7 +312,7 @@ def run_pair(
         bf = position.value_eur * fee_rate
         sf = position.amount * price * fee_rate
         balance += position.amount * price - sf
-        trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "end_of_data", position.dca_done))
+        trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "end_of_data", position.dca_count > 0))
 
     return trades, balance
 
@@ -833,7 +833,7 @@ def run_topup(start: float, monthly: float, days: int):
 
             if pair in positions:
                 pos = positions[pair]
-                if not pos.dca_done and (pos.entry_price - price) / pos.entry_price >= dca_drop:
+                if not pos.dca_count > 0 and (pos.entry_price - price) / pos.entry_price >= dca_drop:
                     dv = balance * pos_pct
                     if dv >= 1:
                         bf = dv * fee;  apply_dca(pos, price, dv)
