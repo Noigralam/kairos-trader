@@ -439,7 +439,7 @@ if __name__ == "__main__":
     day_args = [int(a) for a in args if a.isdigit()]
     str_args = [a for a in args if not a.isdigit()]
 
-    days_list = day_args or [365, 180]
+    days_list = day_args or [730, 365]
 
     if str_args and str_args[0] == "sweep":
         mode = str_args[1].lower() if len(str_args) > 1 else "all"

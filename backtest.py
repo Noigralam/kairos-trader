@@ -950,7 +950,7 @@ if __name__ == "__main__":
 
     if str_args and str_args[0] == "sweep":
         mode      = str_args[1].lower() if len(str_args) > 1 else "all"
-        days_list = day_args or [365, 180]
+        days_list = day_args or [730, 365]
         sweeps = {
             "exit":     sweep_exit,
             "floor":    sweep_floor,
@@ -987,8 +987,8 @@ if __name__ == "__main__":
         num_args += [float(a) for a in args if a.isdigit()]
         start   = num_args[0] if len(num_args) > 0 else config.SPOT_SIMULATION_BALANCE
         monthly = num_args[1] if len(num_args) > 1 else 25.0
-        days    = int(num_args[2]) if len(num_args) > 2 else 365
+        days    = int(num_args[2]) if len(num_args) > 2 else 730
         run_topup(start, monthly, days)
     else:
-        days_list = day_args or [365, 180]
+        days_list = day_args or [730, 365]
         run_combined(days_list)

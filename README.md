@@ -216,7 +216,7 @@ When `DISCORD_BOT_TOKEN` is set, the following slash commands are available:
 python backtest.py                           # pair comparison, current settings
 python backtest.py 90                        # custom day window
 
-python backtest.py topup 200 25 365          # monthly top-up: start=€200, +€25/month, 365 days
+python backtest.py topup 200 25 730          # monthly top-up: start=€200, +€25/month, 730 days
 
 python backtest.py sweep buyrsi              # buy RSI threshold
 python backtest.py sweep trail               # trailing stop %
@@ -225,7 +225,7 @@ python backtest.py sweep exit                # min-exit profit %
 python backtest.py sweep dca                 # DCA drop % + size %
 python backtest.py sweep all                 # all sweeps
 
-python backtest.py sweep trail 365 180 90    # custom day windows
+python backtest.py sweep trail 730 365 180   # custom day windows
 ```
 
 ### Futures
@@ -243,7 +243,7 @@ python backtest_futures.py sweep dca         # DCA settings
 python backtest_futures.py sweep lev         # leverage
 python backtest_futures.py sweep all         # all sweeps
 
-python backtest_futures.py sweep all 365 180 90
+python backtest_futures.py sweep all 730 365 180
 ```
 
 The futures backtest models isolated margin, 0.05% taker fee, 0.01%/8h funding on open longs, and liquidation at `entry × (1 − 1/lev + 0.5%)`.
