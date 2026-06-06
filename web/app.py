@@ -43,7 +43,9 @@ def api_status():
                 "highest_price": pos.peak(),
                 "trailing_stop": round(pos.trailing_stop_level(), 2),
                 "take_profit": pos.take_profit_price,
-                "dca_trigger": round(pos.entry_price * (1 - config.SPOT_DCA_DROP_PCT), 2) if not pos.dca_done else None,
+                "dca_trigger": round(pos.entry_price * (1 - (config.SPOT_DCA_DROP_PCT + pos.dca_count * config.SPOT_DCA_STEP_PCT)), 2) if pos.dca_count < config.SPOT_DCA_MAX else None,
+                "dca_count":   pos.dca_count,
+                "dca_max":     config.SPOT_DCA_MAX,
                 "break_even": round(pos.entry_price * (1 + config.SPOT_FEE) / (1 - config.SPOT_FEE), 2),
                 "current_price": round(get_price(pair), 2),
             }
@@ -580,6 +582,7 @@ def api_futures_status():
             "take_profit_price": round(pos.take_profit_price, 4),
             "trailing_stop":     round(pos.trailing_stop_level(), 4),
             "dca_done":          pos.dca_done,
+            "dca_drop":          config.FUTURES_DCA_DROP_PCT,
             "funding_paid":      round(pos.funding_paid, 4),
         }
     return jsonify({

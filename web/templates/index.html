@@ -755,8 +755,8 @@
             </div>`;
 
           const dcaStr  = pos.dca_trigger !== null
-            ? `${_fi(pos.dca_trigger)} €`
-            : '<span style="color:var(--muted)">used</span>';
+            ? `${_fi(pos.dca_trigger)} € <span style="color:var(--muted);font-size:12px">(${pos.dca_count + 1}/${pos.dca_max})</span>`
+            : `<span style="color:var(--muted)">used (${pos.dca_count}/${pos.dca_max})</span>`;
           posBlock = `
           <div class="position-block">
             <div class="pos-row">
@@ -1653,7 +1653,7 @@
 
         const dcaStr = p.dca_done
           ? '<span style="color:var(--muted)">used</span>'
-          : `$${Number(p.entry_price * (1 - 0.01)).toLocaleString('fi-FI', {minimumFractionDigits: 4})}`;
+          : `$${Number(p.entry_price * (1 - p.dca_drop)).toLocaleString('fi-FI', {minimumFractionDigits: 4})}`;
 
         return `<div class="futures-pos-card">
           <div class="fp-header">
