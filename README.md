@@ -124,6 +124,7 @@ See `.env.example` for the full annotated list. Key settings:
 
 | Variable | Default | Description |
 |---|---|---|
+| `SPOT_INVESTED` | `0` | Total EUR deposited; dashboard "from" reference (0 = first recorded balance) |
 | `SPOT_MODE` | `simulation` | `simulation` or `live` |
 | `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs |
 | `SPOT_SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (EUR) |

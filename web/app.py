@@ -34,7 +34,7 @@ def api_status():
         "total_trades": state.total_trades,
         "total_pnl": round(state.total_pnl, 2),
         "total_fees": round(state.total_fees, 4),
-        "starting_balance": db.get_starting_balance(config.SPOT_MODE),
+        "starting_balance": config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else db.get_starting_balance(config.SPOT_MODE),
         "positions": {
             pair: {
                 "entry_price": pos.entry_price,

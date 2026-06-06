@@ -15,6 +15,7 @@ DISCORD_GUILD_ID    = os.getenv("DISCORD_GUILD_ID", "")
 # ---------------------------------------------------------------------------
 # Spot (EUR pairs)
 # ---------------------------------------------------------------------------
+SPOT_INVESTED            = float(os.getenv("SPOT_INVESTED", "0"))                  # total capital deposited; overrides starting balance display (0 = use first balance_history entry)
 SPOT_MODE                = os.getenv("SPOT_MODE", "simulation")                   # simulation | live
 SPOT_TRADING_PAIRS       = [p.strip() for p in os.getenv("SPOT_TRADING_PAIRS", "ETHEUR,SOLEUR").split(",") if p.strip()]
 SPOT_SIMULATION_BALANCE  = float(os.getenv("SPOT_SIMULATION_BALANCE", "200.0"))  # virtual EUR balance for simulation
