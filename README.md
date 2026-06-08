@@ -13,7 +13,7 @@ Includes a web dashboard, Discord integration, and backtest tools for both engin
 - **Sell signal** when RSI recovers above the overbought threshold — blocked if profit is below `SPOT_MIN_EXIT_PROFIT_PCT`
 - **Trailing stop** with a profit floor — the stop rises as price climbs, only fires once above the floor
 - **Take-profit** at +5% acts as a spike catcher
-- **DCA** averages down once per position when price drops ≥1% from entry
+- **DCA** averages down in tranches (up to `SPOT_DCA_MAX`) as price drops further from entry
 - Fast-check loop runs every 60s for stop/TP checks between candles
 - Per-pair RSI and overbought thresholds (e.g. `SPOT_RSI_PERIOD_ETHEUR=7`)
 
@@ -126,7 +126,7 @@ See `.env.example` for the full annotated list. Key settings:
 |---|---|---|
 | `SPOT_INVESTED` | `0` | Total EUR deposited; dashboard "from" reference (0 = first recorded balance) |
 | `SPOT_MODE` | `simulation` | `simulation` or `live` |
-| `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs |
+| `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs; order determines balance priority — first pair gets first dibs on DCA funds when multiple pairs fire simultaneously |
 | `SPOT_SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (EUR) |
 | `SPOT_FEE` | `0.001` | Binance maker/taker fee rate (0.1%) |
 | `SPOT_INTERVAL` | `15m` | Candle interval |
@@ -153,14 +153,16 @@ The last DCA tranche always uses 100% of the remaining balance regardless of `SP
 
 ### Shadow simulation profiles
 
-Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance and state file, and can trade a different set of pairs than the live bot.
+Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance and state file, and can trade a different set of pairs or candle interval than the live bot.
 
 Enable profiles with `SPOT_SHADOW_PROFILES=ACTIVE,HYBRID,ETH` (comma-separated names). Each profile supports the following overrides (prefix `SPOT_SHADOW_<NAME>_`):
 
 | Suffix | Description |
 |---|---|
-| `PAIRS` | Comma-separated pairs to trade (defaults to `SPOT_TRADING_PAIRS` if omitted) |
+| `PAIRS` | Comma-separated pairs to trade (defaults to `SPOT_TRADING_PAIRS` if omitted); order determines balance priority — first pair gets first dibs on DCA funds when multiple pairs fire simultaneously |
+| `INTERVAL` | Candle interval (defaults to `SPOT_INTERVAL` if omitted) |
 | `BALANCE` | Starting virtual balance (EUR) |
+| `TIME_STOP_DAYS` | Close stalled positions after N days (0 = off) |
 | `RSI_OVERSOLD` / `RSI_OVERBOUGHT` / `RSI_PERIOD` | RSI parameters |
 | `TRAILING_STOP_PCT` / `PROFIT_FLOOR_PCT` / `TAKE_PROFIT_PCT` | Exit parameters |
 | `MIN_EXIT_PROFIT_PCT` | Min profit before a signal sell can fire |
