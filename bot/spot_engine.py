@@ -76,8 +76,18 @@ def _loop():
                 if p not in all_pairs:
                     all_pairs.append(p)
 
+    # collect all (pair, interval) combos needed by shadows with non-default intervals
+    shadow_intervals: list[tuple[str, str]] = []
+    for s in get_shadows():
+        if s.interval != config.SPOT_INTERVAL:
+            for p in (s.pairs or config.SPOT_TRADING_PAIRS):
+                if (p, s.interval) not in shadow_intervals:
+                    shadow_intervals.append((p, s.interval))
+
     for pair in all_pairs:
         initial_sync(pair, config.SPOT_INTERVAL)
+    for pair, interval in shadow_intervals:
+        initial_sync(pair, interval)
 
     # align to the next candle boundary before first tick
     wait = _seconds_until_next_candle(sleep_sec)
@@ -97,6 +107,8 @@ def _loop():
                 sync_candles(pair, config.SPOT_INTERVAL)
                 if config.SPOT_DAILY_EMA_FILTER:
                     sync_candles(pair, "1d")
+            for pair, interval in shadow_intervals:
+                sync_candles(pair, interval)
 
             prices = {pair: get_price(pair) for pair in all_pairs}
             notify(

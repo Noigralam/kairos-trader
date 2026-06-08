@@ -126,6 +126,9 @@ def get_shadow_overrides(name: str) -> dict:
     pairs_raw = os.getenv(f"{prefix}PAIRS")
     if pairs_raw:
         result["pairs"] = [p.strip().upper() for p in pairs_raw.split(",") if p.strip()]
+    interval_raw = os.getenv(f"{prefix}INTERVAL")
+    if interval_raw:
+        result["interval"] = interval_raw.strip()
     return result
 
 # ---------------------------------------------------------------------------

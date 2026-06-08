@@ -400,6 +400,7 @@ class SpotShadowSimulator:
         self.state_path = state_path
         self.overrides  = overrides
         self.pairs: list[str] | None = overrides.get("pairs", None)
+        self.interval: str = overrides.get("interval", config.SPOT_INTERVAL)
         self._lock      = threading.Lock()
         self.balance        = float(overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
         self.positions: dict[str, Position] = {}
@@ -560,7 +561,7 @@ class SpotShadowSimulator:
                     self._save()
                     return
 
-            df     = get_df(pair, config.SPOT_INTERVAL)
+            df     = get_df(pair, self.interval)
             result = compute_signal(
                 df,
                 rsi_period   = self._o("rsi_period",   config.rsi_period_for(pair)),
