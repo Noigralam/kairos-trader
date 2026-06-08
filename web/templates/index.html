@@ -298,8 +298,8 @@
     <!-- Shared: session + next tick + last tick -->
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
       <span id="uptime"    style="font-size:12px;color:var(--muted);">Session: —</span>
-      <span id="next-tick" style="font-size:12px;color:var(--muted);">Next tick: —</span>
-      <span id="last-tick" style="font-size:12px;color:var(--muted);">Last tick: —</span>
+      <span id="next-tick" style="font-size:12px;color:var(--muted);">Next tick in —</span>
+      <span id="last-tick" style="font-size:12px;color:var(--muted);">Last tick @ —</span>
     </div>
     <!-- Spot block -->
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
@@ -1002,7 +1002,7 @@
       }
 
       document.getElementById('last-tick').textContent =
-        'Last tick: ' + (s.last_tick || '—');
+        'Last tick @ ' + (s.last_tick || '—');
       if (s.last_tick && s.last_tick !== _lastKnownTick) {
         _lastKnownTick = s.last_tick;
         loadChart();
@@ -1717,7 +1717,7 @@
     const secs    = 900 - elapsed + 15;
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    const txt = `Next tick: ${m}m ${String(s).padStart(2,'0')}s`;
+    const txt = `Next tick in ${m}m ${String(s).padStart(2,'0')}s`;
     document.getElementById('next-tick').textContent = txt;
   }
   updateCountdown();
@@ -2173,7 +2173,7 @@
 
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
       document.getElementById('f-fees').innerHTML      = fmtPnlUsdt(-feesAndFunding);
-      document.getElementById('last-tick').textContent = 'Last tick: ' + (d.last_tick || '—');
+      document.getElementById('last-tick').textContent = 'Last tick @ ' + (d.last_tick || '—');
 
       loadFuturesStats();
       loadFuturesTrades();
