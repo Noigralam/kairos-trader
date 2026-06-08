@@ -213,7 +213,7 @@ def api_shadow_status(name):
     if s is None:
         return jsonify({"error": "not found"}), 404
     prices = {}
-    for pair in config.SPOT_TRADING_PAIRS:
+    for pair in (s.pairs or config.SPOT_TRADING_PAIRS):
         try:
             prices[pair] = get_price(pair)
         except Exception:
@@ -294,14 +294,14 @@ def api_shadow_signals(name):
     if s is None:
         return jsonify({"error": "not found"}), 404
     out = {}
-    for pair in config.SPOT_TRADING_PAIRS:
+    for pair in (s.pairs or config.SPOT_TRADING_PAIRS):
         try:
             price  = get_price(pair)
             rsi_period   = s._o("rsi_period",   config.rsi_period_for(pair))
             rsi_oversold = s._o("rsi_oversold",  config.rsi_oversold_for(pair))
             rsi_ob       = s._o("rsi_overbought", config.rsi_overbought_for(pair))
             ema_gap      = s._o("ema_gap",        config.ema_gap_for(pair))
-            result = compute_signal(get_df(pair, config.SPOT_INTERVAL),
+            result = compute_signal(get_df(pair, s.interval),
                                     rsi_period=rsi_period, rsi_oversold=rsi_oversold,
                                     rsi_overbought=rsi_ob, ema_gap=ema_gap)
             ema_threshold = result.ema_trend * (1 + ema_gap)

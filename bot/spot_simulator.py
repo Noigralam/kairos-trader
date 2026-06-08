@@ -567,6 +567,11 @@ class SpotShadowSimulator:
                     self._close(pair, price, "trailing_stop")
                     self._save()
                     return
+                time_stop = self._o("time_stop_days", config.SPOT_TIME_STOP_DAYS)
+                if time_stop > 0 and pos.opened_at > 0 and (_time.time() - pos.opened_at) / 86400 > time_stop:
+                    self._close(pair, price, "time_stop")
+                    self._save()
+                    return
 
             df     = get_df(pair, self.interval)
             result = compute_signal(

@@ -113,6 +113,7 @@ def get_shadow_overrides(name: str) -> dict:
         "DCA_STEP_PCT":        ("dca_step",        float),
         "EMA_GAP_PCT":         ("ema_gap",         float),
         "MIN_EXIT_PROFIT_PCT": ("min_exit",        float),
+        "TIME_STOP_DAYS":      ("time_stop_days",  float),
         "BALANCE":             ("balance",         float),
     }
     result: dict = {}

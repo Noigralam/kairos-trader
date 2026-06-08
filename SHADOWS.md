@@ -121,3 +121,68 @@ All profiles started fresh: **2026-06-08 19:48 (Helsinki)**
 |---|---|---|
 | Take profit | 5% | **3%** |
 | Everything else | live defaults | live defaults |
+
+---
+
+## TIME7
+
+**Pairs:** SOLEUR only  
+**Hypothesis:** Forcing a close after 7 days frees stuck capital for fresh cycles; higher churn may outperform waiting for a recovery.
+
+| Setting | Live | TIME7 |
+|---|---|---|
+| Time stop | off | **7 days** |
+| Everything else | live defaults | live defaults |
+
+---
+
+## NOEMA
+
+**Pairs:** SOLEUR only  
+**Hypothesis:** Removing the 2% EMA gap filter catches more buy signals in sideways markets; test whether the extra entries are profitable or just noise.
+
+| Setting | Live | NOEMA |
+|---|---|---|
+| EMA gap | 2% | **0** |
+| Everything else | live defaults | live defaults |
+
+---
+
+## RSI25
+
+**Pairs:** SOLEUR only  
+**Hypothesis:** Only entering on RSI<25 (vs live RSI<30) means fewer entries but stronger oversold conditions — used by the futures engine with good results.
+
+| Setting | Live | RSI25 |
+|---|---|---|
+| RSI oversold | 30 | **25** |
+| Everything else | live defaults | live defaults |
+
+---
+
+## NEAR_ACTIVE
+
+**Pairs:** NEAREUR only  
+**Hypothesis:** NEAR's higher volatility suits the ACTIVE profile's no-DCA fast-exit style better than default settings.
+
+| Setting | Live | NEAR_ACTIVE |
+|---|---|---|
+| DCA max | 3 | **0** |
+| RSI oversold | 30 | **33** |
+| RSI overbought | 80 | **65** |
+| Trailing stop | 5% | **2.5%** |
+| Profit floor | 3% | **1.5%** |
+| Min exit | 3% | **1%** |
+| EMA gap | 2% | **0** |
+
+---
+
+## SOL1H
+
+**Pairs:** SOLEUR only  
+**Hypothesis:** 1h candles give even cleaner signals than 30m; completes the 15m / 30m / 1h comparison set.
+
+| Setting | Live | SOL1H |
+|---|---|---|
+| Interval | 15m | **1h** |
+| Everything else | live defaults | live defaults |

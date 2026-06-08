@@ -247,6 +247,9 @@
       position: absolute; top: -4px; width: 2px; height: 12px;
       background: #fff; border-radius: 1px;
     }
+  #sh-carousel { overflow: hidden; width: 420px; cursor: grab; user-select: none; }
+  #sh-carousel.dragging { cursor: grabbing; }
+  #sh-carousel-track { display: flex; gap: 16px; width: max-content; }
   </style>
 </head>
 <body>
@@ -309,7 +312,7 @@
       <span id="hdr-spot-pnl"    style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-spot-trades" style="font-size:12px;color:var(--muted);">—</span>
     </div>
-    <!-- Futures block (hidden until enabled) -->
+    <!-- Futures live block (only shown when futures mode=live) -->
     <div id="f-header-block" style="display:none;flex-direction:column;align-items:flex-end;gap:2px;">
       <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--green);">Futures</span>
       <span id="hdr-fut-mode"   style="font-size:10px;font-weight:600;color:var(--muted);">—</span>
@@ -317,8 +320,10 @@
       <span id="hdr-fut-pnl"    style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-fut-trades" style="font-size:12px;color:var(--muted);">—</span>
     </div>
-    <!-- Shadow info blocks (one per profile, injected by JS) -->
-    <div id="sh-header-blocks" style="display:contents"></div>
+    <!-- Shadow carousel (one block per profile, looping) -->
+    <div id="sh-carousel" style="display:none">
+      <div id="sh-carousel-track" id="sh-header-blocks"></div>
+    </div>
   </div>
 </header>
 
@@ -1060,17 +1065,81 @@
       document.getElementById('sh-selector-wrap').style.display = '';
     _markShSelector();
 
-    // inject one header block per shadow
-    const container = document.getElementById('sh-header-blocks');
-    container.innerHTML = _shNames.map(n => `
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;" id="sh-hdr-${n}">
+    // inject carousel blocks (original + clone for seamless loop)
+    const track = document.getElementById('sh-carousel-track');
+    const makeBlock = (n, suffix) => `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
         <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#d29922;">${n}</span>
         <span style="font-size:10px;font-weight:600;color:#bc8cff;">sim</span>
-        <span id="sh-hdr-port-${n}"   style="font-size:12px;color:var(--muted);">—</span>
-        <span id="sh-hdr-pnl-${n}"    style="font-size:12px;color:var(--muted);">—</span>
-        <span id="sh-hdr-trades-${n}" style="font-size:12px;color:var(--muted);">—</span>
-      </div>`).join('');
+        <span id="sh-hdr-port-${n}${suffix}"   style="font-size:12px;color:var(--muted);">—</span>
+        <span id="sh-hdr-pnl-${n}${suffix}"    style="font-size:12px;color:var(--muted);">—</span>
+        <span id="sh-hdr-trades-${n}${suffix}" style="font-size:12px;color:var(--muted);">—</span>
+      </div>`;
+    track.innerHTML = _shNames.map(n => makeBlock(n, '')).join('')
+                    + _shNames.map(n => makeBlock(n, '-copy')).join('');
+    document.getElementById('sh-carousel').style.display = '';
     refreshShHeaderBlocks();
+    _initCarousel();
+  }
+
+  function _initCarousel() {
+    const carousel = document.getElementById('sh-carousel');
+    const track    = document.getElementById('sh-carousel-track');
+    let currentX = 0, halfW = 0, isDragging = false, startX = 0, startTranslate = 0;
+
+    const getX = e => e.touches ? e.touches[0].clientX : e.clientX;
+
+    function clamp(x) {
+      if (!halfW) return x;
+      if (x < -halfW) x += halfW;
+      if (x > 0)      x -= halfW;
+      return x;
+    }
+
+    carousel.addEventListener('mousedown', e => {
+      halfW = track.scrollWidth / 2;
+      isDragging = true; startX = getX(e); startTranslate = currentX;
+      carousel.classList.add('dragging'); e.preventDefault();
+    });
+    carousel.addEventListener('touchstart', e => {
+      halfW = track.scrollWidth / 2;
+      isDragging = true; startX = getX(e); startTranslate = currentX;
+    }, { passive: true });
+
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      currentX = clamp(startTranslate + getX(e) - startX);
+      track.style.transform = `translateX(${currentX}px)`;
+    });
+    window.addEventListener('touchmove', e => {
+      if (!isDragging) return;
+      currentX = clamp(startTranslate + getX(e) - startX);
+      track.style.transform = `translateX(${currentX}px)`;
+    }, { passive: true });
+
+    window.addEventListener('mouseup',  () => { isDragging = false; carousel.classList.remove('dragging'); });
+    window.addEventListener('touchend', () => { isDragging = false; });
+  }
+
+  let _futuresInCarousel = false;
+  function _injectFuturesIntoCarousel() {
+    if (_futuresInCarousel) return;
+    _futuresInCarousel = true;
+    const track = document.getElementById('sh-carousel-track');
+    if (!track) return;
+    const makeF = sfx => `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+        <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--green);">Futures</span>
+        <span id="hdr-fut-mode${sfx}"   style="font-size:10px;font-weight:600;color:var(--muted);">—</span>
+        <span id="hdr-fut-port${sfx}"   style="font-size:12px;color:var(--muted);">—</span>
+        <span id="hdr-fut-pnl${sfx}"    style="font-size:12px;color:var(--muted);">—</span>
+        <span id="hdr-fut-trades${sfx}" style="font-size:12px;color:var(--muted);">—</span>
+      </div>`;
+    // prepend original; insert copy before first shadow-copy (at index _shNames.length)
+    track.insertAdjacentHTML('afterbegin', makeF(''));
+    const insertBefore = track.children[_shNames.length + 1];
+    if (insertBefore) insertBefore.insertAdjacentHTML('beforebegin', makeF('-copy'));
+    else track.insertAdjacentHTML('beforeend', makeF('-copy'));
   }
 
   async function refreshShHeaderBlocks() {
@@ -1081,14 +1150,16 @@
         const pnl = s.total_pnl ?? 0;
         const pct = s.starting_balance ? (s.portfolio_value - s.starting_balance) / s.starting_balance * 100 : 0;
         const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
-        const portEl   = document.getElementById(`sh-hdr-port-${name}`);
-        const pnlEl    = document.getElementById(`sh-hdr-pnl-${name}`);
-        const trEl     = document.getElementById(`sh-hdr-trades-${name}`);
-        if (!portEl) continue;
-        portEl.textContent  = `€${fmt(s.portfolio_value)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
-        pnlEl.textContent   = `${pnl >= 0 ? '+' : ''}€${fmt(Math.abs(pnl))} PnL`;
-        pnlEl.style.color   = pnlColor;
-        trEl.textContent    = `${s.total_trades} trades`;
+        for (const sfx of ['', '-copy']) {
+          const portEl = document.getElementById(`sh-hdr-port-${name}${sfx}`);
+          const pnlEl  = document.getElementById(`sh-hdr-pnl-${name}${sfx}`);
+          const trEl   = document.getElementById(`sh-hdr-trades-${name}${sfx}`);
+          if (!portEl) continue;
+          portEl.textContent = `€${fmt(s.portfolio_value)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
+          pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}€${fmt(Math.abs(pnl))} PnL`;
+          pnlEl.style.color  = pnlColor;
+          trEl.textContent   = `${s.total_trades} trades`;
+        }
       } catch(e) {}
     }
   }
@@ -1144,10 +1215,12 @@
       const pb      = document.getElementById('sh-pair-btns');
       const pairs   = Object.keys(_shSignals);
 
-      // init pair buttons if needed
-      if (!pb.innerHTML) {
+      // rebuild pair buttons whenever the set of pairs changes
+      const currentPairBtns = [...pb.querySelectorAll('button')].map(b => b.dataset.pair).join(',');
+      if (currentPairBtns !== pairs.join(',')) {
         pb.innerHTML = pairs.map(p => `<button onclick="setShPair('${p}')" data-pair="${p}">${p}</button>`).join('');
-        if (pairs.length) setShPair(pairs[0]);
+        const keep = pairs.includes(_shChartPair) ? _shChartPair : pairs[0];
+        if (keep) setShPair(keep);
       }
 
       grid.innerHTML = pairs.map(pair => {
@@ -2058,7 +2131,10 @@
   async function loadFuturesTrades() {
     try {
       const trades = await fetch('/api/futures/trades').then(r => r.json());
-      document.getElementById('hdr-fut-trades').textContent = `${trades.length} trades`;
+      for (const sfx of ['', '-copy']) {
+        const el = document.getElementById(`hdr-fut-trades${sfx}`);
+        if (el) el.textContent = `${trades.length} trades`;
+      }
       const tb = document.getElementById('f-trades-body');
       if (!trades.length) {
         tb.innerHTML = '<tr><td colspan="8" class="empty">No futures trades yet</td></tr>';
@@ -2131,9 +2207,14 @@
 
       _fLastStatus = d;
 
-      // Reveal futures tab button and header blocks
+      // Reveal futures tab button; put sim in carousel, live in header
       document.getElementById('futures-tab-btn').style.display = '';
-      document.getElementById('f-header-block').style.display = 'flex';
+      if (d.mode === 'live') {
+        document.getElementById('f-header-block').style.display = 'flex';
+      } else {
+        document.getElementById('f-header-block').style.display = 'none';
+        _injectFuturesIntoCarousel();
+      }
 
       // Update status dot colour
       const dot = document.getElementById('futures-tab-dot');
@@ -2159,17 +2240,20 @@
       document.getElementById('f-trades').textContent  = d.total_trades;
 
       // futures header block
-      const fhModeEl = document.getElementById('hdr-fut-mode');
-      fhModeEl.textContent = d.mode || '—';
-      fhModeEl.style.color = d.mode === 'live' ? 'var(--blue)' : '#bc8cff';
-      if (d.starting_balance != null) {
-        const fhPct = (fPortVal - d.starting_balance) / d.starting_balance * 100;
-        document.getElementById('hdr-fut-port').textContent = `$${fmtUsdt(fPortVal)} (${fhPct >= 0 ? '+' : ''}${fhPct.toFixed(1)}%)`;
+      for (const sfx of ['', '-copy']) {
+        const fhModeEl = document.getElementById(`hdr-fut-mode${sfx}`);
+        if (!fhModeEl) continue;
+        fhModeEl.textContent = d.mode || '—';
+        fhModeEl.style.color = d.mode === 'live' ? 'var(--blue)' : '#bc8cff';
+        if (d.starting_balance != null) {
+          const fhPct = (fPortVal - d.starting_balance) / d.starting_balance * 100;
+          document.getElementById(`hdr-fut-port${sfx}`).textContent = `$${fmtUsdt(fPortVal)} (${fhPct >= 0 ? '+' : ''}${fhPct.toFixed(1)}%)`;
+        }
+        const fhPnl = d.total_pnl ?? 0;
+        const fhPnlEl = document.getElementById(`hdr-fut-pnl${sfx}`);
+        fhPnlEl.textContent = `${fhPnl >= 0 ? '+' : ''}$${fmtUsdt(Math.abs(fhPnl))} PnL`;
+        fhPnlEl.style.color = fhPnl >= 0 ? 'var(--green)' : 'var(--red)';
       }
-      const fhPnl = d.total_pnl ?? 0;
-      const fhPnlEl = document.getElementById('hdr-fut-pnl');
-      fhPnlEl.textContent = `${fhPnl >= 0 ? '+' : ''}$${fmtUsdt(Math.abs(fhPnl))} PnL`;
-      fhPnlEl.style.color = fhPnl >= 0 ? 'var(--green)' : 'var(--red)';
 
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
       document.getElementById('f-fees').innerHTML      = fmtPnlUsdt(-feesAndFunding);
