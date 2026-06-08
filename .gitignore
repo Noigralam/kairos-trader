@@ -29,8 +29,11 @@ data/watchdog.log
 data/spot_state_simulation.json
 data/spot_state_live.json
 data/spot_live_since.txt
+data/spot_state_shadow_*.json
 data/futures_state_simulation.json
 data/futures_state_live.json
+data/candles.db
+data/kairos.db
 
 # IDE
 .vscode/
