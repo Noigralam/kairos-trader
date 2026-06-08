@@ -1732,8 +1732,8 @@
       document.getElementById('stat-winrate').style.color = s.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
       document.getElementById('stat-avgpnl').textContent  = `${s.avg_pnl > 0 ? '+' : ''}${_fi(s.avg_pnl)} €`;
       document.getElementById('stat-avgpnl').style.color  = s.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('stat-best').textContent    = `+${_fi(s.best)} €`;
-      document.getElementById('stat-best').style.color    = 'var(--green)';
+      document.getElementById('stat-best').textContent    = `${s.best >= 0 ? '+' : ''}${_fi(s.best)} €`;
+      document.getElementById('stat-best').style.color    = s.best >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('stat-worst').textContent   = `${s.worst >= 0 ? '+' : ''}${_fi(s.worst)} €`;
       document.getElementById('stat-worst').style.color   = s.worst >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('stat-hold').textContent    = s.avg_hold_h != null ? `${s.avg_hold_h}h` : '—';
@@ -2085,8 +2085,8 @@
       document.getElementById('f-stat-winrate').style.color = s.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
       document.getElementById('f-stat-avgpnl').textContent  = `${s.avg_pnl > 0 ? '+' : ''}${fmtUsdt(Math.abs(s.avg_pnl))}`;
       document.getElementById('f-stat-avgpnl').style.color  = s.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('f-stat-best').textContent    = `+${fmtUsdt(s.best)}`;
-      document.getElementById('f-stat-best').style.color    = 'var(--green)';
+      document.getElementById('f-stat-best').textContent    = `${s.best >= 0 ? '+' : ''}${fmtUsdt(Math.abs(s.best))}`;
+      document.getElementById('f-stat-best').style.color    = s.best >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('f-stat-worst').textContent   = `${s.worst >= 0 ? '+' : ''}${fmtUsdt(Math.abs(s.worst))}`;
       document.getElementById('f-stat-worst').style.color   = s.worst >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('f-stat-hold').textContent    = s.avg_hold_h != null ? `${s.avg_hold_h}h` : '—';

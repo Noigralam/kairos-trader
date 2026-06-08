@@ -158,13 +158,13 @@ def open_position(pair: str, price: float, size_pct: float = None, prices: dict 
             buy_fee   = amount * avg_price * SPOT_FEE
         value    = amount * avg_price
         tp_price = avg_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
+        log_trade(pair, "BUY", avg_price, amount, value, buy_fee, mode="live")
         pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
         _state.positions[pair] = pos
         _state.total_fees += buy_fee
         _state.balance = get_eur_balance()
         _save()
         trade_alert("BUY", pair, avg_price, amount, value, fee=buy_fee)
-        log_trade(pair, "BUY", avg_price, amount, value, buy_fee, mode="live")
     else:
         amount   = size / price
         amount   = round_qty(pair, amount)
@@ -264,7 +264,8 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
 
     max_size  = balance / (1 + SPOT_FEE)
     min_notional = get_min_notional(pair)
-    dca_value = min(balance * config.SPOT_DCA_SIZE_PCT, max_size)
+    is_last_dca = (pos.dca_count + 1 >= config.SPOT_DCA_MAX)
+    dca_value = max_size if is_last_dca else min(balance * config.SPOT_DCA_SIZE_PCT, max_size)
     # if leftover after DCA would be below minimum tradeable, use all available balance
     if balance - dca_value < min_notional:
         dca_value = min(balance, max_size)
@@ -285,12 +286,12 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
             avg_price = price
             bought    = amount
             buy_fee   = dca_value * SPOT_FEE
+        log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
         apply_dca(pos, avg_price, dca_value)
         _state.total_fees += buy_fee
         _state.balance = get_eur_balance()
         _save()
         trade_alert("DCA", pair, avg_price, bought, dca_value, fee=buy_fee)
-        log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
     else:
         buy_fee = dca_value * SPOT_FEE
         bought  = dca_value / price
@@ -322,6 +323,7 @@ def close_position(pair: str, price: float, reason: str = "signal"):
         exit_value = sold_qty * avg_price
         buy_fee    = pos.value_eur * SPOT_FEE
         pnl        = calc_pnl(pos, avg_price, buy_fee=buy_fee, sell_fee=sell_fee)
+        log_trade(pair, "SELL", avg_price, sold_qty, exit_value, sell_fee, mode="live", pnl=pnl, notes=reason)
         _state.total_trades += 1
         _state.total_pnl    += pnl
         _state.total_fees   += sell_fee
@@ -331,7 +333,6 @@ def close_position(pair: str, price: float, reason: str = "signal"):
             trailing_stop_alert(pair, avg_price, pnl)
         else:
             trade_alert("SELL", pair, avg_price, sold_qty, exit_value, pnl=pnl, fee=sell_fee)
-        log_trade(pair, "SELL", avg_price, sold_qty, exit_value, sell_fee, mode="live", pnl=pnl, notes=reason)
     else:
         exit_value = pos.amount * price
         buy_fee    = pos.value_eur * SPOT_FEE
@@ -398,6 +399,7 @@ class SpotShadowSimulator:
         self.name       = name
         self.state_path = state_path
         self.overrides  = overrides
+        self.pairs: list[str] | None = overrides.get("pairs", None)
         self._lock      = threading.Lock()
         self.balance        = float(overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
         self.positions: dict[str, Position] = {}
@@ -506,7 +508,8 @@ class SpotShadowSimulator:
             return
         pct    = self._o("dca_pct", config.SPOT_DCA_SIZE_PCT)
         max_sz = self.balance / (1 + SPOT_FEE)
-        size   = min(self.balance * pct, max_sz)
+        is_last_dca = (pos.dca_count + 1 >= dca_max)
+        size   = max_sz if is_last_dca else min(self.balance * pct, max_sz)
         if size < 1:
             return
         bought  = size / price

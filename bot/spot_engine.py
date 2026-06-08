@@ -69,7 +69,14 @@ def _loop():
     notify(f"Bot started | mode={config.SPOT_MODE} | pairs={', '.join(config.SPOT_TRADING_PAIRS)} | interval={config.SPOT_INTERVAL}")
     sleep_sec = INTERVAL_SECONDS.get(config.SPOT_INTERVAL, 3600)
 
-    for pair in config.SPOT_TRADING_PAIRS:
+    all_pairs = list(config.SPOT_TRADING_PAIRS)
+    for s in get_shadows():
+        if s.pairs:
+            for p in s.pairs:
+                if p not in all_pairs:
+                    all_pairs.append(p)
+
+    for pair in all_pairs:
         initial_sync(pair, config.SPOT_INTERVAL)
 
     # align to the next candle boundary before first tick
@@ -86,12 +93,12 @@ def _loop():
             import datetime, zoneinfo
             global _last_tick
             _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
-            for pair in config.SPOT_TRADING_PAIRS:
+            for pair in all_pairs:
                 sync_candles(pair, config.SPOT_INTERVAL)
                 if config.SPOT_DAILY_EMA_FILTER:
                     sync_candles(pair, "1d")
 
-            prices = {pair: get_price(pair) for pair in config.SPOT_TRADING_PAIRS}
+            prices = {pair: get_price(pair) for pair in all_pairs}
             notify(
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
                 discord=False,
@@ -185,7 +192,8 @@ def _loop():
 
             # tick all shadow simulators with the same candle data
             for shadow in get_shadows():
-                for pair in config.SPOT_TRADING_PAIRS:
+                tick_pairs = shadow.pairs if shadow.pairs else config.SPOT_TRADING_PAIRS
+                for pair in tick_pairs:
                     shadow.tick(pair, prices)
 
             # snapshot portfolio value (cash + open position mark-to-market)
@@ -212,8 +220,11 @@ def _stop_loop():
             state = get_state()
             if not state.positions:
                 continue
+            pairs_needed = set(state.positions)
+            for shadow in get_shadows():
+                pairs_needed.update(shadow.positions)
             prices = {}
-            for pair in list(state.positions):
+            for pair in pairs_needed:
                 try:
                     prices[pair] = get_price(pair)
                 except Exception as e:

@@ -149,6 +149,27 @@ See `.env.example` for the full annotated list. Key settings:
 
 Per-pair overrides: append the pair name, e.g. `SPOT_RSI_PERIOD_ETHEUR=7`, `SPOT_RSI_OVERBOUGHT_SOLEUR=80`, `SPOT_EMA_GAP_PCT_ADAEUR=0`.
 
+The last DCA tranche always uses 100% of the remaining balance regardless of `SPOT_DCA_SIZE_PCT`, so no capital sits idle until the position closes.
+
+### Shadow simulation profiles
+
+Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance and state file, and can trade a different set of pairs than the live bot.
+
+Enable profiles with `SPOT_SHADOW_PROFILES=ACTIVE,HYBRID,ETH` (comma-separated names). Each profile supports the following overrides (prefix `SPOT_SHADOW_<NAME>_`):
+
+| Suffix | Description |
+|---|---|
+| `PAIRS` | Comma-separated pairs to trade (defaults to `SPOT_TRADING_PAIRS` if omitted) |
+| `BALANCE` | Starting virtual balance (EUR) |
+| `RSI_OVERSOLD` / `RSI_OVERBOUGHT` / `RSI_PERIOD` | RSI parameters |
+| `TRAILING_STOP_PCT` / `PROFIT_FLOOR_PCT` / `TAKE_PROFIT_PCT` | Exit parameters |
+| `MIN_EXIT_PROFIT_PCT` | Min profit before a signal sell can fire |
+| `EMA_GAP_PCT` | Min % above EMA200 to allow a buy |
+| `DCA_MAX` / `DCA_DROP_PCT` / `DCA_STEP_PCT` / `DCA_SIZE_PCT` | DCA parameters |
+| `POSITION_SIZE_PCT` | Fraction of balance per trade |
+
+Example: `SPOT_SHADOW_ACTIVE_PAIRS=ETHEUR,SOLEUR`, `SPOT_SHADOW_ACTIVE_DCA_MAX=0`.
+
 ### Futures
 
 | Variable | Default | Description |
