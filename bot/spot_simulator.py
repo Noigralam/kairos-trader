@@ -408,7 +408,12 @@ class SpotShadowSimulator:
         self.total_pnl      = 0.0
         self.total_fees     = 0.0
         self.portfolio_peak = 0.0
+        self.started_at: str | None = None
         self._load()
+        if self.started_at is None:
+            import datetime, zoneinfo
+            self.started_at = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+            self._save()
 
     # --- override helpers ---
 
@@ -430,6 +435,7 @@ class SpotShadowSimulator:
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         data = {
             "name": self.name,
+            "started_at": self.started_at,
             "overrides": self.overrides,
             "balance": self.balance,
             "total_trades": self.total_trades,
@@ -459,6 +465,7 @@ class SpotShadowSimulator:
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
+            self.started_at     = data.get("started_at",     None)
             self.balance        = data.get("balance", float(self.overrides.get("balance", config.SPOT_SIMULATION_BALANCE)))
             self.total_trades   = data.get("total_trades",   0)
             self.total_pnl      = data.get("total_pnl",      0.0)
