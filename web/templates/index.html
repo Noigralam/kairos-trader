@@ -827,7 +827,7 @@
                 <div class="pin-dot"></div><div class="pin-label">now ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</div>
               </div>
               <div class="ladder-pin" style="left:${lp(peakPct)}%;color:#3fb950" title="Peak">
-                <div class="pin-dot"></div><div class="pin-label">peak +${peakPct.toFixed(1)}%</div>
+                <div class="pin-dot"></div><div class="pin-label">peak ${peakPct >= 0 ? '+' : ''}${peakPct.toFixed(1)}%</div>
               </div>
               <div class="ladder-pin pin-top" style="left:${lp(tpPct)}%;color:#d29922;opacity:0.5" title="Take profit (spike catch)">
                 <div class="pin-dot"></div><div class="pin-label">TP +${tpPct.toFixed(1)}%</div>
@@ -1181,7 +1181,7 @@
             <div class="ladder-pin" style="left:${lp(minExitPct)}%;color:#f85149"><div class="pin-dot"></div><div class="pin-label">exit ${minExitPct.toFixed(1)}%</div></div>
             <div class="ladder-pin" style="left:${lp(bePct)}%;color:#e3b341"><div class="pin-dot"></div><div class="pin-label">BE +${bePct.toFixed(2)}%</div></div>
             <div class="ladder-pin pin-top" style="left:${lp(pct)}%;color:#58a6ff"><div class="pin-dot"></div><div class="pin-label">now ${pct >= 0?'+':''}${pct.toFixed(1)}%</div></div>
-            <div class="ladder-pin" style="left:${lp(peakPct)}%;color:#3fb950"><div class="pin-dot"></div><div class="pin-label">peak +${peakPct.toFixed(1)}%</div></div>
+            <div class="ladder-pin" style="left:${lp(peakPct)}%;color:#3fb950"><div class="pin-dot"></div><div class="pin-label">peak ${peakPct >= 0 ? '+' : ''}${peakPct.toFixed(1)}%</div></div>
             <div class="ladder-pin pin-top" style="left:${lp(tpPct)}%;color:#d29922;opacity:0.5"><div class="pin-dot"></div><div class="pin-label">TP +${tpPct.toFixed(1)}%</div></div>
           </div>`;
           const dcaStr = pos.dca_trigger !== null
