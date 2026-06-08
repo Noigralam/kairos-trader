@@ -34,6 +34,7 @@ data/futures_state_simulation.json
 data/futures_state_live.json
 data/candles.db
 data/kairos.db
+SHADOWS.md
 
 # IDE
 .vscode/
