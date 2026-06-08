@@ -16,15 +16,17 @@ class Position:
     def peak(self) -> float:
         return self.highest_price if self.highest_price > 0 else self.entry_price
 
-    def trailing_stop_level(self) -> float:
+    def trailing_stop_level(self, floor_pct: float | None = None, trail_pct: float | None = None) -> float:
         # Minimum exit price that clears both buy+sell fees AND the profit floor.
         # Dividing by (1 - fee) converts from "net proceeds needed" to "gross exit price"
         # because the sell fee is taken from proceeds, not added on top.
-        fee_plus_profit_floor = self.entry_price * (1 + config.SPOT_FEE + config.SPOT_PROFIT_FLOOR_PCT) / (1 - config.SPOT_FEE)
-        return max(fee_plus_profit_floor, self.peak() * (1 - config.SPOT_TRAILING_STOP_PCT))
+        _floor = floor_pct if floor_pct is not None else config.SPOT_PROFIT_FLOOR_PCT
+        _trail = trail_pct if trail_pct is not None else config.SPOT_TRAILING_STOP_PCT
+        fee_plus_profit_floor = self.entry_price * (1 + config.SPOT_FEE + _floor) / (1 - config.SPOT_FEE)
+        return max(fee_plus_profit_floor, self.peak() * (1 - _trail))
 
 
-def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> None:
+def apply_dca(position: Position, dca_price: float, dca_value_eur: float, tp_pct: float | None = None) -> None:
     """Merge a second tranche, updating weighted average entry price."""
     dca_amount = dca_value_eur / dca_price
     total_value = position.value_eur + dca_value_eur
@@ -32,7 +34,8 @@ def apply_dca(position: Position, dca_price: float, dca_value_eur: float) -> Non
     position.entry_price = total_value / total_amount
     position.amount = total_amount
     position.value_eur = total_value
-    position.take_profit_price = position.entry_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
+    _tp = tp_pct if tp_pct is not None else config.SPOT_TAKE_PROFIT_PCT
+    position.take_profit_price = position.entry_price * (1 + _tp)
     position.highest_price = dca_price  # reset peak from new blended entry; old peak is irrelevant after cost basis shifts
     position.dca_count += 1
 
@@ -52,8 +55,9 @@ def update_peak(position: Position, current_price: float) -> bool:
     return False
 
 
-def check_trailing_stop(position: Position, current_price: float) -> bool:
-    return position.peak() > position.trailing_stop_level() and current_price <= position.trailing_stop_level()
+def check_trailing_stop(position: Position, current_price: float, floor_pct: float | None = None, trail_pct: float | None = None) -> bool:
+    stop = position.trailing_stop_level(floor_pct, trail_pct)
+    return position.peak() > stop and current_price <= stop
 
 
 def check_take_profit(position: Position, current_price: float) -> bool:

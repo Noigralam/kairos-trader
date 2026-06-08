@@ -157,7 +157,7 @@ def open_position(pair: str, price: float, size_pct: float = None, prices: dict 
             avg_price = price
             buy_fee   = amount * avg_price * SPOT_FEE
         value    = amount * avg_price
-        tp_price = avg_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
+        tp_price = avg_price * (1 + config.take_profit_for(pair))
         log_trade(pair, "BUY", avg_price, amount, value, buy_fee, mode="live")
         pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
         _state.positions[pair] = pos
@@ -170,7 +170,7 @@ def open_position(pair: str, price: float, size_pct: float = None, prices: dict 
         amount   = round_qty(pair, amount)
         value    = amount * price
         buy_fee  = value * SPOT_FEE
-        tp_price = price * (1 + config.SPOT_TAKE_PROFIT_PCT)
+        tp_price = price * (1 + config.take_profit_for(pair))
         pos      = Position(pair, price, amount, value, tp_price, price, opened_at=_time.time())
         _state.positions[pair] = pos
         _state.balance -= value + buy_fee
@@ -208,7 +208,7 @@ def manual_add(pair: str, price: float, size_pct: float):
             buy_fee   = amount * avg_price * SPOT_FEE
         value = amount * avg_price
         if pair not in _state.positions:
-            tp_price = avg_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
+            tp_price = avg_price * (1 + config.take_profit_for(pair))
             pos = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
             _state.positions[pair] = pos
         else:
@@ -223,7 +223,7 @@ def manual_add(pair: str, price: float, size_pct: float):
             amount   = round_qty(pair, size / price)
             value    = amount * price
             buy_fee  = value * SPOT_FEE
-            tp_price = price * (1 + config.SPOT_TAKE_PROFIT_PCT)
+            tp_price = price * (1 + config.take_profit_for(pair))
             pos      = Position(pair, price, amount, value, tp_price, price, opened_at=_time.time())
             _state.positions[pair] = pos
             _state.balance -= value + buy_fee
@@ -234,7 +234,7 @@ def manual_add(pair: str, price: float, size_pct: float):
         else:
             pos = _state.positions[pair]
             bought = size / price
-            apply_dca(pos, price, size)
+            apply_dca(pos, price, size, tp_pct=config.take_profit_for(pair))
             _state.balance -= size + buy_fee
             _state.total_fees += buy_fee
             _save()
@@ -287,7 +287,7 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
             bought    = amount
             buy_fee   = dca_value * SPOT_FEE
         log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
-        apply_dca(pos, avg_price, dca_value)
+        apply_dca(pos, avg_price, dca_value, tp_pct=config.take_profit_for(pair))
         _state.total_fees += buy_fee
         _state.balance = get_eur_balance()
         _save()
@@ -295,7 +295,7 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
     else:
         buy_fee = dca_value * SPOT_FEE
         bought  = dca_value / price
-        apply_dca(pos, price, dca_value)
+        apply_dca(pos, price, dca_value, tp_pct=config.take_profit_for(pair))
         _state.balance -= dca_value + buy_fee
         _state.total_fees += buy_fee
         _save()
@@ -361,12 +361,12 @@ def check_stops(prices: dict):
             updated = update_peak(pos, price)
             if check_take_profit(pos, price):
                 close_position(pair, price, reason="take_profit")
-            elif check_trailing_stop(pos, price):
+            elif check_trailing_stop(pos, price, floor_pct=config.profit_floor_for(pair), trail_pct=config.trailing_stop_for(pair)):
                 close_position(pair, price, reason="trailing_stop")
-            elif (config.SPOT_TIME_STOP_DAYS > 0
+            elif (config.time_stop_for(pair) > 0
                   and pos.opened_at > 0
-                  and (now - pos.opened_at) / 86400 > config.SPOT_TIME_STOP_DAYS
-                  and pos.peak() <= pos.trailing_stop_level()):
+                  and (now - pos.opened_at) / 86400 > config.time_stop_for(pair)
+                  and pos.peak() <= pos.trailing_stop_level(floor_pct=config.profit_floor_for(pair), trail_pct=config.trailing_stop_for(pair))):
                 age = (now - pos.opened_at) / 86400
                 notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
                 close_position(pair, price, reason="time_stop")
@@ -422,8 +422,8 @@ class SpotShadowSimulator:
 
     def _trailing_stop_level(self, pos: Position) -> float:
         fee   = config.SPOT_FEE
-        floor = self._o("floor_pct", config.SPOT_PROFIT_FLOOR_PCT)
-        trail = self._o("trail_pct", config.SPOT_TRAILING_STOP_PCT)
+        floor = self._o("floor_pct", config.profit_floor_for(pos.pair))
+        trail = self._o("trail_pct", config.trailing_stop_for(pos.pair))
         return max(
             pos.entry_price * (1 + fee + floor) / (1 - fee),
             pos.peak() * (1 - trail),
@@ -493,7 +493,7 @@ class SpotShadowSimulator:
         if pair in self.positions:
             return
         pct    = self._o("pos_pct", config.SPOT_POSITION_SIZE_PCT)
-        tp_pct = self._o("tp_pct",  config.SPOT_TAKE_PROFIT_PCT)
+        tp_pct = self._o("tp_pct",  config.take_profit_for(pair))
         max_sz = self.balance / (1 + SPOT_FEE)
         size   = min(self.balance * pct, max_sz)
         if size < 1:
@@ -511,7 +511,7 @@ class SpotShadowSimulator:
         if pos is None:
             return
         dca_max = self._o("dca_max", config.SPOT_DCA_MAX)
-        tp_pct  = self._o("tp_pct",  config.SPOT_TAKE_PROFIT_PCT)
+        tp_pct  = self._o("tp_pct",  config.take_profit_for(pair))
         if pos.dca_count >= dca_max:
             return
         pct    = self._o("dca_pct", config.SPOT_DCA_SIZE_PCT)
@@ -567,7 +567,7 @@ class SpotShadowSimulator:
                     self._close(pair, price, "trailing_stop")
                     self._save()
                     return
-                time_stop = self._o("time_stop_days", config.SPOT_TIME_STOP_DAYS)
+                time_stop = self._o("time_stop_days", config.time_stop_for(pair))
                 if time_stop > 0 and pos.opened_at > 0 and (_time.time() - pos.opened_at) / 86400 > time_stop:
                     self._close(pair, price, "time_stop")
                     self._save()
@@ -586,7 +586,7 @@ class SpotShadowSimulator:
                 self._open(pair, price)
             elif pair in self.positions:
                 pos      = self.positions[pair]
-                dca_drop = self._o("dca_drop", config.SPOT_DCA_DROP_PCT)
+                dca_drop = self._o("dca_drop", config.dca_drop_for(pair))
                 dca_step = self._o("dca_step", config.SPOT_DCA_STEP_PCT)
                 drop     = (pos.entry_price - price) / pos.entry_price
                 next_drop = dca_drop + pos.dca_count * dca_step

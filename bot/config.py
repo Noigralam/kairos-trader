@@ -54,6 +54,21 @@ def ema_gap_for(pair: str) -> float:
 def min_exit_for(pair: str) -> float:
     return float(os.getenv(f"SPOT_MIN_EXIT_PROFIT_PCT_{pair}", SPOT_MIN_EXIT_PROFIT_PCT))
 
+def time_stop_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_TIME_STOP_DAYS_{pair}", SPOT_TIME_STOP_DAYS))
+
+def take_profit_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_TAKE_PROFIT_PCT_{pair}", SPOT_TAKE_PROFIT_PCT))
+
+def trailing_stop_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_TRAILING_STOP_PCT_{pair}", SPOT_TRAILING_STOP_PCT))
+
+def profit_floor_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_PROFIT_FLOOR_PCT_{pair}", SPOT_PROFIT_FLOOR_PCT))
+
+def dca_drop_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_DCA_DROP_PCT_{pair}", SPOT_DCA_DROP_PCT))
+
 # ---------------------------------------------------------------------------
 # Futures (USDT-M perpetuals)
 # ---------------------------------------------------------------------------

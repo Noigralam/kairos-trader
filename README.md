@@ -147,7 +147,7 @@ See `.env.example` for the full annotated list. Key settings:
 | `SPOT_MAX_DRAWDOWN_PCT` | `0` | Pause buys if portfolio drops >X% from peak (0 = off) |
 | `SPOT_STOP_CHECK_INTERVAL` | `60` | Between-candle stop check frequency (seconds) |
 
-Per-pair overrides: append the pair name, e.g. `SPOT_RSI_PERIOD_ETHEUR=7`, `SPOT_RSI_OVERBOUGHT_SOLEUR=80`, `SPOT_EMA_GAP_PCT_ADAEUR=0`.
+Per-pair overrides: append the pair name, e.g. `SPOT_RSI_PERIOD_ETHEUR=7`, `SPOT_RSI_OVERBOUGHT_SOLEUR=80`, `SPOT_EMA_GAP_PCT_ADAEUR=0`, `SPOT_TAKE_PROFIT_PCT_SOLEUR=0.05`, `SPOT_TRAILING_STOP_PCT_SOLEUR=0.05`, `SPOT_PROFIT_FLOOR_PCT_SOLEUR=0.03`, `SPOT_DCA_DROP_PCT_SOLEUR=0.02`, `SPOT_TIME_STOP_DAYS_ETHEUR=14`.
 
 The last DCA tranche always uses 100% of the remaining balance regardless of `SPOT_DCA_SIZE_PCT`, so no capital sits idle until the position closes.
 
