@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from bot import spot_engine as engine, spot_simulator as simulator, db, config
 from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy
 from bot.notifier import get_recent_logs
@@ -60,6 +60,18 @@ def api_trades():
             "value_eur", "fee", "mode", "pnl", "notes"]
     rows = db.get_trades(50, mode=config.SPOT_MODE)
     return jsonify([dict(zip(cols, row)) for row in rows])
+
+
+@app.route("/api/trades/csv")
+def api_trades_csv():
+    cols = ["id", "timestamp", "pair", "side", "price", "amount",
+            "value_eur", "fee", "mode", "pnl", "notes"]
+    rows = db.get_trades(9999, mode=config.SPOT_MODE)
+    lines = [",".join(cols)]
+    for row in rows:
+        lines.append(",".join("" if v is None else str(v) for v in row))
+    return Response("\n".join(lines), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=spot_trades.csv"})
 
 
 @app.route("/api/tax")
@@ -248,6 +260,27 @@ def api_shadows_ranking():
     return jsonify({"live_return_pct": live_return_pct, "shadows": rows})
 
 
+@app.route("/api/shadows/pnl_history")
+def api_shadows_pnl_history():
+    from bot.spot_simulator import get_shadows
+    import zoneinfo as _zi, datetime as _dt
+    tz   = _zi.ZoneInfo("Europe/Helsinki")
+    days = float(request.args.get("days", 30))
+    out  = {}
+    for s in get_shadows():
+        starting = float(s.overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+        rows = db.get_balance_history(s._db_mode, max(days, 0))
+        series = []
+        for ts, bal in rows:
+            try:
+                t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+            except Exception:
+                t = ts
+            series.append({"t": t, "pnl": round(bal - starting, 2)})
+        out[s.name] = series
+    return jsonify(out)
+
+
 def _get_shadow(name: str):
     from bot.spot_simulator import get_shadows
     return next((s for s in get_shadows() if s.name.upper() == name.upper()), None)
@@ -305,6 +338,20 @@ def api_shadow_trades(name):
     cols = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
     rows = db.get_trades(50, mode=s._db_mode)
     return jsonify([dict(zip(cols, row)) for row in rows])
+
+
+@app.route("/api/shadow/<name>/trades/csv")
+def api_shadow_trades_csv(name):
+    s = _get_shadow(name)
+    if s is None:
+        return Response("not found", status=404)
+    cols = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
+    rows = db.get_trades(9999, mode=s._db_mode)
+    lines = [",".join(cols)]
+    for row in rows:
+        lines.append(",".join("" if v is None else str(v) for v in row))
+    return Response("\n".join(lines), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=shadow_{name.lower()}_trades.csv"})
 
 
 @app.route("/api/shadow/<name>/balance_history")
@@ -861,6 +908,20 @@ def api_futures_trades():
             "value_eur", "fee", "mode", "pnl", "notes"]
     rows = db.get_trades(50, mode=f"futures_{config.FUTURES_MODE}")
     return jsonify([dict(zip(cols, row)) for row in rows])
+
+
+@app.route("/api/futures/trades/csv")
+def api_futures_trades_csv():
+    if not config.FUTURES_ENABLED:
+        return Response("not found", status=404)
+    cols = ["id", "timestamp", "pair", "side", "price", "amount",
+            "value_eur", "fee", "mode", "pnl", "notes"]
+    rows = db.get_trades(9999, mode=f"futures_{config.FUTURES_MODE}")
+    lines = [",".join(cols)]
+    for row in rows:
+        lines.append(",".join("" if v is None else str(v) for v in row))
+    return Response("\n".join(lines), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=futures_trades.csv"})
 
 
 @app.route("/api/futures/stats")

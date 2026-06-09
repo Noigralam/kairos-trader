@@ -14,7 +14,7 @@ Includes a web dashboard, Discord integration, and backtest tools for both engin
 - **Trailing stop** with a profit floor — the stop rises as price climbs, only fires once above the floor
 - **Take-profit** at +5% acts as a spike catcher
 - **DCA** averages down in tranches (up to `SPOT_DCA_MAX`) as price drops further from entry
-- Fast-check loop runs every 60s for stop/TP checks between candles
+- Fast-check loop runs every 30s for stop/TP checks between candles
 - Per-pair RSI and overbought thresholds (e.g. `SPOT_RSI_PERIOD_ETHEUR=7`)
 
 ### Futures
@@ -23,7 +23,7 @@ Includes a web dashboard, Discord integration, and backtest tools for both engin
 - Exits via **take-profit** or **trailing stop** (with profit floor) — RSI overbought signal is ignored, trailing stop handles exits
 - DCA effectively disabled by default (`FUTURES_DCA_DROP_PCT=0.99`)
 - Funding cost applied on open longs at each 8h settlement
-- Fast-check loop runs every 60s for stop/TP/liquidation/funding between candles
+- Fast-check loop runs every 30s for stop/TP/liquidation/funding between candles
 
 ## Requirements
 
@@ -145,7 +145,7 @@ See `.env.example` for the full annotated list. Key settings:
 | `SPOT_EMA_GAP_PCT` | `0.02` | Min % above EMA200 to allow a buy |
 | `SPOT_TIME_STOP_DAYS` | `0` | Close stalled positions after N days (0 = off) |
 | `SPOT_MAX_DRAWDOWN_PCT` | `0` | Pause buys if portfolio drops >X% from peak (0 = off) |
-| `SPOT_STOP_CHECK_INTERVAL` | `60` | Between-candle stop check frequency (seconds) |
+| `SPOT_STOP_CHECK_INTERVAL` | `30` | Between-candle stop check frequency (seconds) |
 | `SPOT_STOP_COOLDOWN_CANDLES` | `0` | Block re-entry for N candles after a trailing stop fires (0 = off) |
 | `SPOT_VOLUME_FILTER_PERIOD` | `0` | Require current candle volume > N-bar rolling mean (0 = off) |
 | `SPOT_VOLUME_FILTER_MULT` | `1.5` | Volume must exceed this multiple of the rolling mean |
@@ -224,7 +224,7 @@ Example: `SPOT_SHADOW_ACTIVE_PAIRS=ETHEUR,SOLEUR`, `SPOT_SHADOW_ACTIVE_DCA_MAX=0
 | `FUTURES_RSI_OVERBOUGHT` | `75` | Logged for reference; exits handled by trailing stop |
 | `FUTURES_EMA_GAP_PCT` | `0.02` | Min % above EMA200 to allow a long entry |
 | `FUTURES_MAX_DRAWDOWN_PCT` | `0` | Pause longs if portfolio drops >X% from peak (0 = off) |
-| `FUTURES_STOP_CHECK_INTERVAL` | `60` | Between-candle risk check frequency (seconds) |
+| `FUTURES_STOP_CHECK_INTERVAL` | `30` | Between-candle risk check frequency (seconds) |
 
 Per-pair overrides: `FUTURES_RSI_PERIOD_ETHUSDT=7`, etc.
 

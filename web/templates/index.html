@@ -199,6 +199,12 @@
       border: 1px solid var(--border); background: var(--surface); color: var(--muted);
     }
     .btn-group button.active { border-color: var(--blue); color: var(--blue); }
+    .csv-btn {
+      padding: 4px 10px; font-size: 12px; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+      text-decoration: none; cursor: pointer; white-space: nowrap;
+    }
+    .csv-btn:hover { border-color: var(--blue); color: var(--blue); }
     .chart-wrap {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 8px; padding: 16px;
@@ -391,7 +397,10 @@
     </section>
 
     <section>
-      <h2>Recent Trades</h2>
+      <div class="chart-controls">
+        <h2>Recent Trades</h2>
+        <a href="/api/trades/csv" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead>
@@ -514,7 +523,10 @@
     </section>
 
     <section>
-      <h2>Recent Trades</h2>
+      <div class="chart-controls">
+        <h2>Recent Trades</h2>
+        <a href="/api/futures/trades/csv" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead>
@@ -609,6 +621,21 @@
       </div>
     </section>
 
+    <!-- PnL comparison chart -->
+    <section style="margin-bottom:16px">
+      <div class="chart-controls">
+        <h2>PnL History</h2>
+        <div class="btn-group" id="sh-pnl-span-btns">
+          <button onclick="setShPnlDays(1)"   data-days="1">1d</button>
+          <button onclick="setShPnlDays(7)"   data-days="7">7d</button>
+          <button onclick="setShPnlDays(30)"  data-days="30" class="active">30d</button>
+          <button onclick="setShPnlDays(90)"  data-days="90">90d</button>
+          <button onclick="setShPnlDays(0)"   data-days="0">All</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:220px"><canvas id="sh-pnl-chart"></canvas></div>
+    </section>
+
     <!-- profile selector — visible when >1 shadow -->
     <div id="sh-selector-wrap" style="display:none;margin-bottom:16px">
       <div class="btn-group" id="sh-selector"></div>
@@ -660,7 +687,10 @@
     </section>
 
     <section>
-      <h2>Recent Trades</h2>
+      <div class="chart-controls">
+        <h2>Recent Trades</h2>
+        <a id="sh-csv-btn" href="#" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
+      </div>
       <div class="tbl-wrap">
         <table>
           <thead>
@@ -1064,10 +1094,18 @@
   let _shChartPair    = null;
   let _shChartSpan    = '1d';
   let _shBalanceDays  = 30;
+  let _shPnlDays      = 30;
   let _shPriceChart   = null;
   let _shCandleChart  = null;
   let _shRsiChart     = null;
   let _shBalanceChart = null;
+  let _shPnlChart     = null;
+
+  const _PNL_COLORS = [
+    '#58a6ff','#3fb950','#d29922','#f85149','#bc8cff',
+    '#79c0ff','#56d364','#e3b341','#ff7b72','#d2a8ff',
+    '#388bfd','#2ea043','#bb8009','#b91c1c','#8957e5',
+  ];
 
   async function initShadowTab() {
     const res = await fetch('/api/shadows');
@@ -1096,8 +1134,11 @@
     track.innerHTML = _shNames.map(n => makeBlock(n, '')).join('')
                     + _shNames.map(n => makeBlock(n, '-copy')).join('');
     document.getElementById('sh-carousel').style.display = '';
+    const csvBtn = document.getElementById('sh-csv-btn');
+    if (csvBtn && _activeShadow) csvBtn.href = `/api/shadow/${_activeShadow}/trades/csv`;
     refreshShHeaderBlocks();
     refreshShRanking();
+    refreshShPnlChart();
     _initCarousel();
   }
 
@@ -1187,6 +1228,8 @@
     _activeShadow = name;
     _markShSelector();
     _shPriceChart = _shCandleChart = _shRsiChart = null;
+    const csvBtn = document.getElementById('sh-csv-btn');
+    if (csvBtn) csvBtn.href = `/api/shadow/${name}/trades/csv`;
     refreshShadowTab();
   }
 
@@ -1199,12 +1242,76 @@
     if (!_activeShadow) return;
     await Promise.all([
       refreshShRanking(),
+      refreshShPnlChart(),
       refreshShStatus(),
       refreshShSignals(),
       refreshShTrades(),
       refreshShStats(),
       refreshShBalanceChart(),
     ]);
+  }
+
+  function setShPnlDays(days) {
+    _shPnlDays = days;
+    document.querySelectorAll('#sh-pnl-span-btns button').forEach(b =>
+      b.classList.toggle('active', parseFloat(b.dataset.days) === days));
+    refreshShPnlChart();
+  }
+
+  async function refreshShPnlChart() {
+    try {
+      const days = _shPnlDays === 0 ? 9999 : _shPnlDays;
+      const res  = await fetch(`/api/shadows/pnl_history?days=${days}`);
+      const data = await res.json();
+      const names = Object.keys(data);
+      if (!names.length) return;
+
+      // Build a unified sorted time axis across all series
+      const allTimes = [...new Set(names.flatMap(n => data[n].map(p => p.t)))].sort();
+      if (!allTimes.length) return;
+
+      const datasets = names.map((name, i) => {
+        const map = Object.fromEntries(data[name].map(p => [p.t, p.pnl]));
+        // forward-fill: carry last known value
+        let last = null;
+        const values = allTimes.map(t => { if (map[t] !== undefined) last = map[t]; return last; });
+        const color = _PNL_COLORS[i % _PNL_COLORS.length];
+        const isActive = name === _activeShadow;
+        return {
+          label:       name,
+          data:        values,
+          borderColor: color,
+          borderWidth: isActive ? 2 : 1,
+          pointRadius: 0,
+          tension:     0.2,
+          fill:        false,
+          borderDash:  isActive ? [] : [3, 3],
+        };
+      });
+
+      if (_shPnlChart) {
+        _shPnlChart.data.labels   = allTimes;
+        _shPnlChart.data.datasets = datasets;
+        _shPnlChart.update('none');
+      } else {
+        const ctx = document.getElementById('sh-pnl-chart').getContext('2d');
+        _shPnlChart = new Chart(ctx, {
+          type: 'line',
+          data: { labels: allTimes, datasets },
+          options: { ...CHART_OPTS,
+            plugins: { ...CHART_OPTS.plugins,
+              legend: { display: true, position: 'top',
+                labels: { color: '#8b949e', boxWidth: 12, padding: 10, font: { size: 11 } } },
+              tooltip: { ...CHART_OPTS.plugins.tooltip,
+                callbacks: { label: c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}€${Number(c.raw).toFixed(2)}` } },
+            },
+            scales: { x: CHART_OPTS.scales.x,
+              y: { ...CHART_OPTS.scales.y,
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => (v >= 0 ? '+' : '') + v.toFixed(0) + ' €' } } },
+          },
+        });
+      }
+    } catch(e) { console.error('pnlchart', e); }
   }
 
   async function refreshShRanking() {
