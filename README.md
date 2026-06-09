@@ -147,7 +147,23 @@ See `.env.example` for the full annotated list. Key settings:
 | `SPOT_MAX_DRAWDOWN_PCT` | `0` | Pause buys if portfolio drops >X% from peak (0 = off) |
 | `SPOT_STOP_CHECK_INTERVAL` | `60` | Between-candle stop check frequency (seconds) |
 
-Per-pair overrides: append the pair name, e.g. `SPOT_RSI_PERIOD_ETHEUR=7`, `SPOT_RSI_OVERBOUGHT_SOLEUR=80`, `SPOT_EMA_GAP_PCT_ADAEUR=0`, `SPOT_TAKE_PROFIT_PCT_SOLEUR=0.05`, `SPOT_TRAILING_STOP_PCT_SOLEUR=0.05`, `SPOT_PROFIT_FLOOR_PCT_SOLEUR=0.03`, `SPOT_DCA_DROP_PCT_SOLEUR=0.02`, `SPOT_TIME_STOP_DAYS_ETHEUR=14`.
+Per-pair overrides are supported for the following settings — append the pair name to the variable:
+
+| Variable | Example |
+|---|---|
+| `SPOT_RSI_PERIOD` | `SPOT_RSI_PERIOD_SOLEUR=7` |
+| `SPOT_RSI_OVERSOLD` | `SPOT_RSI_OVERSOLD_ADAEUR=33` |
+| `SPOT_RSI_OVERBOUGHT` | `SPOT_RSI_OVERBOUGHT_SOLEUR=80` |
+| `SPOT_EMA_GAP_PCT` | `SPOT_EMA_GAP_PCT_ADAEUR=0` |
+| `SPOT_MIN_EXIT_PROFIT_PCT` | `SPOT_MIN_EXIT_PROFIT_PCT_SOLEUR=0.03` |
+| `SPOT_TAKE_PROFIT_PCT` | `SPOT_TAKE_PROFIT_PCT_SOLEUR=0.05` |
+| `SPOT_TRAILING_STOP_PCT` | `SPOT_TRAILING_STOP_PCT_SOLEUR=0.05` |
+| `SPOT_PROFIT_FLOOR_PCT` | `SPOT_PROFIT_FLOOR_PCT_SOLEUR=0.03` |
+| `SPOT_DCA_MAX` | `SPOT_DCA_MAX_ETHEUR=2` |
+| `SPOT_DCA_DROP_PCT` | `SPOT_DCA_DROP_PCT_SOLEUR=0.02` |
+| `SPOT_TIME_STOP_DAYS` | `SPOT_TIME_STOP_DAYS_ETHEUR=14` |
+
+When `SPOT_DCA_MAX` is 0 for a pair, the bot goes all-in on entry (no capital reserved for tranches that will never come).
 
 The last DCA tranche always uses 100% of the remaining balance regardless of `SPOT_DCA_SIZE_PCT`, so no capital sits idle until the position closes.
 
