@@ -10,6 +10,9 @@ Usage:
     python backtest.py sweep buyrsi [days]  # buy RSI threshold sweep
     python backtest.py sweep dca   [days]   # DCA parameters sweep
     python backtest.py sweep ema   [days]   # EMA trend filter period sweep
+    python backtest.py sweep volume [days]      # volume filter sweep
+    python backtest.py sweep cooldown [days]    # re-entry cooldown sweep
+    python backtest.py sweep partialclose [days]  # partial close at TP sweep
     python backtest.py sweep all   [days]   # run every sweep
     python backtest.py topup [start] [monthly] [days]  # monthly top-up simulation
 
@@ -173,6 +176,8 @@ def run_pair(
     vol_mult:         float = 1.0,       # volume must exceed this multiple of the rolling average
     div_lookback:     int   = 0,         # 0 = disabled; N = require bullish RSI divergence within N bars
     stop_cooldown:    int   = 0,         # 0 = disabled; N = block re-entry for N candles after trailing stop
+    partial_close_pct:   float = 0.0,   # 0 = full close at TP; >0 = sell this fraction and trail the rest
+    partial_close_trail: float = 0.02,  # trailing stop on remainder after partial close (floor=0)
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.SPOT_FEE
@@ -196,9 +201,10 @@ def run_pair(
     balance        = start_balance
     portfolio_peak = start_balance
     position: Position | None = None
-    entry_candle:  int = 0
-    dca_count:     int = 0
-    cooldown_until: int = 0
+    entry_candle:   int  = 0
+    dca_count:      int  = 0
+    cooldown_until: int  = 0
+    partial_closed: bool = False
     trades: list[Trade] = []
     _dca_step = dca_step if dca_step is not None else dca_drop
 
@@ -213,19 +219,35 @@ def run_pair(
 
         if position is not None:
             update_peak(position, hi)
-            stop_level = max(
-                position.entry_price * (1 + fee_rate + floor_pct) / (1 - fee_rate),
-                position.peak() * (1 - trail_pct),
-            )
+            if partial_closed:
+                stop_level = position.peak() * (1 - partial_close_trail)
+            else:
+                stop_level = max(
+                    position.entry_price * (1 + fee_rate + floor_pct) / (1 - fee_rate),
+                    position.peak() * (1 - trail_pct),
+                )
             take_profit_price = position.entry_price * (1 + tp_pct)
 
-            if hi >= take_profit_price:
+            if hi >= take_profit_price and not partial_closed:
                 ep = take_profit_price
-                bf = position.value_eur * fee_rate
-                sf = position.amount * ep * fee_rate
-                balance += position.amount * ep - sf
-                trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "take_profit", position.dca_count > 0))
-                position = None
+                if partial_close_pct > 0:
+                    sell_amount = position.amount * partial_close_pct
+                    bf = position.value_eur * partial_close_pct * fee_rate
+                    sf = sell_amount * ep * fee_rate
+                    pnl = (ep - position.entry_price) * sell_amount - bf - sf
+                    balance += sell_amount * ep - sf
+                    trades.append(Trade(pnl, bf + sf, "partial_tp", position.dca_count > 0))
+                    keep = 1.0 - partial_close_pct
+                    position.amount    *= keep
+                    position.value_eur *= keep
+                    partial_closed = True
+                else:
+                    bf = position.value_eur * fee_rate
+                    sf = position.amount * ep * fee_rate
+                    balance += position.amount * ep - sf
+                    trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "take_profit", position.dca_count > 0))
+                    position = None
+                    partial_closed = False
                 continue
 
             if position.peak() > stop_level and lo <= stop_level:
@@ -235,6 +257,7 @@ def run_pair(
                 balance += position.amount * ep - sf
                 trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "trailing_stop", position.dca_count > 0))
                 position = None
+                partial_closed = False
                 if stop_cooldown > 0:
                     cooldown_until = i + stop_cooldown
                 continue
@@ -246,6 +269,7 @@ def run_pair(
                 balance += position.amount * ep - sf
                 trades.append(Trade(calc_pnl(position, ep, bf, sf), bf + sf, "hard_stop", position.dca_count > 0))
                 position = None
+                partial_closed = False
                 continue
 
             if (time_stop_days > 0
@@ -256,6 +280,7 @@ def run_pair(
                 balance += position.amount * price - sf
                 trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "time_stop", position.dca_count > 0))
                 position = None
+                partial_closed = False
                 continue
 
         # update portfolio peak (cash only when no position, cash+pos otherwise)
@@ -288,8 +313,9 @@ def run_pair(
             if size >= 1:
                 position = Position(pair, price, size / price, size,
                                     price * (1 + tp_pct), price)
-                entry_candle = i
-                dca_count    = 0
+                entry_candle   = i
+                dca_count      = 0
+                partial_closed = False
                 balance -= size + size * fee_rate
 
         if enable_dca and position is not None and dca_count < max_dca:
@@ -310,6 +336,7 @@ def run_pair(
                 balance += position.amount * price - sf
                 trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "signal", position.dca_count > 0))
                 position = None
+                partial_closed = False
 
     if position is not None:
         price = float(close_arr[-1])
@@ -560,6 +587,20 @@ def sweep_cooldown(days_list: list[int]):
         dict(stop_cooldown=192, label="cooldown=192 bars (~2d)"),
     ]
     _run_sweep(days_list, "Stop cooldown sweep (block re-entry N candles after trailing stop)", scenarios, PAIRS)
+
+
+def sweep_partialclose(days_list: list[int]):
+    scenarios = [
+        dict(partial_close_pct=0.0,                                   label="off  (full close at TP)"),
+        dict(partial_close_pct=0.25, partial_close_trail=0.02,        label="sell 25% at TP  trail=2%"),
+        dict(partial_close_pct=0.50, partial_close_trail=0.02,        label="sell 50% at TP  trail=2%"),
+        dict(partial_close_pct=0.50, partial_close_trail=0.03,        label="sell 50% at TP  trail=3%"),
+        dict(partial_close_pct=0.50, partial_close_trail=0.05,        label="sell 50% at TP  trail=5%"),
+        dict(partial_close_pct=0.75, partial_close_trail=0.02,        label="sell 75% at TP  trail=2%"),
+        dict(partial_close_pct=0.75, partial_close_trail=0.03,        label="sell 75% at TP  trail=3%"),
+        dict(partial_close_pct=0.75, partial_close_trail=0.05,        label="sell 75% at TP  trail=5%"),
+    ]
+    _run_sweep(days_list, "Partial close sweep (sell fraction at TP, trail the remainder)", scenarios, PAIRS)
 
 
 def sweep_divergence(days_list: list[int]):
@@ -1186,22 +1227,27 @@ def run_shadow_backtest(days_list: list[int]):
             for pair in pairs:
                 df = fetch(pair, days, interval=interval)
                 kwargs = dict(
-                    rsi_buy        = ov.get("rsi_oversold",  config.rsi_oversold_for(pair)),
-                    rsi_sell       = ov.get("rsi_overbought", config.rsi_overbought_for(pair)),
-                    rsi_period     = ov.get("rsi_period",    config.rsi_period_for(pair)),
-                    trail_pct      = ov.get("trail_pct",     config.trailing_stop_for(pair)),
-                    floor_pct      = ov.get("floor_pct",     config.profit_floor_for(pair)),
-                    tp_pct         = ov.get("tp_pct",        config.take_profit_for(pair)),
-                    dca_drop       = ov.get("dca_drop",      config.dca_drop_for(pair)),
-                    dca_pct        = ov.get("dca_pct",       config.SPOT_DCA_SIZE_PCT),
-                    dca_step       = ov.get("dca_step",      config.SPOT_DCA_STEP_PCT),
-                    ema_gap        = ov.get("ema_gap",       config.ema_gap_for(pair)),
-                    min_exit       = ov.get("min_exit",      config.min_exit_for(pair)),
-                    time_stop_days = ov.get("time_stop_days", config.time_stop_for(pair)),
-                    max_dca        = dca_max,
-                    enable_dca     = not no_dca,
-                    interval       = interval,
-                    pos_pct        = ov.get("pos_pct", 1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT),
+                    rsi_buy             = ov.get("rsi_oversold",       config.rsi_oversold_for(pair)),
+                    rsi_sell            = ov.get("rsi_overbought",      config.rsi_overbought_for(pair)),
+                    rsi_period          = ov.get("rsi_period",         config.rsi_period_for(pair)),
+                    trail_pct           = ov.get("trail_pct",          config.trailing_stop_for(pair)),
+                    floor_pct           = ov.get("floor_pct",          config.profit_floor_for(pair)),
+                    tp_pct              = ov.get("tp_pct",             config.take_profit_for(pair)),
+                    dca_drop            = ov.get("dca_drop",           config.dca_drop_for(pair)),
+                    dca_pct             = ov.get("dca_pct",            config.SPOT_DCA_SIZE_PCT),
+                    dca_step            = ov.get("dca_step",           config.SPOT_DCA_STEP_PCT),
+                    ema_gap             = ov.get("ema_gap",            config.ema_gap_for(pair)),
+                    min_exit            = ov.get("min_exit",           config.min_exit_for(pair)),
+                    time_stop_days      = ov.get("time_stop_days",     config.time_stop_for(pair)),
+                    stop_cooldown       = ov.get("stop_cooldown",      config.SPOT_STOP_COOLDOWN_CANDLES),
+                    vol_period          = ov.get("vol_period",         config.SPOT_VOLUME_FILTER_PERIOD),
+                    vol_mult            = ov.get("vol_mult",           config.SPOT_VOLUME_FILTER_MULT),
+                    partial_close_pct   = ov.get("partial_close_pct",  config.SPOT_PARTIAL_CLOSE_PCT),
+                    partial_close_trail = ov.get("partial_close_trail", config.SPOT_PARTIAL_CLOSE_TRAIL_PCT),
+                    max_dca             = dca_max,
+                    enable_dca          = not no_dca,
+                    interval            = interval,
+                    pos_pct             = ov.get("pos_pct", 1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT),
                 )
                 trades, _ = run_pair(pair, df, pair_balance, **kwargs)
                 all_trades.extend(trades)
@@ -1265,9 +1311,10 @@ if __name__ == "__main__":
             "dailyema":    sweep_daily_ema,
             "interval":    sweep_interval,
             "htfrsi":      sweep_htf_rsi,
-            "volume":      sweep_volume,
-            "cooldown":    sweep_cooldown,
-            "divergence":  sweep_divergence,
+            "volume":       sweep_volume,
+            "cooldown":     sweep_cooldown,
+            "partialclose": sweep_partialclose,
+            "divergence":   sweep_divergence,
             "multipos":    sweep_multipos,
             "solfocus":    sweep_solfocus,
         }

@@ -150,9 +150,14 @@ def get_shadow_overrides(name: str) -> dict:
         "DCA_MAX":             ("dca_max",         int),
         "DCA_STEP_PCT":        ("dca_step",        float),
         "EMA_GAP_PCT":         ("ema_gap",         float),
-        "MIN_EXIT_PROFIT_PCT": ("min_exit",        float),
-        "TIME_STOP_DAYS":      ("time_stop_days",  float),
-        "BALANCE":             ("balance",         float),
+        "MIN_EXIT_PROFIT_PCT":     ("min_exit",             float),
+        "TIME_STOP_DAYS":          ("time_stop_days",       float),
+        "STOP_COOLDOWN_CANDLES":   ("stop_cooldown",        int),
+        "VOLUME_FILTER_PERIOD":    ("vol_period",           int),
+        "VOLUME_FILTER_MULT":      ("vol_mult",             float),
+        "PARTIAL_CLOSE_PCT":       ("partial_close_pct",    float),
+        "PARTIAL_CLOSE_TRAIL_PCT": ("partial_close_trail",  float),
+        "BALANCE":                 ("balance",              float),
     }
     result: dict = {}
     for env_suffix, (key, cast) in _param_map.items():
