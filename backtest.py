@@ -176,8 +176,9 @@ def run_pair(
     vol_mult:         float = 1.0,       # volume must exceed this multiple of the rolling average
     div_lookback:     int   = 0,         # 0 = disabled; N = require bullish RSI divergence within N bars
     stop_cooldown:    int   = 0,         # 0 = disabled; N = block re-entry for N candles after trailing stop
-    partial_close_pct:   float = 0.0,   # 0 = full close at TP; >0 = sell this fraction and trail the rest
-    partial_close_trail: float = 0.02,  # trailing stop on remainder after partial close (floor=0)
+    partial_close_pct:      float = 0.0,   # 0 = full close at TP; >0 = sell this fraction and trail the rest
+    partial_close_trail:    float = 0.02,  # trailing stop on remainder after partial close (floor=0)
+    dca_reset_on_partial:   bool  = False, # reset DCA count after a partial close so the position can DCA again on reversal
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.SPOT_FEE
@@ -241,6 +242,8 @@ def run_pair(
                     position.amount    *= keep
                     position.value_eur *= keep
                     partial_closed = True
+                    if dca_reset_on_partial:
+                        dca_count = 0
                 else:
                     bf = position.value_eur * fee_rate
                     sf = position.amount * ep * fee_rate
@@ -601,6 +604,26 @@ def sweep_partialclose(days_list: list[int]):
         dict(partial_close_pct=0.75, partial_close_trail=0.05,        label="sell 75% at TP  trail=5%"),
     ]
     _run_sweep(days_list, "Partial close sweep (sell fraction at TP, trail the remainder)", scenarios, PAIRS)
+
+
+def sweep_dca_partial(days_list: list[int]):
+    """Does resetting DCA count after a partial close improve returns?"""
+    NO_TRAIL  = dict(trail_pct=1.0, floor_pct=1.0)
+    NO_SIGNAL = dict(rsi_sell=999)
+    scenarios = [
+        dict(label="current  (no partial close)                        "),
+        dict(label="TP=7%   partial=50% trail=3%  no DCA reset         ", tp_pct=0.07, partial_close_pct=0.50, partial_close_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=7%   partial=50% trail=3%  DCA reset            ", tp_pct=0.07, partial_close_pct=0.50, partial_close_trail=0.03, dca_reset_on_partial=True, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50% trail=3%  no DCA reset         ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50% trail=3%  DCA reset            ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.03, dca_reset_on_partial=True, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50% trail=5%  no DCA reset         ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.05, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50% trail=5%  DCA reset            ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.05, dca_reset_on_partial=True, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=75% trail=5%  no DCA reset         ", tp_pct=0.10, partial_close_pct=0.75, partial_close_trail=0.05, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=75% trail=5%  DCA reset            ", tp_pct=0.10, partial_close_pct=0.75, partial_close_trail=0.05, dca_reset_on_partial=True, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=12%  partial=50% trail=3%  no DCA reset         ", tp_pct=0.12, partial_close_pct=0.50, partial_close_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=12%  partial=50% trail=3%  DCA reset            ", tp_pct=0.12, partial_close_pct=0.50, partial_close_trail=0.03, dca_reset_on_partial=True, **NO_TRAIL, **NO_SIGNAL),
+    ]
+    _run_sweep(days_list, "DCA reset on partial close sweep", scenarios, PAIRS)
 
 
 def sweep_divergence(days_list: list[int]):
@@ -1313,8 +1336,9 @@ if __name__ == "__main__":
             "htfrsi":      sweep_htf_rsi,
             "volume":       sweep_volume,
             "cooldown":     sweep_cooldown,
-            "partialclose": sweep_partialclose,
-            "divergence":   sweep_divergence,
+            "partialclose":  sweep_partialclose,
+            "dcapartial":    sweep_dca_partial,
+            "divergence":    sweep_divergence,
             "multipos":    sweep_multipos,
             "solfocus":    sweep_solfocus,
         }
