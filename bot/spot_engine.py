@@ -9,7 +9,7 @@ log = logging.getLogger("cryptobot")
 from .spot_exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
-from .spot_simulator import open_position, close_position, dca_position, get_state, check_stops, manual_add, init_shadows, get_shadows
+from .spot_simulator import open_position, close_position, partial_close_position, dca_position, get_state, check_stops, manual_add, init_shadows, get_shadows
 from .notifier import notify, notify_tick, bot_status_alert, build_chart, extreme_alert, daily_summary
 from . import db as _db
 
@@ -146,7 +146,9 @@ def _loop():
                                             rsi_oversold=config.rsi_oversold_for(pair),
                                             rsi_overbought=config.rsi_overbought_for(pair),
                                             ema_gap=config.ema_gap_for(pair),
-                                            daily_ema=_daily_ema(pair))
+                                            daily_ema=_daily_ema(pair),
+                                            vol_period=config.vol_period_for(pair),
+                                            vol_mult=config.vol_mult_for(pair))
                        for pair in config.SPOT_TRADING_PAIRS}
 
             # Per-pair detail: log + web buffer only

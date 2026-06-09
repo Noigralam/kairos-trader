@@ -12,6 +12,7 @@ class Position:
     highest_price: float = 0.0  # tracks peak for trailing stop; 0.0 means use entry_price
     dca_count: int = 0
     opened_at: float = 0.0      # unix timestamp of entry (0 = unknown)
+    partial_closed: bool = False  # True after partial TP sell; remainder runs on tighter trail
 
     def peak(self) -> float:
         return self.highest_price if self.highest_price > 0 else self.entry_price

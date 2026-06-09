@@ -40,6 +40,8 @@ def compute_signal(
     ema_trend: int = 200,
     ema_gap: float = 0.0,
     daily_ema: float = None,  # daily EMA200 value; None = disabled
+    vol_period: int = 0,      # 0 = disabled; N = require volume > rolling mean × vol_mult
+    vol_mult: float = 1.5,
 ) -> StrategyResult:
     """
     RSI mean-reversion with EMA200 trend guard.
@@ -67,6 +69,13 @@ def compute_signal(
             return StrategyResult(Signal.HOLD,
                                   f"BUY blocked — price below daily EMA200 ({daily_ema:,.2f}) — sustained downtrend",
                                   rsi, ema_t)
+        if vol_period > 0 and "volume" in df.columns and len(df) >= vol_period:
+            vol_ma = df["volume"].rolling(vol_period).mean().iloc[-1]
+            cur_vol = df["volume"].iloc[-1]
+            if pd.notna(vol_ma) and cur_vol < vol_ma * vol_mult:
+                return StrategyResult(Signal.HOLD,
+                                      f"BUY blocked — volume {cur_vol:.0f} below {vol_mult}× {vol_period}-bar avg ({vol_ma * vol_mult:.0f})",
+                                      rsi, ema_t)
         return StrategyResult(Signal.BUY, f"RSI oversold ({rsi:.1f})", rsi, ema_t)
 
     if rsi > rsi_overbought:

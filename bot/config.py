@@ -38,6 +38,11 @@ SPOT_DAILY_EMA_FILTER    = os.getenv("SPOT_DAILY_EMA_FILTER", "false").lower() =
 SPOT_TIME_STOP_DAYS      = float(os.getenv("SPOT_TIME_STOP_DAYS", "0"))           # close stalled positions after N days; 0 = disabled
 SPOT_MAX_DRAWDOWN_PCT    = float(os.getenv("SPOT_MAX_DRAWDOWN_PCT", "0"))         # pause buys if portfolio drops >X% from peak; 0 = disabled
 SPOT_STOP_CHECK_INTERVAL = int(os.getenv("SPOT_STOP_CHECK_INTERVAL", "60"))       # seconds between between-candle stop checks
+SPOT_STOP_COOLDOWN_CANDLES  = int(os.getenv("SPOT_STOP_COOLDOWN_CANDLES", "0"))   # block re-entry for N candles after a trailing stop; 0 = disabled
+SPOT_VOLUME_FILTER_PERIOD   = int(os.getenv("SPOT_VOLUME_FILTER_PERIOD", "0"))    # volume must exceed rolling mean; 0 = disabled
+SPOT_VOLUME_FILTER_MULT     = float(os.getenv("SPOT_VOLUME_FILTER_MULT", "1.5"))  # volume multiple required
+SPOT_PARTIAL_CLOSE_PCT      = float(os.getenv("SPOT_PARTIAL_CLOSE_PCT", "0"))     # sell this fraction at TP, hold rest; 0 = disabled
+SPOT_PARTIAL_CLOSE_TRAIL_PCT = float(os.getenv("SPOT_PARTIAL_CLOSE_TRAIL_PCT", "0.02"))  # trailing stop on remainder after partial close
 
 def rsi_period_for(pair: str) -> int:
     return int(os.getenv(f"SPOT_RSI_PERIOD_{pair}", SPOT_RSI_PERIOD))
@@ -71,6 +76,21 @@ def dca_drop_for(pair: str) -> float:
 
 def dca_max_for(pair: str) -> int:
     return int(os.getenv(f"SPOT_DCA_MAX_{pair}", SPOT_DCA_MAX))
+
+def stop_cooldown_for(pair: str) -> int:
+    return int(os.getenv(f"SPOT_STOP_COOLDOWN_CANDLES_{pair}", SPOT_STOP_COOLDOWN_CANDLES))
+
+def vol_period_for(pair: str) -> int:
+    return int(os.getenv(f"SPOT_VOLUME_FILTER_PERIOD_{pair}", SPOT_VOLUME_FILTER_PERIOD))
+
+def vol_mult_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_VOLUME_FILTER_MULT_{pair}", SPOT_VOLUME_FILTER_MULT))
+
+def partial_close_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_PARTIAL_CLOSE_PCT_{pair}", SPOT_PARTIAL_CLOSE_PCT))
+
+def partial_close_trail_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_PARTIAL_CLOSE_TRAIL_PCT_{pair}", SPOT_PARTIAL_CLOSE_TRAIL_PCT))
 
 # ---------------------------------------------------------------------------
 # Futures (USDT-M perpetuals)

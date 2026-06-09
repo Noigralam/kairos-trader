@@ -25,6 +25,7 @@ class SimState:
     total_pnl: float = 0.0
     total_fees: float = 0.0
     portfolio_peak: float = 0.0
+    stop_cooldowns: dict = field(default_factory=dict)  # pair -> epoch expiry
 
 
 _state = SimState()
@@ -32,6 +33,7 @@ _state = SimState()
 
 def _save():
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+    now = _time.time()
     data = {
         "mode": config.SPOT_MODE,
         "balance": _state.balance,
@@ -39,6 +41,7 @@ def _save():
         "total_pnl": _state.total_pnl,
         "total_fees": _state.total_fees,
         "portfolio_peak": _state.portfolio_peak,
+        "stop_cooldowns": {p: t for p, t in _state.stop_cooldowns.items() if t > now},
         "positions": {
             pair: {
                 "pair": pos.pair,
@@ -49,6 +52,7 @@ def _save():
                 "highest_price": pos.highest_price,
                 "dca_count": pos.dca_count,
                 "opened_at": pos.opened_at,
+                "partial_closed": pos.partial_closed,
             }
             for pair, pos in _state.positions.items()
         },
@@ -69,6 +73,8 @@ def _load():
         _state.total_pnl = data.get("total_pnl", 0.0)
         _state.total_fees = data.get("total_fees", 0.0)
         _state.portfolio_peak = data.get("portfolio_peak", 0.0)
+        now = _time.time()
+        _state.stop_cooldowns = {p: t for p, t in data.get("stop_cooldowns", {}).items() if t > now}
         _state.positions = {}
         for pair, pos in data.get("positions", {}).items():
             pos.pop("stop_cooldown", None)  # removed field; silently discard so old state files still load
@@ -118,6 +124,11 @@ def _portfolio_value(balance: float, prices: dict | None) -> float:
 
 def open_position(pair: str, price: float, size_pct: float = None, prices: dict | None = None):
     if pair in _state.positions:
+        return
+    cooldown_until = _state.stop_cooldowns.get(pair, 0)
+    if cooldown_until > _time.time():
+        remaining = (cooldown_until - _time.time()) / 60
+        notify(f"[SKIP] {pair} buy blocked — stop cooldown active ({remaining:.0f} min remaining)", discord=False)
         return
     no_dca = config.dca_max_for(pair) == 0
     pct = size_pct if size_pct is not None else (1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT)
@@ -304,6 +315,18 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
         log_trade(pair, "BUY", price, bought, dca_value, buy_fee, mode="simulation", notes="dca")
 
 
+_INTERVAL_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400}
+
+
+def _set_stop_cooldown(pair: str):
+    candles = config.stop_cooldown_for(pair)
+    if candles <= 0:
+        return
+    secs = candles * _INTERVAL_SECONDS.get(config.SPOT_INTERVAL, 900)
+    _state.stop_cooldowns[pair] = _time.time() + secs
+    notify(f"[COOLDOWN] {pair} — re-entry blocked for {candles} candles ({secs//60:.0f} min)", discord=False)
+
+
 def close_position(pair: str, price: float, reason: str = "signal"):
     if pair not in _state.positions:
         return
@@ -329,6 +352,8 @@ def close_position(pair: str, price: float, reason: str = "signal"):
         _state.total_pnl    += pnl
         _state.total_fees   += sell_fee
         _state.balance = get_eur_balance()
+        if reason == "trailing_stop":
+            _set_stop_cooldown(pair)
         _save()
         if reason == "trailing_stop":
             trailing_stop_alert(pair, avg_price, pnl)
@@ -343,6 +368,8 @@ def close_position(pair: str, price: float, reason: str = "signal"):
         _state.total_trades += 1
         _state.total_pnl    += pnl
         _state.total_fees   += sell_fee
+        if reason == "trailing_stop":
+            _set_stop_cooldown(pair)
         _save()
         if reason == "trailing_stop":
             trailing_stop_alert(pair, price, pnl)
@@ -350,6 +377,55 @@ def close_position(pair: str, price: float, reason: str = "signal"):
             trade_alert("SELL", pair, price, pos.amount, exit_value, pnl=pnl, fee=sell_fee)
         log_trade(pair, "SELL", price, pos.amount, exit_value, sell_fee,
                   mode="simulation", pnl=pnl, notes=reason)
+
+
+def partial_close_position(pair: str, price: float):
+    """Sell a configured fraction of position at TP; leave remainder running on tighter trail."""
+    if pair not in _state.positions:
+        return
+    pos = _state.positions[pair]
+    pct = config.partial_close_for(pair)
+    if pct <= 0:
+        return
+
+    sell_amt = round_qty(pair, pos.amount * pct) if config.SPOT_MODE == "live" else pos.amount * pct
+
+    if config.SPOT_MODE == "live":
+        order = place_order(pair, "SELL", sell_amt)
+        fills = order.get("fills", [])
+        if fills:
+            avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
+            sell_amt  = sum(float(f["qty"]) for f in fills)
+            sell_fee  = sum(float(f["commission"]) for f in fills)
+        else:
+            avg_price = price
+            sell_fee  = sell_amt * price * SPOT_FEE
+        exit_value = sell_amt * avg_price
+        buy_fee    = pos.value_eur * (sell_amt / pos.amount) * SPOT_FEE
+        pnl        = (avg_price - pos.entry_price) * sell_amt - buy_fee - sell_fee
+        log_trade(pair, "SELL", avg_price, sell_amt, exit_value, sell_fee, mode="live", pnl=pnl, notes="partial_close")
+        _state.total_pnl  += pnl
+        _state.total_fees += sell_fee
+        _state.balance = get_eur_balance()
+    else:
+        avg_price  = price
+        exit_value = sell_amt * price
+        sell_fee   = exit_value * SPOT_FEE
+        buy_fee    = pos.value_eur * (sell_amt / pos.amount) * SPOT_FEE
+        pnl        = (price - pos.entry_price) * sell_amt - buy_fee - sell_fee
+        _state.balance    += exit_value - sell_fee
+        _state.total_pnl  += pnl
+        _state.total_fees += sell_fee
+        log_trade(pair, "SELL", price, sell_amt, exit_value, sell_fee, mode="simulation", pnl=pnl, notes="partial_close")
+
+    # update position: reduce amount, disable TP, activate tighter trail
+    value_frac = sell_amt / pos.amount
+    pos.amount        -= sell_amt
+    pos.value_eur     -= pos.value_eur * value_frac
+    pos.take_profit_price = 0.0
+    pos.partial_closed    = True
+    _save()
+    trade_alert("SELL", pair, avg_price, sell_amt, exit_value, pnl=pnl, fee=sell_fee)
 
 
 def check_stops(prices: dict):
@@ -360,14 +436,19 @@ def check_stops(prices: dict):
                 continue
             price = prices[pair]
             updated = update_peak(pos, price)
-            if check_take_profit(pos, price):
-                close_position(pair, price, reason="take_profit")
-            elif check_trailing_stop(pos, price, floor_pct=config.profit_floor_for(pair), trail_pct=config.trailing_stop_for(pair)):
+            floor = 0.0 if pos.partial_closed else config.profit_floor_for(pair)
+            trail = config.partial_close_trail_for(pair) if pos.partial_closed else config.trailing_stop_for(pair)
+            if check_take_profit(pos, price) and not pos.partial_closed:
+                if config.partial_close_for(pair) > 0:
+                    partial_close_position(pair, price)
+                else:
+                    close_position(pair, price, reason="take_profit")
+            elif check_trailing_stop(pos, price, floor_pct=floor, trail_pct=trail):
                 close_position(pair, price, reason="trailing_stop")
             elif (config.time_stop_for(pair) > 0
                   and pos.opened_at > 0
                   and (now - pos.opened_at) / 86400 > config.time_stop_for(pair)
-                  and pos.peak() <= pos.trailing_stop_level(floor_pct=config.profit_floor_for(pair), trail_pct=config.trailing_stop_for(pair))):
+                  and pos.peak() <= pos.trailing_stop_level(floor_pct=floor, trail_pct=trail)):
                 age = (now - pos.opened_at) / 86400
                 notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
                 close_position(pair, price, reason="time_stop")
@@ -410,6 +491,7 @@ class SpotShadowSimulator:
         self.total_fees     = 0.0
         self.portfolio_peak = 0.0
         self.started_at: str | None = None
+        self._stop_cooldowns: dict[str, float] = {}
         self._load()
         if self.started_at is None:
             import datetime, zoneinfo
@@ -422,9 +504,13 @@ class SpotShadowSimulator:
         return self.overrides.get(key, default)
 
     def _trailing_stop_level(self, pos: Position) -> float:
-        fee   = config.SPOT_FEE
-        floor = self._o("floor_pct", config.profit_floor_for(pos.pair))
-        trail = self._o("trail_pct", config.trailing_stop_for(pos.pair))
+        fee = config.SPOT_FEE
+        if pos.partial_closed:
+            floor = 0.0
+            trail = config.partial_close_trail_for(pos.pair)
+        else:
+            floor = self._o("floor_pct", config.profit_floor_for(pos.pair))
+            trail = self._o("trail_pct", config.trailing_stop_for(pos.pair))
         return max(
             pos.entry_price * (1 + fee + floor) / (1 - fee),
             pos.peak() * (1 - trail),
@@ -453,6 +539,7 @@ class SpotShadowSimulator:
                     "highest_price":      pos.highest_price,
                     "dca_count":          pos.dca_count,
                     "opened_at":          pos.opened_at,
+                    "partial_closed":     pos.partial_closed,
                 }
                 for pair, pos in self.positions.items()
             },
@@ -493,6 +580,9 @@ class SpotShadowSimulator:
     def _open(self, pair: str, price: float):
         if pair in self.positions:
             return
+        cooldown_until = self._stop_cooldowns.get(pair, 0)
+        if cooldown_until > _time.time():
+            return
         tp_pct      = self._o("tp_pct",  config.take_profit_for(pair))
         max_sz      = self.balance / (1 + SPOT_FEE)
         no_dca      = self._o("dca_max", config.dca_max_for(pair)) == 0
@@ -531,6 +621,26 @@ class SpotShadowSimulator:
         self.total_fees  += buy_fee
         log_trade(pair, "BUY", price, bought, size, buy_fee, mode=self._db_mode, notes="dca")
 
+    def _partial_close(self, pair: str, price: float):
+        pos = self.positions.get(pair)
+        if pos is None:
+            return
+        pct      = self._o("partial_close_pct", config.partial_close_for(pair))
+        sell_amt = pos.amount * pct
+        exit_val = sell_amt * price
+        sell_fee = exit_val * SPOT_FEE
+        buy_fee  = pos.value_eur * pct * SPOT_FEE
+        pnl      = (price - pos.entry_price) * sell_amt - buy_fee - sell_fee
+        self.balance    += exit_val - sell_fee
+        self.total_pnl  += pnl
+        self.total_fees += sell_fee
+        log_trade(pair, "SELL", price, sell_amt, exit_val, sell_fee, mode=self._db_mode, pnl=pnl, notes="partial_close")
+        value_frac = sell_amt / pos.amount
+        pos.amount           -= sell_amt
+        pos.value_eur        -= pos.value_eur * value_frac
+        pos.take_profit_price = 0.0
+        pos.partial_closed    = True
+
     def _close(self, pair: str, price: float, reason: str = "signal"):
         pos = self.positions.pop(pair, None)
         if pos is None:
@@ -543,6 +653,11 @@ class SpotShadowSimulator:
         self.total_trades   += 1
         self.total_pnl      += pnl
         self.total_fees     += sell_fee
+        if reason == "trailing_stop":
+            candles = self._o("stop_cooldown", config.stop_cooldown_for(pair))
+            if candles > 0:
+                secs = candles * _INTERVAL_SECONDS.get(self.interval, 900)
+                self._stop_cooldowns[pair] = _time.time() + secs
         log_trade(pair, "SELL", price, pos.amount, exit_value, sell_fee, mode=self._db_mode, pnl=pnl, notes=reason)
 
     # --- public API ---
@@ -562,8 +677,12 @@ class SpotShadowSimulator:
             if pos:
                 update_peak(pos, price)
                 stop = self._trailing_stop_level(pos)
-                if price >= pos.take_profit_price > 0:
-                    self._close(pair, price, "take_profit")
+                if price >= pos.take_profit_price > 0 and not pos.partial_closed:
+                    pct = self._o("partial_close_pct", config.partial_close_for(pair))
+                    if pct > 0:
+                        self._partial_close(pair, price)
+                    else:
+                        self._close(pair, price, "take_profit")
                     self._save()
                     return
                 if pos.peak() > stop and price <= stop:
@@ -579,10 +698,12 @@ class SpotShadowSimulator:
             df     = get_df(pair, self.interval)
             result = compute_signal(
                 df,
-                rsi_period   = self._o("rsi_period",   config.rsi_period_for(pair)),
-                rsi_oversold = self._o("rsi_oversold",  config.rsi_oversold_for(pair)),
+                rsi_period     = self._o("rsi_period",     config.rsi_period_for(pair)),
+                rsi_oversold   = self._o("rsi_oversold",   config.rsi_oversold_for(pair)),
                 rsi_overbought = self._o("rsi_overbought", config.rsi_overbought_for(pair)),
-                ema_gap      = self._o("ema_gap",       config.ema_gap_for(pair)),
+                ema_gap        = self._o("ema_gap",        config.ema_gap_for(pair)),
+                vol_period     = self._o("vol_period",     config.vol_period_for(pair)),
+                vol_mult       = self._o("vol_mult",       config.vol_mult_for(pair)),
             )
 
             if result.signal == Signal.BUY and pair not in self.positions:
@@ -620,8 +741,12 @@ class SpotShadowSimulator:
                     continue
                 updated = update_peak(pos, price)
                 stop    = self._trailing_stop_level(pos)
-                if price >= pos.take_profit_price > 0:
-                    self._close(pair, price, "take_profit")
+                if price >= pos.take_profit_price > 0 and not pos.partial_closed:
+                    pct = self._o("partial_close_pct", config.partial_close_for(pair))
+                    if pct > 0:
+                        self._partial_close(pair, price)
+                    else:
+                        self._close(pair, price, "take_profit")
                     changed = True
                 elif pos.peak() > stop and price <= stop:
                     self._close(pair, price, "trailing_stop")
