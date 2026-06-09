@@ -146,6 +146,11 @@ See `.env.example` for the full annotated list. Key settings:
 | `SPOT_TIME_STOP_DAYS` | `0` | Close stalled positions after N days (0 = off) |
 | `SPOT_MAX_DRAWDOWN_PCT` | `0` | Pause buys if portfolio drops >X% from peak (0 = off) |
 | `SPOT_STOP_CHECK_INTERVAL` | `60` | Between-candle stop check frequency (seconds) |
+| `SPOT_STOP_COOLDOWN_CANDLES` | `0` | Block re-entry for N candles after a trailing stop fires (0 = off) |
+| `SPOT_VOLUME_FILTER_PERIOD` | `0` | Require current candle volume > N-bar rolling mean (0 = off) |
+| `SPOT_VOLUME_FILTER_MULT` | `1.5` | Volume must exceed this multiple of the rolling mean |
+| `SPOT_PARTIAL_CLOSE_PCT` | `0` | Sell this fraction of the position at take-profit, hold the rest (0 = off) |
+| `SPOT_PARTIAL_CLOSE_TRAIL_PCT` | `0.02` | Trailing stop on the remainder after a partial close |
 
 Per-pair overrides are supported for the following settings — append the pair name to the variable:
 
@@ -162,6 +167,11 @@ Per-pair overrides are supported for the following settings — append the pair 
 | `SPOT_DCA_MAX` | `SPOT_DCA_MAX_ETHEUR=2` |
 | `SPOT_DCA_DROP_PCT` | `SPOT_DCA_DROP_PCT_SOLEUR=0.02` |
 | `SPOT_TIME_STOP_DAYS` | `SPOT_TIME_STOP_DAYS_ETHEUR=14` |
+| `SPOT_STOP_COOLDOWN_CANDLES` | `SPOT_STOP_COOLDOWN_CANDLES_SOLEUR=3` |
+| `SPOT_VOLUME_FILTER_PERIOD` | `SPOT_VOLUME_FILTER_PERIOD_ETHEUR=20` |
+| `SPOT_VOLUME_FILTER_MULT` | `SPOT_VOLUME_FILTER_MULT_ETHEUR=2.0` |
+| `SPOT_PARTIAL_CLOSE_PCT` | `SPOT_PARTIAL_CLOSE_PCT_SOLEUR=0.5` |
+| `SPOT_PARTIAL_CLOSE_TRAIL_PCT` | `SPOT_PARTIAL_CLOSE_TRAIL_PCT_SOLEUR=0.03` |
 
 When `SPOT_DCA_MAX` is 0 for a pair, the bot goes all-in on entry (no capital reserved for tranches that will never come).
 
@@ -185,6 +195,9 @@ Enable profiles with `SPOT_SHADOW_PROFILES=ACTIVE,HYBRID,ETH` (comma-separated n
 | `EMA_GAP_PCT` | Min % above EMA200 to allow a buy |
 | `DCA_MAX` / `DCA_DROP_PCT` / `DCA_STEP_PCT` / `DCA_SIZE_PCT` | DCA parameters |
 | `POSITION_SIZE_PCT` | Fraction of balance per trade |
+| `STOP_COOLDOWN_CANDLES` | Block re-entry for N candles after trailing stop (0 = off) |
+| `VOLUME_FILTER_PERIOD` / `VOLUME_FILTER_MULT` | Volume filter parameters |
+| `PARTIAL_CLOSE_PCT` / `PARTIAL_CLOSE_TRAIL_PCT` | Partial close fraction and trailing stop on remainder |
 
 Example: `SPOT_SHADOW_ACTIVE_PAIRS=ETHEUR,SOLEUR`, `SPOT_SHADOW_ACTIVE_DCA_MAX=0`.
 
