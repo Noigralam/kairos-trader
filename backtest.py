@@ -3,6 +3,7 @@ Unified backtest tool.
 
 Usage:
     python backtest.py [days]               # pair comparison: solo vs combined
+    python backtest.py shadows [days]       # backtest all shadow profiles, ranked by return
     python backtest.py sweep exit  [days]   # sell RSI + take-profit sweep
     python backtest.py sweep floor [days]   # profit floor sweep
     python backtest.py sweep trail [days]   # trailing stop sweep
@@ -12,6 +13,7 @@ Usage:
     python backtest.py sweep all   [days]   # run every sweep
     python backtest.py topup [start] [monthly] [days]  # monthly top-up simulation
 
+Add --cached to any command to skip candle syncing and use only local candles.db data.
 Days can be one or multiple values: python backtest.py sweep exit 365 180 90
 """
 import sys
@@ -32,6 +34,8 @@ WARMUP   = 210
 PAIRS    = ["ETHEUR", "SOLEUR"]
 CANDLES_PER_DAY = {"1m": 1440, "5m": 288, "15m": 96, "30m": 48, "1h": 24, "4h": 6, "1d": 1}
 
+USE_CACHE = False  # set by --cached flag; skips initial_sync, uses only candles.db
+
 
 # ---------------------------------------------------------------------------
 # Data
@@ -41,7 +45,7 @@ def fetch(pair: str, days: int, interval: str = INTERVAL) -> pd.DataFrame:
     cpd    = CANDLES_PER_DAY.get(interval, 96)
     needed = days * cpd + WARMUP
     df = get_df(pair, interval, limit=needed)
-    if len(df) >= needed * 0.9:
+    if len(df) >= needed * 0.9 or USE_CACHE:
         return df
     print(f"  Syncing {pair}/{interval} {days}d…", flush=True)
     initial_sync(pair, interval, days=days)
@@ -1150,15 +1154,97 @@ def sweep_solfocus(days_list: list[int]):
 
 
 # ---------------------------------------------------------------------------
+# Shadow profile comparison
+# ---------------------------------------------------------------------------
+
+def run_shadow_backtest(days_list: list[int]):
+    """Run every configured shadow profile and rank by return."""
+    profiles = config.get_shadow_profiles()
+    if not profiles:
+        print("No shadow profiles configured (SPOT_SHADOW_PROFILES is empty).")
+        return
+
+    for days in days_list:
+        _header(days, "Shadow profile comparison", wide=True)
+        print(f"  {'#':<3}  {'Profile':<16}  {'Pairs':<22}  {'Return':>8}  {'PnL':>8}"
+              f"  {'n':>4}  {'W/L':<7}  Exits")
+        print(f"  {'─'*3}  {'─'*16}  {'─'*22}  {'─'*8}  {'─'*8}"
+              f"  {'─'*4}  {'─'*7}  {'─'*28}")
+
+        results = []
+        for name in profiles:
+            ov      = config.get_shadow_overrides(name)
+            pairs   = ov.get("pairs", config.SPOT_TRADING_PAIRS)
+            start   = float(ov.get("balance", config.SPOT_SIMULATION_BALANCE))
+            interval = ov.get("interval", config.SPOT_INTERVAL)
+            dca_max  = ov.get("dca_max", config.SPOT_DCA_MAX)
+            no_dca   = dca_max == 0
+
+            all_trades: list[Trade] = []
+            pair_balance = start / len(pairs) if len(pairs) > 1 else start
+
+            for pair in pairs:
+                df = fetch(pair, days, interval=interval)
+                kwargs = dict(
+                    rsi_buy        = ov.get("rsi_oversold",  config.rsi_oversold_for(pair)),
+                    rsi_sell       = ov.get("rsi_overbought", config.rsi_overbought_for(pair)),
+                    rsi_period     = ov.get("rsi_period",    config.rsi_period_for(pair)),
+                    trail_pct      = ov.get("trail_pct",     config.trailing_stop_for(pair)),
+                    floor_pct      = ov.get("floor_pct",     config.profit_floor_for(pair)),
+                    tp_pct         = ov.get("tp_pct",        config.take_profit_for(pair)),
+                    dca_drop       = ov.get("dca_drop",      config.dca_drop_for(pair)),
+                    dca_pct        = ov.get("dca_pct",       config.SPOT_DCA_SIZE_PCT),
+                    dca_step       = ov.get("dca_step",      config.SPOT_DCA_STEP_PCT),
+                    ema_gap        = ov.get("ema_gap",       config.ema_gap_for(pair)),
+                    min_exit       = ov.get("min_exit",      config.min_exit_for(pair)),
+                    time_stop_days = ov.get("time_stop_days", config.time_stop_for(pair)),
+                    max_dca        = dca_max,
+                    enable_dca     = not no_dca,
+                    interval       = interval,
+                    pos_pct        = ov.get("pos_pct", 1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT),
+                )
+                trades, _ = run_pair(pair, df, pair_balance, **kwargs)
+                all_trades.extend(trades)
+
+            realized   = [t for t in all_trades if t.exit_reason != "end_of_data"]
+            total_pnl  = sum(t.pnl for t in realized)
+            return_pct = total_pnl / start * 100
+            results.append((name, pairs, realized, total_pnl, return_pct))
+
+        results.sort(key=lambda x: x[4], reverse=True)
+        for rank, (name, pairs, realized, pnl, ret) in enumerate(results, 1):
+            wins = sum(1 for t in realized if t.pnl > 0)
+            n    = len(realized)
+            wl   = f"{wins}/{n - wins}" if n else "—"
+            reasons: dict[str, int] = {}
+            for t in realized:
+                reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
+            exits     = "  ".join(f"{k}×{v}" for k, v in reasons.items())
+            pairs_str = "+".join(pairs)
+            marker    = "  ◄ live" if pairs == config.SPOT_TRADING_PAIRS and name not in config.get_shadow_profiles() else ""
+            print(f"  {rank:<3}  {name:<16}  {pairs_str:<22}  {ret:>+7.1f}%  {pnl:>+8.2f}"
+                  f"  {n:>4}  {wl:<7}  {exits}{marker}")
+        print()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    args     = sys.argv[1:]
+    args = sys.argv[1:]
+
+    if "--cached" in args:
+        USE_CACHE = True
+        args = [a for a in args if a != "--cached"]
+
     day_args = [int(a) for a in args if a.isdigit()]
     str_args = [a for a in args if not a.isdigit()]
 
-    if str_args and str_args[0] == "sweep":
+    if str_args and str_args[0] == "shadows":
+        days_list = day_args or [365, 180]
+        run_shadow_backtest(days_list)
+    elif str_args and str_args[0] == "sweep":
         mode      = str_args[1].lower() if len(str_args) > 1 else "all"
         days_list = day_args or [730, 365]
         sweeps = {

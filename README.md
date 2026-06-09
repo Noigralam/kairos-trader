@@ -257,6 +257,8 @@ When `DISCORD_BOT_TOKEN` is set, the following slash commands are available:
 ```bash
 python backtest.py                           # pair comparison, current settings
 python backtest.py 90                        # custom day window
+python backtest.py shadows                   # all shadow profiles ranked by return (365d + 180d)
+python backtest.py shadows 365 180 90        # custom day windows
 
 python backtest.py topup 200 25 730          # monthly top-up: start=€200, +€25/month, 730 days
 
@@ -268,6 +270,13 @@ python backtest.py sweep dca                 # DCA drop % + size %
 python backtest.py sweep all                 # all sweeps
 
 python backtest.py sweep trail 730 365 180   # custom day windows
+```
+
+Add `--cached` to any command to skip candle syncing and use only the local `candles.db` cache — faster runs and reproducible results:
+
+```bash
+python backtest.py shadows --cached
+python backtest.py sweep trail --cached 365
 ```
 
 ### Futures
