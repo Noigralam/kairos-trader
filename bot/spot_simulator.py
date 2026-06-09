@@ -492,10 +492,12 @@ class SpotShadowSimulator:
     def _open(self, pair: str, price: float):
         if pair in self.positions:
             return
-        pct    = self._o("pos_pct", config.SPOT_POSITION_SIZE_PCT)
-        tp_pct = self._o("tp_pct",  config.take_profit_for(pair))
-        max_sz = self.balance / (1 + SPOT_FEE)
-        size   = min(self.balance * pct, max_sz)
+        tp_pct      = self._o("tp_pct",  config.take_profit_for(pair))
+        max_sz      = self.balance / (1 + SPOT_FEE)
+        no_dca      = self._o("dca_max", config.SPOT_DCA_MAX) == 0
+        pos_pct_set = "pos_pct" in self.overrides
+        pct         = self._o("pos_pct", config.SPOT_POSITION_SIZE_PCT)
+        size        = max_sz if (no_dca and not pos_pct_set) else min(self.balance * pct, max_sz)
         if size < 1:
             return
         buy_fee = size * SPOT_FEE
