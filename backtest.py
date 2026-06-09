@@ -179,6 +179,8 @@ def run_pair(
     partial_close_pct:      float = 0.0,   # 0 = full close at TP; >0 = sell this fraction and trail the rest
     partial_close_trail:    float = 0.02,  # trailing stop on remainder after partial close (floor=0)
     dca_reset_on_partial:   bool  = False, # reset DCA count after a partial close so the position can DCA again on reversal
+    pyramid_pct:            float = 0.0,   # re-enter immediately after partial close with this fraction of freed cash
+    pyramid_trail:          float = 0.03,  # trailing stop on pyramid position (floor=0)
 ) -> tuple[list[Trade], float]:
 
     fee_rate   = config.SPOT_FEE
@@ -206,6 +208,7 @@ def run_pair(
     dca_count:      int  = 0
     cooldown_until: int  = 0
     partial_closed: bool = False
+    pyramid_pos: Position | None = None
     trades: list[Trade] = []
     _dca_step = dca_step if dca_step is not None else dca_drop
 
@@ -244,6 +247,12 @@ def run_pair(
                     partial_closed = True
                     if dca_reset_on_partial:
                         dca_count = 0
+                    if pyramid_pct > 0:
+                        py_size = (sell_amount * ep - sf) * pyramid_pct
+                        if py_size >= 1:
+                            pyramid_pos = Position(pair, ep, py_size / ep, py_size,
+                                                   ep * (1 + tp_pct), ep)
+                            balance -= py_size + py_size * fee_rate
                 else:
                     bf = position.value_eur * fee_rate
                     sf = position.amount * ep * fee_rate
@@ -286,8 +295,34 @@ def run_pair(
                 partial_closed = False
                 continue
 
-        # update portfolio peak (cash only when no position, cash+pos otherwise)
-        pos_val = position.amount * price if position is not None else 0.0
+        # process pyramid position (momentum continuation after partial close)
+        if pyramid_pos is not None:
+            update_peak(pyramid_pos, hi)
+            py_stop = pyramid_pos.peak() * (1 - pyramid_trail)
+            if hi >= pyramid_pos.take_profit_price:
+                ep2 = pyramid_pos.take_profit_price
+                bf2 = pyramid_pos.value_eur * fee_rate
+                sf2 = pyramid_pos.amount * ep2 * fee_rate
+                balance += pyramid_pos.amount * ep2 - sf2
+                trades.append(Trade(calc_pnl(pyramid_pos, ep2, bf2, sf2), bf2 + sf2, "pyramid_tp"))
+                pyramid_pos = None
+            elif pyramid_pos.peak() > py_stop and lo <= py_stop:
+                ep2 = py_stop
+                bf2 = pyramid_pos.value_eur * fee_rate
+                sf2 = pyramid_pos.amount * ep2 * fee_rate
+                balance += pyramid_pos.amount * ep2 - sf2
+                trades.append(Trade(calc_pnl(pyramid_pos, ep2, bf2, sf2), bf2 + sf2, "pyramid_stop"))
+                pyramid_pos = None
+            elif rsi > rsi_sell and price >= pyramid_pos.entry_price * (1 + min_exit):
+                bf2 = pyramid_pos.value_eur * fee_rate
+                sf2 = pyramid_pos.amount * price * fee_rate
+                balance += pyramid_pos.amount * price - sf2
+                trades.append(Trade(calc_pnl(pyramid_pos, price, bf2, sf2), bf2 + sf2, "pyramid_signal"))
+                pyramid_pos = None
+
+        # update portfolio peak
+        pos_val = (position.amount * price if position is not None else 0.0
+                   ) + (pyramid_pos.amount * price if pyramid_pos is not None else 0.0)
         portfolio_peak = max(portfolio_peak, balance + pos_val)
 
         daily_ema_val = float(daily_ema_arr[i]) if daily_ema_arr is not None else None
@@ -347,6 +382,13 @@ def run_pair(
         sf = position.amount * price * fee_rate
         balance += position.amount * price - sf
         trades.append(Trade(calc_pnl(position, price, bf, sf), bf + sf, "end_of_data", position.dca_count > 0))
+
+    if pyramid_pos is not None:
+        price = float(close_arr[-1])
+        bf2 = pyramid_pos.value_eur * fee_rate
+        sf2 = pyramid_pos.amount * price * fee_rate
+        balance += pyramid_pos.amount * price - sf2
+        trades.append(Trade(calc_pnl(pyramid_pos, price, bf2, sf2), bf2 + sf2, "end_of_data"))
 
     return trades, balance
 
@@ -624,6 +666,58 @@ def sweep_dca_partial(days_list: list[int]):
         dict(label="TP=12%  partial=50% trail=3%  DCA reset            ", tp_pct=0.12, partial_close_pct=0.50, partial_close_trail=0.03, dca_reset_on_partial=True, **NO_TRAIL, **NO_SIGNAL),
     ]
     _run_sweep(days_list, "DCA reset on partial close sweep", scenarios, PAIRS)
+
+
+def sweep_pyramid(days_list: list[int]):
+    """After partial close at TP, immediately re-enter with a fraction of freed cash as a momentum continuation trade."""
+    NO_TRAIL  = dict(trail_pct=1.0, floor_pct=1.0)
+    NO_SIGNAL = dict(rsi_sell=999)
+    base = dict(tp_pct=0.10, partial_close_pct=0.50, **NO_TRAIL, **NO_SIGNAL)
+    scenarios = [
+        dict(label="current  (no partial close)                        "),
+        dict(label="TP=10%  partial=50%  no pyramid                    ", **base),
+        dict(label="TP=10%  partial=50%  pyramid=25%  p_trail=2%       ", **base, pyramid_pct=0.25, pyramid_trail=0.02),
+        dict(label="TP=10%  partial=50%  pyramid=25%  p_trail=3%       ", **base, pyramid_pct=0.25, pyramid_trail=0.03),
+        dict(label="TP=10%  partial=50%  pyramid=50%  p_trail=2%       ", **base, pyramid_pct=0.50, pyramid_trail=0.02),
+        dict(label="TP=10%  partial=50%  pyramid=50%  p_trail=3%       ", **base, pyramid_pct=0.50, pyramid_trail=0.03),
+        dict(label="TP=10%  partial=50%  pyramid=50%  p_trail=5%       ", **base, pyramid_pct=0.50, pyramid_trail=0.05),
+        dict(label="TP=10%  partial=50%  pyramid=100% p_trail=3%       ", **base, pyramid_pct=1.00, pyramid_trail=0.03),
+        dict(label="TP=10%  partial=50%  pyramid=100% p_trail=5%       ", **base, pyramid_pct=1.00, pyramid_trail=0.05),
+        dict(label="TP=7%   partial=50%  pyramid=50%  p_trail=3%       ", tp_pct=0.07, partial_close_pct=0.50, pyramid_pct=0.50, pyramid_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=7%   partial=50%  pyramid=100% p_trail=3%       ", tp_pct=0.07, partial_close_pct=0.50, pyramid_pct=1.00, pyramid_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+    ]
+    _run_sweep(days_list, "Pyramid sweep (re-enter with freed cash immediately after partial close)", scenarios, PAIRS)
+
+
+def sweep_combined_partial(days_list: list[int]):
+    """Does partial close help the combined ETH+SOL portfolio vs current?"""
+    NO_TRAIL  = dict(trail_pct=1.0, floor_pct=1.0)
+    NO_SIGNAL = dict(rsi_sell=999)
+    start = config.SPOT_SIMULATION_BALANCE
+    half  = start / 2
+
+    scenarios = [
+        dict(label="current  (signal + trail)                          "),
+        dict(label="TP=7%   TP-only  full close                        ", tp_pct=0.07, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  TP-only  full close                        ", tp_pct=0.10, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=7%   partial=50%  trail=3%                      ", tp_pct=0.07, partial_close_pct=0.50, partial_close_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50%  trail=3%                      ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50%  trail=3%  pyramid=50%         ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.03, pyramid_pct=0.50, pyramid_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=10%  partial=50%  trail=3%  pyramid=100%        ", tp_pct=0.10, partial_close_pct=0.50, partial_close_trail=0.03, pyramid_pct=1.00, pyramid_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+        dict(label="TP=12%  partial=50%  trail=3%                      ", tp_pct=0.12, partial_close_pct=0.50, partial_close_trail=0.03, **NO_TRAIL, **NO_SIGNAL),
+    ]
+
+    for days in days_list:
+        _header(days, "ETH+SOL combined — partial close + pyramid effect on portfolio", wide=True)
+        print(f"  {'Scenario':<52}  {'n':>3}      {'W/L':<7}  {'PnL':>8}  {'avg':>6}  {'worst':>7}  {'best':>6}  fees   dca  exits")
+        print(f"  {'─'*52}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*4}")
+        dfs = {p: fetch(p, days) for p in PAIRS}
+        for s in scenarios:
+            kwargs = {k: v for k, v in s.items() if k != "label"}
+            eth_t, _ = run_pair("ETHEUR", dfs["ETHEUR"], half, **kwargs)
+            sol_t, _ = run_pair("SOLEUR", dfs["SOLEUR"], half, **kwargs)
+            summarise(s["label"], eth_t + sol_t, start, wide=True)
+        print()
 
 
 def sweep_divergence(days_list: list[int]):
@@ -1336,9 +1430,11 @@ if __name__ == "__main__":
             "htfrsi":      sweep_htf_rsi,
             "volume":       sweep_volume,
             "cooldown":     sweep_cooldown,
-            "partialclose":  sweep_partialclose,
-            "dcapartial":    sweep_dca_partial,
-            "divergence":    sweep_divergence,
+            "partialclose":      sweep_partialclose,
+            "dcapartial":        sweep_dca_partial,
+            "pyramid":           sweep_pyramid,
+            "combinedpartial":   sweep_combined_partial,
+            "divergence":        sweep_divergence,
             "multipos":    sweep_multipos,
             "solfocus":    sweep_solfocus,
         }
