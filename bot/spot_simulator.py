@@ -119,7 +119,7 @@ def _portfolio_value(balance: float, prices: dict | None) -> float:
 def open_position(pair: str, price: float, size_pct: float = None, prices: dict | None = None):
     if pair in _state.positions:
         return
-    no_dca = config.SPOT_DCA_MAX == 0
+    no_dca = config.dca_max_for(pair) == 0
     pct = size_pct if size_pct is not None else (1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT)
 
     if config.SPOT_MODE == "live":
@@ -247,7 +247,7 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
     if pair not in _state.positions:
         return
     pos = _state.positions[pair]
-    if pos.dca_count >= config.SPOT_DCA_MAX:
+    if pos.dca_count >= config.dca_max_for(pair):
         return
 
     if config.SPOT_MODE == "live":
@@ -265,7 +265,7 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
 
     max_size  = balance / (1 + SPOT_FEE)
     min_notional = get_min_notional(pair)
-    is_last_dca = (pos.dca_count + 1 >= config.SPOT_DCA_MAX)
+    is_last_dca = (pos.dca_count + 1 >= config.dca_max_for(pair))
     dca_value = max_size if is_last_dca else min(balance * config.SPOT_DCA_SIZE_PCT, max_size)
     # if leftover after DCA would be below minimum tradeable, use all available balance
     if balance - dca_value < min_notional:
@@ -495,7 +495,7 @@ class SpotShadowSimulator:
             return
         tp_pct      = self._o("tp_pct",  config.take_profit_for(pair))
         max_sz      = self.balance / (1 + SPOT_FEE)
-        no_dca      = self._o("dca_max", config.SPOT_DCA_MAX) == 0
+        no_dca      = self._o("dca_max", config.dca_max_for(pair)) == 0
         pos_pct_set = "pos_pct" in self.overrides
         pct         = self._o("pos_pct", config.SPOT_POSITION_SIZE_PCT)
         size        = max_sz if (no_dca and not pos_pct_set) else min(self.balance * pct, max_sz)
@@ -513,7 +513,7 @@ class SpotShadowSimulator:
         pos = self.positions.get(pair)
         if pos is None:
             return
-        dca_max = self._o("dca_max", config.SPOT_DCA_MAX)
+        dca_max = self._o("dca_max", config.dca_max_for(pair))
         tp_pct  = self._o("tp_pct",  config.take_profit_for(pair))
         if pos.dca_count >= dca_max:
             return
@@ -593,7 +593,7 @@ class SpotShadowSimulator:
                 dca_step = self._o("dca_step", config.SPOT_DCA_STEP_PCT)
                 drop     = (pos.entry_price - price) / pos.entry_price
                 next_drop = dca_drop + pos.dca_count * dca_step
-                if pos.dca_count < self._o("dca_max", config.SPOT_DCA_MAX) and drop >= next_drop:
+                if pos.dca_count < self._o("dca_max", config.dca_max_for(pair)) and drop >= next_drop:
                     self._dca(pair, price)
                 if result.signal == Signal.SELL:
                     min_exit = self._o("min_exit", config.min_exit_for(pair))

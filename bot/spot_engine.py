@@ -188,7 +188,7 @@ def _loop():
                     pos = state.positions[pair]
                     drop = (pos.entry_price - prices[pair]) / pos.entry_price
                     next_drop = config.dca_drop_for(pair) + pos.dca_count * config.SPOT_DCA_STEP_PCT
-                    if pos.dca_count < config.SPOT_DCA_MAX and drop >= next_drop:
+                    if pos.dca_count < config.dca_max_for(pair) and drop >= next_drop:
                         prev_count = pos.dca_count
                         dca_position(pair, prices[pair], prices=prices)
                         if pos.dca_count > prev_count:

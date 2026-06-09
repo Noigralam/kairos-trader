@@ -69,6 +69,9 @@ def profit_floor_for(pair: str) -> float:
 def dca_drop_for(pair: str) -> float:
     return float(os.getenv(f"SPOT_DCA_DROP_PCT_{pair}", SPOT_DCA_DROP_PCT))
 
+def dca_max_for(pair: str) -> int:
+    return int(os.getenv(f"SPOT_DCA_MAX_{pair}", SPOT_DCA_MAX))
+
 # ---------------------------------------------------------------------------
 # Futures (USDT-M perpetuals)
 # ---------------------------------------------------------------------------
