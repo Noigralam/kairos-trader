@@ -119,7 +119,8 @@ def _portfolio_value(balance: float, prices: dict | None) -> float:
 def open_position(pair: str, price: float, size_pct: float = None, prices: dict | None = None):
     if pair in _state.positions:
         return
-    pct = size_pct if size_pct is not None else config.SPOT_POSITION_SIZE_PCT
+    no_dca = config.SPOT_DCA_MAX == 0
+    pct = size_pct if size_pct is not None else (1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT)
 
     if config.SPOT_MODE == "live":
         balance = get_eur_balance()
