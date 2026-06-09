@@ -202,6 +202,52 @@ def api_shadows():
     return jsonify([{"name": s.name, "overrides": s.overrides} for s in get_shadows()])
 
 
+@app.route("/api/shadows/ranking")
+def api_shadows_ranking():
+    from bot.spot_simulator import get_shadows, get_state
+    from bot.spot_exchange import get_price
+
+    # live return for comparison baseline
+    state = get_state()
+    live_prices = {}
+    for p in config.SPOT_TRADING_PAIRS:
+        try:
+            live_prices[p] = get_price(p)
+        except Exception:
+            pass
+    live_open_val   = sum(live_prices.get(p, pos.value_eur) * pos.amount for p, pos in state.positions.items())
+    live_portfolio  = state.balance + live_open_val
+    live_starting   = config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else db.get_starting_balance(config.SPOT_MODE)
+    live_return_pct = round((live_portfolio / live_starting - 1) * 100, 2) if live_starting and live_starting > 0 else None
+
+    rows = []
+    for s in get_shadows():
+        prices = {}
+        for p in (s.pairs or config.SPOT_TRADING_PAIRS):
+            try:
+                prices[p] = get_price(p)
+            except Exception:
+                pass
+        open_val  = sum(prices.get(p, pos.value_eur) * pos.amount for p, pos in s.positions.items())
+        portfolio = s.balance + open_val
+        starting  = float(s.overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+        ret       = round((portfolio / starting - 1) * 100, 2) if starting > 0 else 0
+        stats     = db.get_trade_stats(s._db_mode)
+        rows.append({
+            "name":            s.name,
+            "pairs":           s.pairs or config.SPOT_TRADING_PAIRS,
+            "portfolio_value": round(portfolio, 2),
+            "starting_balance": starting,
+            "return_pct":      ret,
+            "pnl":             round(s.total_pnl, 2),
+            "trades":          s.total_trades,
+            "win_rate":        stats.get("win_rate", 0) if stats else 0,
+            "vs_live":         round(ret - live_return_pct, 2) if live_return_pct is not None else None,
+        })
+    rows.sort(key=lambda x: x["return_pct"], reverse=True)
+    return jsonify({"live_return_pct": live_return_pct, "shadows": rows})
+
+
 def _get_shadow(name: str):
     from bot.spot_simulator import get_shadows
     return next((s for s in get_shadows() if s.name.upper() == name.upper()), None)

@@ -30,9 +30,11 @@ _thread: threading.Thread = None
 _stop_thread: threading.Thread = None
 _lock = threading.Lock()
 _last_tick: str = None
+_last_tick_time: float = None  # epoch of last successful tick
 _prev_tick: dict = {}          # pair -> {price, rsi, ema200, above_ema}
 _last_summary_date = None      # date of last daily summary
 _start_time: float = None      # epoch time when bot last started
+_missed_tick_alerted: bool = False  # avoid spamming missed-tick alerts
 
 
 def _arrow(cur: float, prev: float | None) -> str:
@@ -101,16 +103,30 @@ def _loop():
 
         try:
             import datetime, zoneinfo
-            global _last_tick
-            _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
-            for pair in all_pairs:
-                sync_candles(pair, config.SPOT_INTERVAL)
-                if config.SPOT_DAILY_EMA_FILTER:
-                    sync_candles(pair, "1d")
-            for pair, interval in shadow_intervals:
-                sync_candles(pair, interval)
+            global _last_tick, _last_tick_time, _missed_tick_alerted
 
-            prices = {pair: get_price(pair) for pair in all_pairs}
+            # Retry candle sync + price fetch up to 3 times before giving up on this tick
+            prices = None
+            for _attempt in range(3):
+                try:
+                    for pair in all_pairs:
+                        sync_candles(pair, config.SPOT_INTERVAL)
+                        if config.SPOT_DAILY_EMA_FILTER:
+                            sync_candles(pair, "1d")
+                    for pair, interval in shadow_intervals:
+                        sync_candles(pair, interval)
+                    prices = {pair: get_price(pair) for pair in all_pairs}
+                    break
+                except Exception as _fetch_err:
+                    if _attempt < 2:
+                        log.warning(f"[TICK] Data fetch failed (attempt {_attempt+1}/3): {_fetch_err} — retrying in 30s")
+                        time.sleep(30)
+                    else:
+                        raise
+
+            _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
+            _last_tick_time = time.time()
+            _missed_tick_alerted = False
             notify(
                 "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
                 discord=False,
@@ -215,7 +231,7 @@ def _loop():
 
         except Exception as e:
             log.error(e, exc_info=True)
-            notify(f"[ERROR] {e}", discord=False)
+            notify(f"⚠️ Tick failed — {e}")
 
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
@@ -228,6 +244,16 @@ def _stop_loop():
         time.sleep(config.SPOT_STOP_CHECK_INTERVAL)
         if _status != BotStatus.RUNNING:
             continue
+
+        # Missed-tick detection: alert once if no successful tick in >2× the candle interval
+        global _missed_tick_alerted
+        if _last_tick_time is not None and not _missed_tick_alerted:
+            overdue = time.time() - _last_tick_time
+            threshold = INTERVAL_SECONDS.get(config.SPOT_INTERVAL, 3600) * 2
+            if overdue > threshold:
+                notify(f"⚠️ Missed tick — no successful candle processed for {overdue/60:.0f} min (expected every {threshold//60:.0f} min)")
+                _missed_tick_alerted = True
+
         try:
             state = get_state()
             if not state.positions:

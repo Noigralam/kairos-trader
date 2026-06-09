@@ -591,6 +591,24 @@
   <!-- ═══════════════════════════ SHADOWS TAB ══════════════════════════ -->
   <div id="tab-shadows" style="display:none">
 
+    <!-- Rankings table -->
+    <section style="margin-bottom:8px">
+      <h2>Rankings</h2>
+      <div class="tbl-wrap">
+        <table id="sh-ranking-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Profile</th><th>Pairs</th><th>Return</th>
+              <th>vs Live</th><th>PnL</th><th>Trades</th><th>Win Rate</th>
+            </tr>
+          </thead>
+          <tbody id="sh-ranking-body">
+            <tr><td colspan="8" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- profile selector — visible when >1 shadow -->
     <div id="sh-selector-wrap" style="display:none;margin-bottom:16px">
       <div class="btn-group" id="sh-selector"></div>
@@ -1079,6 +1097,7 @@
                     + _shNames.map(n => makeBlock(n, '-copy')).join('');
     document.getElementById('sh-carousel').style.display = '';
     refreshShHeaderBlocks();
+    refreshShRanking();
     _initCarousel();
   }
 
@@ -1179,12 +1198,39 @@
   async function refreshShadowTab() {
     if (!_activeShadow) return;
     await Promise.all([
+      refreshShRanking(),
       refreshShStatus(),
       refreshShSignals(),
       refreshShTrades(),
       refreshShStats(),
       refreshShBalanceChart(),
     ]);
+  }
+
+  async function refreshShRanking() {
+    try {
+      const res  = await fetch('/api/shadows/ranking');
+      const data = await res.json();
+      const tbody = document.getElementById('sh-ranking-body');
+      if (!data.shadows || !data.shadows.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No data</td></tr>'; return; }
+      const liveRet = data.live_return_pct;
+      tbody.innerHTML = data.shadows.map((s, i) => {
+        const retColor  = s.return_pct >= 0 ? 'var(--green)' : 'var(--red)';
+        const vsColor   = s.vs_live === null ? 'var(--muted)' : s.vs_live > 0 ? 'var(--green)' : s.vs_live < 0 ? 'var(--red)' : 'var(--muted)';
+        const vsText    = s.vs_live === null ? '—' : (s.vs_live > 0 ? '+' : '') + s.vs_live.toFixed(2) + '%';
+        const nameStyle = s.name === _activeShadow ? 'font-weight:600;color:var(--blue);cursor:pointer' : 'cursor:pointer';
+        return `<tr>
+          <td style="color:var(--muted)">${i + 1}</td>
+          <td><span style="${nameStyle}" onclick="switchShadow('${s.name}')">${s.name}</span></td>
+          <td style="color:var(--muted);font-size:12px">${s.pairs.join(', ')}</td>
+          <td style="color:${retColor}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
+          <td style="color:${vsColor}">${vsText}</td>
+          <td style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}€${s.pnl.toFixed(2)}</td>
+          <td>${s.trades}</td>
+          <td>${s.win_rate !== null ? s.win_rate + '%' : '—'}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) { console.error('ranking', e); }
   }
 
   async function refreshShStatus() {
