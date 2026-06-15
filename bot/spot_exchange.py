@@ -77,6 +77,15 @@ def get_eur_balance() -> float:
     return 0.0
 
 
+def get_free_balance(asset: str) -> float:
+    """Return free balance of any asset from Binance account."""
+    account = get_client().get_account()
+    for b in account["balances"]:
+        if b["asset"] == asset:
+            return float(b["free"])
+    return 0.0
+
+
 def place_order(pair: str, side: str, quantity: float) -> dict:
     """Live trading only — never called in simulation mode."""
     return get_client().create_order(

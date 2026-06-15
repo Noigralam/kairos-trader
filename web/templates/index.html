@@ -1227,7 +1227,9 @@
   function switchShadow(name) {
     _activeShadow = name;
     _markShSelector();
-    _shPriceChart = _shCandleChart = _shRsiChart = null;
+    if (_shPriceChart)  { _shPriceChart.destroy();  _shPriceChart  = null; }
+    if (_shCandleChart) { _shCandleChart.destroy(); _shCandleChart = null; }
+    if (_shRsiChart)    { _shRsiChart.destroy();    _shRsiChart    = null; }
     const csvBtn = document.getElementById('sh-csv-btn');
     if (csvBtn) csvBtn.href = `/api/shadow/${name}/trades/csv`;
     refreshShadowTab();
@@ -1368,12 +1370,14 @@
       const pb      = document.getElementById('sh-pair-btns');
       const pairs   = Object.keys(_shSignals);
 
-      // rebuild pair buttons whenever the set of pairs changes
+      // rebuild pair buttons whenever the set of pairs changes; always reload chart on shadow switch
       const currentPairBtns = [...pb.querySelectorAll('button')].map(b => b.dataset.pair).join(',');
       if (currentPairBtns !== pairs.join(',')) {
         pb.innerHTML = pairs.map(p => `<button onclick="setShPair('${p}')" data-pair="${p}">${p}</button>`).join('');
         const keep = pairs.includes(_shChartPair) ? _shChartPair : pairs[0];
         if (keep) setShPair(keep);
+      } else if (!_shPriceChart && _shChartPair) {
+        loadShChart();
       }
 
       grid.innerHTML = pairs.map(pair => {

@@ -7,7 +7,7 @@ from . import config
 from .spot_risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert, notify
 from .db import log_trade, log_balance
-from .spot_exchange import round_qty, get_min_notional, get_eur_balance, place_order
+from .spot_exchange import round_qty, get_min_notional, get_eur_balance, get_free_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
 _check_lock = threading.Lock()
@@ -334,7 +334,14 @@ def close_position(pair: str, price: float, reason: str = "signal"):
     pos = _state.positions.pop(pair)
 
     if config.SPOT_MODE == "live":
-        order  = place_order(pair, "SELL", pos.amount)
+        try:
+            base_asset  = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
+            free        = get_free_balance(base_asset)
+            sell_amount = min(pos.amount, free)
+            order = place_order(pair, "SELL", sell_amount)
+        except Exception:
+            _state.positions[pair] = pos  # restore — order never reached exchange
+            raise
         fills  = order.get("fills", [])
         if fills:
             avg_price  = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
@@ -391,6 +398,9 @@ def partial_close_position(pair: str, price: float):
     sell_amt = round_qty(pair, pos.amount * pct) if config.SPOT_MODE == "live" else pos.amount * pct
 
     if config.SPOT_MODE == "live":
+        base_asset = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
+        free       = get_free_balance(base_asset)
+        sell_amt   = min(sell_amt, round_qty(pair, free * pct))
         order = place_order(pair, "SELL", sell_amt)
         fills = order.get("fills", [])
         if fills:
