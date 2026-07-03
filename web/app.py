@@ -1,3 +1,4 @@
+import math
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from bot import spot_engine as engine, spot_simulator as simulator, db, config
 from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy
@@ -56,10 +57,19 @@ def api_status():
 
 @app.route("/api/trades")
 def api_trades():
-    cols = ["id", "timestamp", "pair", "side", "price", "amount",
-            "value_eur", "fee", "mode", "pnl", "notes"]
-    rows = db.get_trades(50, mode=config.SPOT_MODE)
-    return jsonify([dict(zip(cols, row)) for row in rows])
+    cols   = ["id", "timestamp", "pair", "side", "price", "amount",
+              "value_eur", "fee", "mode", "pnl", "notes"]
+    limit  = int(request.args.get("limit", 15))
+    page   = max(1, int(request.args.get("page", 1)))
+    offset = (page - 1) * limit
+    rows   = db.get_trades(limit, mode=config.SPOT_MODE, offset=offset)
+    total  = db.get_trade_count(mode=config.SPOT_MODE)
+    return jsonify({
+        "trades": [dict(zip(cols, row)) for row in rows],
+        "total":  total,
+        "page":   page,
+        "pages":  max(1, math.ceil(total / limit)),
+    })
 
 
 @app.route("/api/trades/csv")
@@ -317,6 +327,13 @@ def api_shadow_status(name):
                              if pos.dca_count < s._o("dca_max", config.SPOT_DCA_MAX) else None,
             "current_price": round(price, 2),
         }
+    conn = __import__("sqlite3").connect(db.DB_PATH)
+    row  = conn.execute(
+        "SELECT MIN(timestamp) FROM balance_history WHERE mode = ?", (s._db_mode,)
+    ).fetchone()
+    conn.close()
+    started_at = row[0] if row and row[0] else None
+
     return jsonify({
         "name":             s.name,
         "overrides":        s.overrides,
@@ -327,6 +344,7 @@ def api_shadow_status(name):
         "portfolio_value":  round(s.balance + open_val, 2),
         "starting_balance": starting,
         "positions":        positions_out,
+        "started_at":       started_at,
     })
 
 
@@ -334,10 +352,19 @@ def api_shadow_status(name):
 def api_shadow_trades(name):
     s = _get_shadow(name)
     if s is None:
-        return jsonify([])
-    cols = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
-    rows = db.get_trades(50, mode=s._db_mode)
-    return jsonify([dict(zip(cols, row)) for row in rows])
+        return jsonify({"trades": [], "total": 0, "page": 1, "pages": 1})
+    cols   = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
+    limit  = int(request.args.get("limit", 15))
+    page   = max(1, int(request.args.get("page", 1)))
+    offset = (page - 1) * limit
+    rows   = db.get_trades(limit, mode=s._db_mode, offset=offset)
+    total  = db.get_trade_count(mode=s._db_mode)
+    return jsonify({
+        "trades": [dict(zip(cols, row)) for row in rows],
+        "total":  total,
+        "page":   page,
+        "pages":  max(1, math.ceil(total / limit)),
+    })
 
 
 @app.route("/api/shadow/<name>/trades/csv")
@@ -903,11 +930,20 @@ def api_futures_balance_history():
 @app.route("/api/futures/trades")
 def api_futures_trades():
     if not config.FUTURES_ENABLED:
-        return jsonify([])
-    cols = ["id", "timestamp", "pair", "side", "price", "amount",
-            "value_eur", "fee", "mode", "pnl", "notes"]
-    rows = db.get_trades(50, mode=f"futures_{config.FUTURES_MODE}")
-    return jsonify([dict(zip(cols, row)) for row in rows])
+        return jsonify({"trades": [], "total": 0, "page": 1, "pages": 1})
+    cols   = ["id", "timestamp", "pair", "side", "price", "amount",
+              "value_eur", "fee", "mode", "pnl", "notes"]
+    limit  = int(request.args.get("limit", 15))
+    page   = max(1, int(request.args.get("page", 1)))
+    offset = (page - 1) * limit
+    rows   = db.get_trades(limit, mode=f"futures_{config.FUTURES_MODE}", offset=offset)
+    total  = db.get_trade_count(mode=f"futures_{config.FUTURES_MODE}")
+    return jsonify({
+        "trades": [dict(zip(cols, row)) for row in rows],
+        "total":  total,
+        "page":   page,
+        "pages":  max(1, math.ceil(total / limit)),
+    })
 
 
 @app.route("/api/futures/trades/csv")

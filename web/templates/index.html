@@ -205,6 +205,23 @@
       text-decoration: none; cursor: pointer; white-space: nowrap;
     }
     .csv-btn:hover { border-color: var(--blue); color: var(--blue); }
+    th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sortable:hover { color: var(--fg); }
+    th.sortable::after { content: ' ⇅'; opacity: 0.35; font-size: 10px; }
+    th.sortable.asc::after  { content: ' ↑'; opacity: 1; color: var(--blue); }
+    th.sortable.desc::after { content: ' ↓'; opacity: 1; color: var(--blue); }
+    .trades-pagination {
+      display: flex; align-items: center; gap: 8px; justify-content: flex-end;
+      padding: 8px 4px 0;
+    }
+    .trades-pagination button {
+      padding: 3px 10px; font-size: 13px; border-radius: 4px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+      cursor: pointer;
+    }
+    .trades-pagination button:disabled { opacity: 0.35; cursor: default; }
+    .trades-pagination button:not(:disabled):hover { border-color: var(--blue); color: var(--blue); }
+    .trades-pagination span { font-size: 12px; color: var(--muted); min-width: 60px; text-align: center; }
     .chart-wrap {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 8px; padding: 16px;
@@ -420,6 +437,11 @@
           </tbody>
         </table>
       </div>
+      <div class="trades-pagination">
+        <button id="spot-trades-prev" onclick="spotTradesPage(-1)" disabled>‹ Prev</button>
+        <span id="spot-trades-page-info">—</span>
+        <button id="spot-trades-next" onclick="spotTradesPage(1)" disabled>Next ›</button>
+      </div>
     </section>
 
     <section>
@@ -546,6 +568,11 @@
           </tbody>
         </table>
       </div>
+      <div class="trades-pagination">
+        <button id="fut-trades-prev" onclick="futTradesPage(-1)" disabled>‹ Prev</button>
+        <span id="fut-trades-page-info">—</span>
+        <button id="fut-trades-next" onclick="futTradesPage(1)" disabled>Next ›</button>
+      </div>
     </section>
 
     <section>
@@ -610,8 +637,14 @@
         <table id="sh-ranking-table">
           <thead>
             <tr>
-              <th>#</th><th>Profile</th><th>Pairs</th><th>Return</th>
-              <th>vs Live</th><th>PnL</th><th>Trades</th><th>Win Rate</th>
+              <th>#</th>
+              <th class="sortable" onclick="sortShRanking('name')">Profile</th>
+              <th class="sortable" onclick="sortShRanking('pairs')">Pairs</th>
+              <th class="sortable desc" onclick="sortShRanking('return_pct')">Return</th>
+              <th class="sortable" onclick="sortShRanking('vs_live')">vs Live</th>
+              <th class="sortable" onclick="sortShRanking('pnl')">PnL</th>
+              <th class="sortable" onclick="sortShRanking('trades')">Trades</th>
+              <th class="sortable" onclick="sortShRanking('win_rate')">Win Rate</th>
             </tr>
           </thead>
           <tbody id="sh-ranking-body">
@@ -658,6 +691,7 @@
     <section>
       <h2>Overrides</h2>
       <div id="sh-overrides" style="font-size:13px;color:var(--muted);padding:4px 0">—</div>
+      <div id="sh-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:6px;"></div>
     </section>
 
     <section>
@@ -703,6 +737,11 @@
             <tr><td colspan="8" class="empty">No trades yet</td></tr>
           </tbody>
         </table>
+      </div>
+      <div class="trades-pagination">
+        <button id="sh-trades-prev" onclick="shTradesPage(-1)" disabled>‹ Prev</button>
+        <span id="sh-trades-page-info">—</span>
+        <button id="sh-trades-next" onclick="shTradesPage(1)" disabled>Next ›</button>
       </div>
     </section>
 
@@ -763,6 +802,15 @@
   // ── tab switching ─────────────────────────────────────────────────────────
   let _activeTab = 'spot';
   let _spotLastStatus = null;
+
+  // ── Trades pagination state ───────────────────────────────────────────────
+  const _TRADES_PER_PAGE = 15;
+  let _spotTradesPage  = 1;
+  let _spotTradesPages = 1;
+  let _futTradesPage   = 1;
+  let _futTradesPages  = 1;
+  let _shTradesPage    = 1;
+  let _shTradesPages   = 1;
 
   function switchTab(name) {
     _activeTab = name;
@@ -964,17 +1012,50 @@
     } catch(e) {}
   }
 
+  function _renderTradesPagination(page, pages, prevId, nextId, infoId) {
+    document.getElementById(infoId).textContent = `${page} / ${pages}`;
+    document.getElementById(prevId).disabled = page <= 1;
+    document.getElementById(nextId).disabled = page >= pages;
+  }
+
+  async function loadSpotTrades() {
+    try {
+      const data   = await fetch(`/api/trades?page=${_spotTradesPage}&limit=${_TRADES_PER_PAGE}`).then(r => r.json());
+      _spotTradesPages = data.pages;
+      document.getElementById('hdr-spot-trades').textContent = `${data.total} trades`;
+      const tb = document.getElementById('trades-body');
+      if (!data.trades.length) {
+        tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+      } else {
+        tb.innerHTML = data.trades.map(t => `<tr>
+          <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td>${t.pair}</td>
+          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${fmt(t.price)}</td>
+          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>${fmt(t.value_eur)}</td>
+          <td>${fmtPnl(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+        </tr>`).join('');
+      }
+      _renderTradesPagination(_spotTradesPage, _spotTradesPages, 'spot-trades-prev', 'spot-trades-next', 'spot-trades-page-info');
+    } catch(e) {}
+  }
+
+  function spotTradesPage(dir) {
+    _spotTradesPage = Math.max(1, Math.min(_spotTradesPages, _spotTradesPage + dir));
+    loadSpotTrades();
+  }
+
   async function refresh() {
     try {
-      const [statusRes, tradesRes, taxRes, logRes] = await Promise.all([
+      const [statusRes, taxRes, logRes] = await Promise.all([
         fetch('/api/status'),
-        fetch('/api/trades'),
         fetch('/api/tax'),
         fetch('/api/log'),
       ]);
       const s = await statusRes.json();
       _spotLastStatus = s;
-      const trades = await tradesRes.json();
       const tax = await taxRes.json();
       const logs = await logRes.json();
 
@@ -1008,26 +1089,8 @@
       const hPnlEl = document.getElementById('hdr-spot-pnl');
       hPnlEl.textContent  = `${hPnl >= 0 ? '+' : ''}€${fmt(Math.abs(hPnl))} PnL`;
       hPnlEl.style.color  = hPnl >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('hdr-spot-trades').textContent = `${trades.length} trades`;
-
       _positions = s.positions;
-
-      // Trades
-      const tb = document.getElementById('trades-body');
-      if (trades.length === 0) {
-        tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
-      } else {
-        tb.innerHTML = trades.map(t => `<tr>
-          <td>${t.timestamp.slice(0, 19).replace('T', ' ')}</td>
-          <td>${t.pair}</td>
-          <td class="${t.side.toLowerCase()}">${t.side}</td>
-          <td>${fmt(t.price)}</td>
-          <td>${Number(t.amount).toFixed(6)}</td>
-          <td>${fmt(t.value_eur)}</td>
-          <td>${fmtPnl(t.pnl)}</td>
-          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
-        </tr>`).join('');
-      }
+      loadSpotTrades();
 
       // Tax
       const txb = document.getElementById('tax-body');
@@ -1226,6 +1289,7 @@
 
   function switchShadow(name) {
     _activeShadow = name;
+    _shTradesPage = 1;
     _markShSelector();
     if (_shPriceChart)  { _shPriceChart.destroy();  _shPriceChart  = null; }
     if (_shCandleChart) { _shCandleChart.destroy(); _shCandleChart = null; }
@@ -1316,29 +1380,62 @@
     } catch(e) { console.error('pnlchart', e); }
   }
 
+  let _shRankingData = [];
+  let _shRankingSort = { col: 'return_pct', dir: -1 };  // -1 = desc, 1 = asc
+
+  function sortShRanking(col) {
+    if (_shRankingSort.col === col) {
+      _shRankingSort.dir *= -1;
+    } else {
+      _shRankingSort = { col, dir: col === 'name' || col === 'pairs' ? 1 : -1 };
+    }
+    // Update header indicators
+    document.querySelectorAll('#sh-ranking-table thead th.sortable').forEach(th => {
+      th.classList.remove('asc', 'desc');
+      if (th.getAttribute('onclick') === `sortShRanking('${col}')`) {
+        th.classList.add(_shRankingSort.dir === 1 ? 'asc' : 'desc');
+      }
+    });
+    renderShRanking();
+  }
+
+  function renderShRanking() {
+    const tbody = document.getElementById('sh-ranking-body');
+    if (!_shRankingData.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No data</td></tr>'; return; }
+    const { col, dir } = _shRankingSort;
+    const sorted = [..._shRankingData].sort((a, b) => {
+      let av = col === 'pairs' ? a.pairs.join(',') : a[col];
+      let bv = col === 'pairs' ? b.pairs.join(',') : b[col];
+      if (av === null) av = dir === 1 ? Infinity : -Infinity;
+      if (bv === null) bv = dir === 1 ? Infinity : -Infinity;
+      if (typeof av === 'string') return dir * av.localeCompare(bv);
+      return dir * (bv - av);
+    });
+    tbody.innerHTML = sorted.map((s, i) => {
+      const retColor  = s.return_pct >= 0 ? 'var(--green)' : 'var(--red)';
+      const vsColor   = s.vs_live === null ? 'var(--muted)' : s.vs_live > 0 ? 'var(--green)' : s.vs_live < 0 ? 'var(--red)' : 'var(--muted)';
+      const vsText    = s.vs_live === null ? '—' : (s.vs_live > 0 ? '+' : '') + s.vs_live.toFixed(2) + '%';
+      const nameStyle = s.name === _activeShadow ? 'font-weight:600;color:var(--blue);cursor:pointer' : 'cursor:pointer';
+      return `<tr>
+        <td style="color:var(--muted)">${i + 1}</td>
+        <td><span style="${nameStyle}" onclick="switchShadow('${s.name}')">${s.name}</span></td>
+        <td style="color:var(--muted);font-size:12px">${s.pairs.join(', ')}</td>
+        <td style="color:${retColor}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
+        <td style="color:${vsColor}">${vsText}</td>
+        <td style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}€${s.pnl.toFixed(2)}</td>
+        <td>${s.trades}</td>
+        <td>${s.win_rate !== null ? s.win_rate + '%' : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
   async function refreshShRanking() {
     try {
       const res  = await fetch('/api/shadows/ranking');
       const data = await res.json();
-      const tbody = document.getElementById('sh-ranking-body');
-      if (!data.shadows || !data.shadows.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No data</td></tr>'; return; }
-      const liveRet = data.live_return_pct;
-      tbody.innerHTML = data.shadows.map((s, i) => {
-        const retColor  = s.return_pct >= 0 ? 'var(--green)' : 'var(--red)';
-        const vsColor   = s.vs_live === null ? 'var(--muted)' : s.vs_live > 0 ? 'var(--green)' : s.vs_live < 0 ? 'var(--red)' : 'var(--muted)';
-        const vsText    = s.vs_live === null ? '—' : (s.vs_live > 0 ? '+' : '') + s.vs_live.toFixed(2) + '%';
-        const nameStyle = s.name === _activeShadow ? 'font-weight:600;color:var(--blue);cursor:pointer' : 'cursor:pointer';
-        return `<tr>
-          <td style="color:var(--muted)">${i + 1}</td>
-          <td><span style="${nameStyle}" onclick="switchShadow('${s.name}')">${s.name}</span></td>
-          <td style="color:var(--muted);font-size:12px">${s.pairs.join(', ')}</td>
-          <td style="color:${retColor}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
-          <td style="color:${vsColor}">${vsText}</td>
-          <td style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}€${s.pnl.toFixed(2)}</td>
-          <td>${s.trades}</td>
-          <td>${s.win_rate !== null ? s.win_rate + '%' : '—'}</td>
-        </tr>`;
-      }).join('');
+      if (!data.shadows || !data.shadows.length) { _shRankingData = []; renderShRanking(); return; }
+      _shRankingData = data.shadows;
+      renderShRanking();
     } catch(e) { console.error('ranking', e); }
   }
 
@@ -1358,6 +1455,22 @@
       document.getElementById('sh-starting-balance').textContent = `· from ${fmt(s.starting_balance)}`;
       const ov = Object.entries(s.overrides).map(([k,v]) => `<span style="margin-right:14px"><strong>${k}</strong> = ${v}</span>`).join('');
       document.getElementById('sh-overrides').innerHTML = ov || '<span>all defaults from Spot config</span>';
+      const sinceEl = document.getElementById('sh-since');
+      if (s.started_at) {
+        const since = new Date(s.started_at);
+        const diff  = Math.floor((Date.now() - since) / 1000);
+        const days  = Math.floor(diff / 86400);
+        const hours = Math.floor((diff % 86400) / 3600);
+        const mins  = Math.floor((diff % 3600) / 60);
+        const parts = [];
+        if (days)  parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        parts.push(`${String(mins).padStart(2,'0')}m`);
+        const dateStr = since.toLocaleDateString('fi-FI', { day:'numeric', month:'short', year:'numeric' });
+        sinceEl.textContent = `Running for: ${parts.join(' ')} · since ${dateStr}`;
+      } else {
+        sinceEl.textContent = '';
+      }
       _shPositions = s.positions;
     } catch(e) {}
   }
@@ -1456,13 +1569,13 @@
 
   async function refreshShTrades() {
     try {
-      const res    = await fetch(`/api/shadow/${_activeShadow}/trades`);
-      const trades = await res.json();
-      const tb     = document.getElementById('sh-trades-body');
-      if (!trades.length) {
+      const data = await fetch(`/api/shadow/${_activeShadow}/trades?page=${_shTradesPage}&limit=${_TRADES_PER_PAGE}`).then(r => r.json());
+      _shTradesPages = data.pages;
+      const tb = document.getElementById('sh-trades-body');
+      if (!data.trades.length) {
         tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
       } else {
-        tb.innerHTML = trades.map(t => `<tr>
+        tb.innerHTML = data.trades.map(t => `<tr>
           <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side.toLowerCase()}">${t.side}</td>
@@ -1473,7 +1586,13 @@
           <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
+      _renderTradesPagination(_shTradesPage, _shTradesPages, 'sh-trades-prev', 'sh-trades-next', 'sh-trades-page-info');
     } catch(e) {}
+  }
+
+  function shTradesPage(dir) {
+    _shTradesPage = Math.max(1, Math.min(_shTradesPages, _shTradesPage + dir));
+    refreshShTrades();
   }
 
   async function refreshShStats() {
@@ -2040,13 +2159,14 @@
   async function loadBalanceChart() {
     try {
       const qs   = _balanceDays > 0 ? `?days=${_balanceDays}` : '';
-      const [rows, trades] = await Promise.all([
+      const [rows, tradeData] = await Promise.all([
         fetch(`/api/balance_history${qs}`).then(r => r.json()),
-        fetch('/api/trades').then(r => r.json()),
+        fetch('/api/trades?limit=9999').then(r => r.json()),
       ]);
       if (!rows.length) return;
       const labels = rows.map(r => r.t);
       const values = rows.map(r => r.balance);
+      const trades = tradeData.trades || [];
 
       const tradeLines = [];
       const seen = new Set();
@@ -2287,27 +2407,34 @@
 
   async function loadFuturesTrades() {
     try {
-      const trades = await fetch('/api/futures/trades').then(r => r.json());
+      const data = await fetch(`/api/futures/trades?page=${_futTradesPage}&limit=${_TRADES_PER_PAGE}`).then(r => r.json());
+      _futTradesPages = data.pages;
       for (const sfx of ['', '-copy']) {
         const el = document.getElementById(`hdr-fut-trades${sfx}`);
-        if (el) el.textContent = `${trades.length} trades`;
+        if (el) el.textContent = `${data.total} trades`;
       }
       const tb = document.getElementById('f-trades-body');
-      if (!trades.length) {
+      if (!data.trades.length) {
         tb.innerHTML = '<tr><td colspan="8" class="empty">No futures trades yet</td></tr>';
-        return;
+      } else {
+        tb.innerHTML = data.trades.map(t => `<tr>
+          <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td>${t.pair}</td>
+          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${fmtUsdt(t.price, 4)}</td>
+          <td>${Number(t.amount).toFixed(4)}</td>
+          <td>${fmtUsdt(t.value_eur)}</td>
+          <td>${t.pnl != null ? fmtPnlUsdt(t.pnl) : '—'}</td>
+          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+        </tr>`).join('');
       }
-      tb.innerHTML = trades.map(t => `<tr>
-        <td>${t.timestamp.slice(0, 19).replace('T', ' ')}</td>
-        <td>${t.pair}</td>
-        <td class="${t.side.toLowerCase()}">${t.side}</td>
-        <td>${fmtUsdt(t.price, 4)}</td>
-        <td>${Number(t.amount).toFixed(4)}</td>
-        <td>${fmtUsdt(t.value_eur)}</td>
-        <td>${t.pnl != null ? fmtPnlUsdt(t.pnl) : '—'}</td>
-        <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
-      </tr>`).join('');
+      _renderTradesPagination(_futTradesPage, _futTradesPages, 'fut-trades-prev', 'fut-trades-next', 'fut-trades-page-info');
     } catch(e) { console.error(e); }
+  }
+
+  function futTradesPage(dir) {
+    _futTradesPage = Math.max(1, Math.min(_futTradesPages, _futTradesPage + dir));
+    loadFuturesTrades();
   }
 
   async function loadFuturesStats() {

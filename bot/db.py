@@ -63,18 +63,30 @@ def log_trade(pair, side, price, amount, value_eur, fee, mode, pnl=None, notes=N
     conn.close()
 
 
-def get_trades(limit=50, mode: str = None):
+def get_trades(limit=50, mode: str = None, offset: int = 0):
     conn = sqlite3.connect(DB_PATH)
     if mode:
         rows = conn.execute(
-            "SELECT * FROM trades WHERE mode = ? ORDER BY timestamp DESC LIMIT ?", (mode, limit)
+            "SELECT * FROM trades WHERE mode = ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            (mode, limit, offset)
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ?", (limit,)
+            "SELECT * FROM trades ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+            (limit, offset)
         ).fetchall()
     conn.close()
     return rows
+
+
+def get_trade_count(mode: str = None) -> int:
+    conn = sqlite3.connect(DB_PATH)
+    if mode:
+        row = conn.execute("SELECT COUNT(*) FROM trades WHERE mode = ?", (mode,)).fetchone()
+    else:
+        row = conn.execute("SELECT COUNT(*) FROM trades").fetchone()
+    conn.close()
+    return row[0] if row else 0
 
 
 def log_balance(balance: float, mode: str):
