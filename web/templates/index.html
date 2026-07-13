@@ -658,12 +658,18 @@
     <section style="margin-bottom:16px">
       <div class="chart-controls">
         <h2>PnL History</h2>
-        <div class="btn-group" id="sh-pnl-span-btns">
-          <button onclick="setShPnlDays(1)"   data-days="1">1d</button>
-          <button onclick="setShPnlDays(7)"   data-days="7">7d</button>
-          <button onclick="setShPnlDays(30)"  data-days="30" class="active">30d</button>
-          <button onclick="setShPnlDays(90)"  data-days="90">90d</button>
-          <button onclick="setShPnlDays(0)"   data-days="0">All</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="btn-group" id="sh-pnl-span-btns">
+            <button onclick="setShPnlDays(1)"   data-days="1">1d</button>
+            <button onclick="setShPnlDays(7)"   data-days="7">7d</button>
+            <button onclick="setShPnlDays(30)"  data-days="30" class="active">30d</button>
+            <button onclick="setShPnlDays(90)"  data-days="90">90d</button>
+            <button onclick="setShPnlDays(0)"   data-days="0">All</button>
+          </div>
+          <div class="btn-group" id="sh-pnl-mode-btns">
+            <button onclick="setShPnlMode('pct')" data-mode="pct" class="active">% return</button>
+            <button onclick="setShPnlMode('eur')" data-mode="eur">€ PnL</button>
+          </div>
         </div>
       </div>
       <div class="chart-box" style="height:220px"><canvas id="sh-pnl-chart"></canvas></div>
@@ -1317,10 +1323,20 @@
     ]);
   }
 
+  let _shPnlMode = 'pct';  // 'pct' | 'eur'
+
   function setShPnlDays(days) {
     _shPnlDays = days;
     document.querySelectorAll('#sh-pnl-span-btns button').forEach(b =>
       b.classList.toggle('active', parseFloat(b.dataset.days) === days));
+    refreshShPnlChart();
+  }
+
+  function setShPnlMode(mode) {
+    _shPnlMode = mode;
+    document.querySelectorAll('#sh-pnl-mode-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === mode));
+    if (_shPnlChart) { _shPnlChart.destroy(); _shPnlChart = null; }
     refreshShPnlChart();
   }
 
@@ -1332,13 +1348,14 @@
       const names = Object.keys(data);
       if (!names.length) return;
 
+      const field = _shPnlMode === 'pct' ? 'pct' : 'pnl';
+
       // Build a unified sorted time axis across all series
       const allTimes = [...new Set(names.flatMap(n => data[n].map(p => p.t)))].sort();
       if (!allTimes.length) return;
 
       const datasets = names.map((name, i) => {
-        const map = Object.fromEntries(data[name].map(p => [p.t, p.pnl]));
-        // forward-fill: carry last known value
+        const map = Object.fromEntries(data[name].map(p => [p.t, p[field]]));
         let last = null;
         const values = allTimes.map(t => { if (map[t] !== undefined) last = map[t]; return last; });
         const color = _PNL_COLORS[i % _PNL_COLORS.length];
@@ -1355,9 +1372,19 @@
         };
       });
 
+      const isPct = _shPnlMode === 'pct';
+      const yTick    = isPct
+        ? v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%'
+        : v => (v >= 0 ? '+' : '') + v.toFixed(0) + ' €';
+      const tooltipFn = isPct
+        ? c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}${Number(c.raw).toFixed(2)}%`
+        : c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}€${Number(c.raw).toFixed(2)}`;
+
       if (_shPnlChart) {
         _shPnlChart.data.labels   = allTimes;
         _shPnlChart.data.datasets = datasets;
+        _shPnlChart.options.scales.y.ticks.callback = yTick;
+        _shPnlChart.options.plugins.tooltip.callbacks.label = tooltipFn;
         _shPnlChart.update('none');
       } else {
         const ctx = document.getElementById('sh-pnl-chart').getContext('2d');
@@ -1369,11 +1396,11 @@
               legend: { display: true, position: 'top',
                 labels: { color: '#8b949e', boxWidth: 12, padding: 10, font: { size: 11 } } },
               tooltip: { ...CHART_OPTS.plugins.tooltip,
-                callbacks: { label: c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}€${Number(c.raw).toFixed(2)}` } },
+                callbacks: { label: tooltipFn } },
             },
             scales: { x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => (v >= 0 ? '+' : '') + v.toFixed(0) + ' €' } } },
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: yTick } } },
           },
         });
       }

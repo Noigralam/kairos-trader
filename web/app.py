@@ -286,7 +286,8 @@ def api_shadows_pnl_history():
                 t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
             except Exception:
                 t = ts
-            series.append({"t": t, "pnl": round(bal - starting, 2)})
+            pnl = bal - starting
+            series.append({"t": t, "pnl": round(pnl, 2), "pct": round(pnl / starting * 100, 3) if starting else 0})
         out[s.name] = series
     return jsonify(out)
 
