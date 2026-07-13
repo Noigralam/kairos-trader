@@ -110,6 +110,7 @@ FUTURES_TRAILING_STOP_PCT   = float(os.getenv("FUTURES_TRAILING_STOP_PCT", "0.05
 FUTURES_PROFIT_FLOOR_PCT    = float(os.getenv("FUTURES_PROFIT_FLOOR_PCT", "0.03"))      # minimum profit before trailing stop can fire
 FUTURES_MIN_EXIT_PROFIT_PCT = float(os.getenv("FUTURES_MIN_EXIT_PROFIT_PCT", "0.02"))   # minimum profit before signal exit can fire
 FUTURES_MAX_DRAWDOWN_PCT    = float(os.getenv("FUTURES_MAX_DRAWDOWN_PCT", "0"))         # pause longs if portfolio drops >X% from peak; 0 = disabled
+FUTURES_MAX_FUNDING_RATE    = float(os.getenv("FUTURES_MAX_FUNDING_RATE", "0"))          # skip longs when 8h funding rate exceeds this; 0 = disabled
 FUTURES_STOP_CHECK_INTERVAL = int(os.getenv("FUTURES_STOP_CHECK_INTERVAL", "60"))       # seconds between between-candle stop/funding checks
 
 def futures_rsi_period_for(pair: str) -> int:
@@ -136,32 +137,40 @@ def get_shadow_profiles() -> list[str]:
 
 
 def get_shadow_overrides(name: str) -> dict:
+    """Parse SPOT_SHADOW_{NAME}_* env vars into an overrides dict for SpotShadowSimulator."""
     prefix = f"SPOT_SHADOW_{name.upper()}_"
+    # fmt: off  (keep columns aligned for readability)
     _param_map: dict[str, tuple[str, type]] = {
-        "RSI_OVERSOLD":        ("rsi_oversold",   int),
-        "RSI_OVERBOUGHT":      ("rsi_overbought",  int),
-        "RSI_PERIOD":          ("rsi_period",      int),
-        "TRAILING_STOP_PCT":   ("trail_pct",       float),
-        "PROFIT_FLOOR_PCT":    ("floor_pct",       float),
-        "TAKE_PROFIT_PCT":     ("tp_pct",          float),
-        "POSITION_SIZE_PCT":   ("pos_pct",         float),
-        "DCA_DROP_PCT":        ("dca_drop",        float),
-        "DCA_SIZE_PCT":        ("dca_pct",         float),
-        "DCA_MAX":             ("dca_max",         int),
-        "DCA_STEP_PCT":        ("dca_step",        float),
-        "EMA_GAP_PCT":         ("ema_gap",         float),
-        "MIN_EXIT_PROFIT_PCT":     ("min_exit",             float),
-        "TIME_STOP_DAYS":          ("time_stop_days",       float),
-        "STOP_COOLDOWN_CANDLES":   ("stop_cooldown",        int),
-        "VOLUME_FILTER_PERIOD":    ("vol_period",           int),
-        "VOLUME_FILTER_MULT":      ("vol_mult",             float),
-        "PARTIAL_CLOSE_PCT":       ("partial_close_pct",    float),
-        "PARTIAL_CLOSE_TRAIL_PCT": ("partial_close_trail",  float),
-        "BALANCE":                 ("balance",              float),
-        "GRID_SPACING":            ("grid_spacing",         float),
-        "GRID_LEVELS":             ("grid_levels",          int),
-        "FNG_MAX":                 ("fng_max",              int),
+        # ── Entry signal ──────────────────────────────────────────
+        "RSI_OVERSOLD":            ("spot_rsi_oversold",        int),
+        "RSI_OVERBOUGHT":          ("spot_rsi_overbought",      int),
+        "RSI_PERIOD":              ("spot_rsi_period",          int),
+        "EMA_GAP_PCT":             ("spot_ema_gap",             float),
+        # ── Exit / risk ───────────────────────────────────────────
+        "TRAILING_STOP_PCT":       ("spot_trail_pct",           float),
+        "PROFIT_FLOOR_PCT":        ("spot_floor_pct",           float),
+        "TAKE_PROFIT_PCT":         ("spot_tp_pct",              float),
+        "MIN_EXIT_PROFIT_PCT":     ("spot_min_exit",            float),
+        "TIME_STOP_DAYS":          ("spot_time_stop_days",      float),
+        "STOP_COOLDOWN_CANDLES":   ("spot_stop_cooldown",       int),
+        "PARTIAL_CLOSE_PCT":       ("spot_partial_close_pct",   float),
+        "PARTIAL_CLOSE_TRAIL_PCT": ("spot_partial_close_trail", float),
+        # ── Position sizing / DCA ─────────────────────────────────
+        "POSITION_SIZE_PCT":       ("spot_pos_pct",             float),
+        "DCA_DROP_PCT":            ("spot_dca_drop",            float),
+        "DCA_SIZE_PCT":            ("spot_dca_pct",             float),
+        "DCA_MAX":                 ("spot_dca_max",             int),
+        "DCA_STEP_PCT":            ("spot_dca_step",            float),
+        "VOLUME_FILTER_PERIOD":    ("spot_vol_period",          int),
+        "VOLUME_FILTER_MULT":      ("spot_vol_mult",            float),
+        # ── Sentiment filter ──────────────────────────────────────
+        "FNG_MAX":                 ("spot_fng_max",             int),
+        # ── Simulation / grid ─────────────────────────────────────
+        "BALANCE":                 ("spot_balance",             float),
+        "GRID_SPACING":            ("spot_grid_spacing",        float),
+        "GRID_LEVELS":             ("spot_grid_levels",         int),
     }
+    # fmt: on
     result: dict = {}
     # string params
     type_val = os.getenv(f"{prefix}TYPE")
@@ -180,6 +189,43 @@ def get_shadow_overrides(name: str) -> dict:
     interval_raw = os.getenv(f"{prefix}INTERVAL")
     if interval_raw:
         result["interval"] = interval_raw.strip()
+    return result
+
+
+def get_futures_shadow_profiles() -> list[str]:
+    raw = os.getenv("FUTURES_SHADOW_PROFILES", "")
+    return [p.strip().upper() for p in raw.split(",") if p.strip()]
+
+
+def get_futures_shadow_overrides(name: str) -> dict:
+    """Parse FUTURES_SHADOW_{NAME}_* env vars into an overrides dict for FuturesShadowSimulator."""
+    prefix = f"FUTURES_SHADOW_{name.upper()}_"
+    # fmt: off
+    _param_map: dict[str, tuple[str, type]] = {
+        # ── Futures-specific ──────────────────────────────────────
+        "LEVERAGE":          ("futures_leverage",         int),
+        "POSITION_SIZE_PCT": ("futures_pos_pct",          float),
+        "MAX_FUNDING_RATE":  ("futures_max_funding_rate", float),
+        # ── Entry signal ──────────────────────────────────────────
+        "RSI_OVERSOLD":      ("futures_rsi_oversold",     int),
+        "RSI_OVERBOUGHT":    ("futures_rsi_overbought",   int),
+        "RSI_PERIOD":        ("futures_rsi_period",       int),
+        "EMA_GAP_PCT":       ("futures_ema_gap",          float),
+        # ── Simulation ────────────────────────────────────────────
+        "BALANCE":           ("futures_balance",          float),
+    }
+    # fmt: on
+    result: dict = {}
+    for env_suffix, (key, cast) in _param_map.items():
+        val = os.getenv(f"{prefix}{env_suffix}")
+        if val is not None:
+            try:
+                result[key] = cast(val)
+            except ValueError:
+                pass
+    symbols_raw = os.getenv(f"{prefix}SYMBOLS")
+    if symbols_raw:
+        result["symbols"] = [s.strip().upper() for s in symbols_raw.split(",") if s.strip()]
     return result
 
 # ---------------------------------------------------------------------------

@@ -218,10 +218,72 @@ def api_signals():
     return jsonify(out)
 
 
+class _MainSpotShim:
+    """Wraps the main SpotSimulator state so it can be served by shadow sub-endpoints."""
+    name     = "MAIN"
+    overrides: dict = {}
+    is_main  = True
+
+    def __init__(self, state):
+        self._state   = state
+        self.pairs    = list(config.SPOT_TRADING_PAIRS)
+        self.interval = config.SPOT_INTERVAL
+        self._db_mode = config.SPOT_MODE
+
+    @property
+    def balance(self):       return self._state.balance
+    @property
+    def total_trades(self):  return self._state.total_trades
+    @property
+    def total_pnl(self):     return self._state.total_pnl
+    @property
+    def total_fees(self):    return self._state.total_fees
+    @property
+    def positions(self):     return self._state.positions
+
+    def _o(self, key, default):
+        return default
+
+    def _trailing_stop_level(self, pos):
+        return pos.trailing_stop_level(
+            trail_pct=config.trailing_stop_for(pos.pair),
+            floor_pct=config.profit_floor_for(pos.pair),
+        )
+
+
+class _MainFuturesShim:
+    """Wraps the main FuturesSimulator state so it can appear in the futures shadow table."""
+    name    = "MAIN"
+    overrides: dict = {}
+    is_main = True
+
+    def __init__(self, state):
+        self._state   = state
+        self.symbols  = list(config.FUTURES_TRADING_PAIRS)
+        self._starting = config.FUTURES_SIMULATION_BALANCE
+        self._db_mode = config.FUTURES_MODE
+
+    @property
+    def balance(self):       return self._state.balance
+    @property
+    def total_trades(self):  return self._state.total_trades
+    @property
+    def total_pnl(self):     return self._state.total_pnl
+    @property
+    def total_fees(self):    return self._state.total_fees
+    @property
+    def total_funding(self): return self._state.total_funding
+    @property
+    def positions(self):     return self._state.positions
+
+
 @app.route("/api/shadows")
 def api_shadows():
     from bot.spot_simulator import get_shadows
-    return jsonify([{"name": s.name, "overrides": s.overrides} for s in get_shadows()])
+    rows = [{"name": s.name, "overrides": s.overrides} for s in get_shadows()]
+    if config.SPOT_MODE == "simulation":
+        rows.insert(0, {"name": "MAIN", "overrides": {}, "is_main": True})
+    return jsonify(rows)
 
 
 @app.route("/api/shadows/ranking")
@@ -229,7 +291,6 @@ def api_shadows_ranking():
     from bot.spot_simulator import get_shadows, get_state
     from bot.spot_exchange import get_price
 
-    # live return for comparison baseline
     state = get_state()
     live_prices = {}
     for p in config.SPOT_TRADING_PAIRS:
@@ -237,13 +298,17 @@ def api_shadows_ranking():
             live_prices[p] = get_price(p)
         except Exception:
             pass
-    live_open_val   = sum(live_prices.get(p, pos.value_eur) * pos.amount for p, pos in state.positions.items())
-    live_portfolio  = state.balance + live_open_val
-    live_starting   = config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else db.get_starting_balance(config.SPOT_MODE)
-    live_return_pct = round((live_portfolio / live_starting - 1) * 100, 2) if live_starting and live_starting > 0 else None
+    live_open_val  = sum(live_prices.get(p, pos.value_eur) * pos.amount for p, pos in state.positions.items())
+    live_portfolio = state.balance + live_open_val
+    # When in simulation mode the main sim IS the baseline; live_return_pct used for vs_live on other shadows
+    if config.SPOT_MODE == "live":
+        live_starting   = config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else db.get_starting_balance(config.SPOT_MODE)
+        live_return_pct = round((live_portfolio / live_starting - 1) * 100, 2) if live_starting and live_starting > 0 else None
+    else:
+        live_starting   = config.SPOT_SIMULATION_BALANCE
+        live_return_pct = round((live_portfolio / live_starting - 1) * 100, 2) if live_starting > 0 else None
 
-    rows = []
-    for s in get_shadows():
+    def _shadow_row(s, is_main=False):
         prices = {}
         for p in (s.pairs or config.SPOT_TRADING_PAIRS):
             try:
@@ -252,48 +317,63 @@ def api_shadows_ranking():
                 pass
         open_val  = sum(prices.get(p, pos.value_eur) * pos.amount for p, pos in s.positions.items())
         portfolio = s.balance + open_val
-        starting  = float(s.overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+        starting  = float(s.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE)) if not is_main else live_starting
         ret       = round((portfolio / starting - 1) * 100, 2) if starting > 0 else 0
         stats     = db.get_trade_stats(s._db_mode)
-        rows.append({
-            "name":            s.name,
-            "pairs":           s.pairs or config.SPOT_TRADING_PAIRS,
-            "portfolio_value": round(portfolio, 2),
+        return {
+            "name":             s.name,
+            "is_main":          is_main,
+            "pairs":            s.pairs or config.SPOT_TRADING_PAIRS,
+            "portfolio_value":  round(portfolio, 2),
             "starting_balance": starting,
-            "return_pct":      ret,
-            "pnl":             round(s.total_pnl, 2),
-            "trades":          s.total_trades,
-            "win_rate":        stats.get("win_rate", 0) if stats else 0,
-            "vs_live":         round(ret - live_return_pct, 2) if live_return_pct is not None else None,
-        })
-    rows.sort(key=lambda x: x["return_pct"], reverse=True)
+            "return_pct":       ret,
+            "pnl":              round(s.total_pnl, 2),
+            "trades":           s.total_trades,
+            "win_rate":         stats.get("win_rate", 0) if stats else 0,
+            "vs_live":          round(ret - live_return_pct, 2) if (live_return_pct is not None and not is_main) else None,
+        }
+
+    rows = []
+    if config.SPOT_MODE == "simulation":
+        rows.append(_shadow_row(_MainSpotShim(state), is_main=True))
+    for s in get_shadows():
+        rows.append(_shadow_row(s))
+    rows.sort(key=lambda x: (not x["is_main"], -x["return_pct"]))
     return jsonify({"live_return_pct": live_return_pct, "shadows": rows})
 
 
 @app.route("/api/shadows/pnl_history")
 def api_shadows_pnl_history():
-    from bot.spot_simulator import get_shadows
+    from bot.spot_simulator import get_shadows, get_state
     import zoneinfo as _zi, datetime as _dt
     tz   = _zi.ZoneInfo("Europe/Helsinki")
     days = float(request.args.get("days", 30))
     out  = {}
-    for s in get_shadows():
-        starting = float(s.overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
-        rows = db.get_balance_history(s._db_mode, max(days, 0))
-        series = []
+
+    def _series(db_mode, starting):
+        rows = db.get_balance_history(db_mode, max(days, 0))
+        result = []
         for ts, bal in rows:
             try:
                 t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
             except Exception:
                 t = ts
             pnl = bal - starting
-            series.append({"t": t, "pnl": round(pnl, 2), "pct": round(pnl / starting * 100, 3) if starting else 0})
-        out[s.name] = series
+            result.append({"t": t, "pnl": round(pnl, 2), "pct": round(pnl / starting * 100, 3) if starting else 0})
+        return result
+
+    if config.SPOT_MODE == "simulation":
+        out["MAIN"] = _series(config.SPOT_MODE, config.SPOT_SIMULATION_BALANCE)
+    for s in get_shadows():
+        starting = float(s.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE))
+        out[s.name] = _series(s._db_mode, starting)
     return jsonify(out)
 
 
 def _get_shadow(name: str):
-    from bot.spot_simulator import get_shadows
+    from bot.spot_simulator import get_shadows, get_state
+    if name.upper() == "MAIN" and config.SPOT_MODE == "simulation":
+        return _MainSpotShim(get_state())
     return next((s for s in get_shadows() if s.name.upper() == name.upper()), None)
 
 
@@ -309,7 +389,7 @@ def api_shadow_status(name):
         except Exception:
             pass
     open_val = sum(prices.get(p, pos.value_eur) * pos.amount for p, pos in s.positions.items())
-    starting = float(s.overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+    starting = float(s.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE))
     fee      = config.SPOT_FEE
     positions_out = {}
     for pair, pos in s.positions.items():
@@ -323,9 +403,9 @@ def api_shadow_status(name):
             "take_profit":   round(pos.take_profit_price, 2),
             "break_even":    round(pos.entry_price * (1 + fee) / (1 - fee), 2),
             "dca_count":     pos.dca_count,
-            "dca_max":       s._o("dca_max", config.SPOT_DCA_MAX),
-            "dca_trigger":   round(pos.entry_price * (1 - (s._o("dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("dca_step", config.SPOT_DCA_STEP_PCT))), 2)
-                             if pos.dca_count < s._o("dca_max", config.SPOT_DCA_MAX) else None,
+            "dca_max":       s._o("spot_dca_max", config.SPOT_DCA_MAX),
+            "dca_trigger":   round(pos.entry_price * (1 - (s._o("spot_dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("spot_dca_step", config.SPOT_DCA_STEP_PCT))), 2)
+                             if pos.dca_count < s._o("spot_dca_max", config.SPOT_DCA_MAX) else None,
             "current_price": round(price, 2),
         }
     conn = __import__("sqlite3").connect(db.DB_PATH)
@@ -418,10 +498,10 @@ def api_shadow_signals(name):
     for pair in (s.pairs or config.SPOT_TRADING_PAIRS):
         try:
             price  = get_price(pair)
-            rsi_period   = s._o("rsi_period",   config.rsi_period_for(pair))
-            rsi_oversold = s._o("rsi_oversold",  config.rsi_oversold_for(pair))
-            rsi_ob       = s._o("rsi_overbought", config.rsi_overbought_for(pair))
-            ema_gap      = s._o("ema_gap",        config.ema_gap_for(pair))
+            rsi_period   = s._o("spot_rsi_period",   config.rsi_period_for(pair))
+            rsi_oversold = s._o("spot_rsi_oversold",  config.rsi_oversold_for(pair))
+            rsi_ob       = s._o("spot_rsi_overbought", config.rsi_overbought_for(pair))
+            ema_gap      = s._o("spot_ema_gap",        config.ema_gap_for(pair))
             result = compute_signal(get_df(pair, s.interval),
                                     rsi_period=rsi_period, rsi_oversold=rsi_oversold,
                                     rsi_overbought=rsi_ob, ema_gap=ema_gap)
@@ -457,9 +537,9 @@ def api_shadow_signals(name):
                     "take_profit":   round(pos.take_profit_price, 2),
                     "break_even":    round(pos.entry_price * (1 + fee) / (1 - fee), 2),
                     "dca_count":     pos.dca_count,
-                    "dca_max":       s._o("dca_max", config.SPOT_DCA_MAX),
-                    "dca_trigger":   round(pos.entry_price * (1 - (s._o("dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("dca_step", config.SPOT_DCA_STEP_PCT))), 2)
-                                     if pos.dca_count < s._o("dca_max", config.SPOT_DCA_MAX) else None,
+                    "dca_max":       s._o("spot_dca_max", config.SPOT_DCA_MAX),
+                    "dca_trigger":   round(pos.entry_price * (1 - (s._o("spot_dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("spot_dca_step", config.SPOT_DCA_STEP_PCT))), 2)
+                                     if pos.dca_count < s._o("spot_dca_max", config.SPOT_DCA_MAX) else None,
                     "current_price": round(price, 2),
                 }
 
@@ -507,10 +587,10 @@ def api_shadow_chart(name, pair):
     bb_upper = bb_mid + 2 * bb_std
     bb_lower = bb_mid - 2 * bb_std
 
-    _rp      = s._o("rsi_period",    config.rsi_period_for(pair))
-    _ros     = s._o("rsi_oversold",  config.rsi_oversold_for(pair))
-    _rob     = s._o("rsi_overbought", config.rsi_overbought_for(pair))
-    _egap    = s._o("ema_gap",        config.ema_gap_for(pair))
+    _rp      = s._o("spot_rsi_period",    config.rsi_period_for(pair))
+    _ros     = s._o("spot_rsi_oversold",  config.rsi_oversold_for(pair))
+    _rob     = s._o("spot_rsi_overbought", config.rsi_overbought_for(pair))
+    _egap    = s._o("spot_ema_gap",        config.ema_gap_for(pair))
     delta    = close.diff()
     gain     = delta.clip(lower=0)
     loss     = -delta.clip(upper=0)
@@ -966,6 +1046,43 @@ def api_futures_stats():
     if not config.FUTURES_ENABLED:
         return jsonify(None)
     return jsonify(db.get_trade_stats(f"futures_{config.FUTURES_MODE}"))
+
+
+@app.route("/api/futures/shadows")
+def api_futures_shadows():
+    if not config.FUTURES_ENABLED:
+        return jsonify([])
+    from bot.futures_simulator import get_futures_shadows, get_state as fget_state
+    from bot.futures_exchange import get_mark_price as _gmp
+    rows = []
+    shims = list(get_futures_shadows())
+    if config.FUTURES_MODE == "simulation":
+        shims.insert(0, _MainFuturesShim(fget_state()))
+    for sh in shims:
+        prices = {}
+        for sym in sh.symbols:
+            try:
+                prices[sym] = _gmp(sym)
+            except Exception:
+                pass
+        open_pnl = sum(p.unrealized_pnl(prices[s]) for s, p in sh.positions.items() if s in prices)
+        portfolio = sh.balance + open_pnl
+        starting  = sh._starting
+        ret       = round((portfolio / starting - 1) * 100, 2) if starting > 0 else 0
+        rows.append({
+            "name":       sh.name,
+            "is_main":    getattr(sh, "is_main", False),
+            "overrides":  sh.overrides,
+            "symbols":    sh.symbols,
+            "balance":    round(sh.balance, 2),
+            "portfolio":  round(portfolio, 2),
+            "starting":   starting,
+            "return_pct": ret,
+            "pnl":        round(sh.total_pnl, 4),
+            "funding":    round(sh.total_funding, 4),
+            "trades":     sh.total_trades,
+        })
+    return jsonify(rows)
 
 
 @app.route("/api/futures/status")

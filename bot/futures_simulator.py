@@ -339,3 +339,249 @@ def check_stops(prices: dict):
             if portfolio_value > _state.portfolio_peak:
                 _state.portfolio_peak = portfolio_value
                 _save()
+
+
+# ---------------------------------------------------------------------------
+# Futures shadow simulators
+# ---------------------------------------------------------------------------
+
+_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+
+class FuturesShadowSimulator:
+    """Lightweight futures simulation with configurable overrides.
+    Receives the same candle ticks as the main engine; never touches the exchange."""
+
+    def __init__(self, name: str, state_path: str, overrides: dict):
+        self.name       = name
+        self.state_path = state_path
+        self.overrides  = overrides
+        self.symbols: list[str] = overrides.get("symbols", list(config.FUTURES_TRADING_PAIRS))
+        self._lock      = threading.Lock()
+
+        starting = float(overrides.get("futures_balance", config.FUTURES_SIMULATION_BALANCE))
+        self._starting      = starting
+        self.balance        = starting
+        self.positions: dict[str, FuturesPosition] = {}
+        self.total_trades   = 0
+        self.total_pnl      = 0.0
+        self.total_fees     = 0.0
+        self.total_funding  = 0.0
+        self.portfolio_peak = 0.0
+        self.started_at: str | None = None
+        self._load()
+        if self.started_at is None:
+            import datetime, zoneinfo
+            self.started_at = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+            self._save()
+
+    def _o(self, key, default):
+        return self.overrides.get(key, default)
+
+    @property
+    def _db_mode(self) -> str:
+        return f"futures_shadow_{self.name.lower()}"
+
+    # --- position ops ---
+
+    def _open(self, symbol: str, price: float):
+        if symbol in self.positions:
+            return
+        leverage = self._o("futures_leverage", config.FUTURES_LEVERAGE)
+        pct      = self._o("futures_pos_pct",  config.FUTURES_POSITION_SIZE_PCT)
+        margin   = self.balance * pct
+        notional = margin * leverage
+        amount   = round_qty(symbol, notional / price)
+        if amount <= 0 or margin < 1:
+            return
+        fee      = notional * FEE
+        pos = FuturesPosition(
+            symbol=symbol, side="LONG",
+            entry_price=price, amount=amount, margin=margin,
+            leverage=leverage,
+            take_profit_price=price * (1 + config.FUTURES_TAKE_PROFIT_PCT),
+            highest_price=price,
+            opened_at=_time.time(),
+        )
+        self.positions[symbol]  = pos
+        self.balance           -= margin + fee
+        self.total_fees        += fee
+        log_trade(symbol, "BUY", price, amount, notional, fee,
+                  mode=self._db_mode, notes=f"lev={leverage}x")
+
+    def _dca(self, symbol: str, price: float):
+        pos = self.positions.get(symbol)
+        if pos is None or pos.dca_done:
+            return
+        margin   = min(self.balance * config.FUTURES_DCA_SIZE_PCT, self.balance)
+        if margin < 1:
+            return
+        leverage = self._o("futures_leverage", config.FUTURES_LEVERAGE)
+        notional = margin * leverage
+        amount   = round_qty(symbol, notional / price)
+        fee      = notional * FEE
+        apply_dca(pos, price, margin)
+        self.balance    -= margin + fee
+        self.total_fees += fee
+        log_trade(symbol, "BUY", price, amount, notional, fee,
+                  mode=self._db_mode, notes="dca")
+
+    def _close(self, symbol: str, price: float, reason: str = "signal"):
+        pos = self.positions.pop(symbol, None)
+        if pos is None:
+            return
+        notional  = price * pos.amount
+        exit_fee  = notional * FEE
+        entry_fee = pos.entry_price * pos.amount * FEE
+        pnl       = calc_pnl(pos, price, entry_fee=entry_fee, exit_fee=exit_fee)
+        self.balance        += max(pos.margin + pnl, 0)
+        self.total_trades   += 1
+        self.total_pnl      += pnl
+        self.total_fees     += exit_fee
+        self.total_funding  += pos.funding_paid
+        log_trade(symbol, "SELL", price, pos.amount, notional, exit_fee,
+                  mode=self._db_mode, pnl=round(pnl, 4), notes=reason)
+
+    # --- engine interface ---
+
+    def tick(self, symbol: str, price: float, df):
+        from .strategy import compute_signal, Signal
+        with self._lock:
+            pos = self.positions.get(symbol)
+            if pos:
+                update_peak(pos, price)
+                if check_liquidation(pos, price):
+                    self._close(symbol, price, "liquidation")
+                elif check_take_profit(pos, price):
+                    self._close(symbol, price, "take_profit")
+                elif check_trailing_stop(pos, price):
+                    self._close(symbol, price, "trailing_stop")
+                else:
+                    drop = (pos.entry_price - price) / pos.entry_price
+                    if not pos.dca_done and drop >= config.FUTURES_DCA_DROP_PCT:
+                        self._dca(symbol, price)
+            else:
+                result = compute_signal(
+                    df,
+                    rsi_period     = self._o("futures_rsi_period",     config.futures_rsi_period_for(symbol)),
+                    rsi_oversold   = self._o("futures_rsi_oversold",   config.futures_rsi_oversold_for(symbol)),
+                    rsi_overbought = self._o("futures_rsi_overbought", config.futures_rsi_overbought_for(symbol)),
+                    ema_gap        = self._o("futures_ema_gap",        config.futures_ema_gap_for(symbol)),
+                )
+                if result.signal == Signal.BUY:
+                    max_funding = self._o("futures_max_funding_rate", config.FUTURES_MAX_FUNDING_RATE)
+                    if max_funding > 0:
+                        try:
+                            rate = get_funding_rate(symbol)
+                            if rate > max_funding:
+                                return
+                        except Exception:
+                            pass
+                    self._open(symbol, price)
+            self._save()
+
+    def apply_funding(self, symbol: str, rate: float):
+        if symbol not in self.positions:
+            return
+        pos  = self.positions[symbol]
+        cost = pos.entry_price * pos.amount * rate
+        pos.funding_paid    += cost
+        self.total_funding  += cost
+        self._save()
+
+    def check_stops(self, prices: dict):
+        with self._lock:
+            changed = False
+            for symbol, pos in list(self.positions.items()):
+                price = prices.get(symbol)
+                if price is None:
+                    continue
+                update_peak(pos, price)
+                if check_liquidation(pos, price):
+                    self._close(symbol, price, "liquidation"); changed = True
+                elif check_take_profit(pos, price):
+                    self._close(symbol, price, "take_profit"); changed = True
+                elif check_trailing_stop(pos, price):
+                    self._close(symbol, price, "trailing_stop"); changed = True
+            if changed:
+                self._save()
+
+    def log_snapshot(self, prices: dict):
+        from .db import log_balance
+        open_pnl = sum(p.unrealized_pnl(prices[s]) for s, p in self.positions.items() if s in prices)
+        port_val = self.balance + open_pnl
+        if port_val > self.portfolio_peak:
+            self.portfolio_peak = port_val
+        log_balance(round(port_val, 2), self._db_mode)
+
+    # --- persistence ---
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+        with open(self.state_path, "w") as f:
+            json.dump({
+                "name":           self.name,
+                "started_at":     self.started_at,
+                "overrides":      self.overrides,
+                "balance":        self.balance,
+                "total_trades":   self.total_trades,
+                "total_pnl":      self.total_pnl,
+                "total_fees":     self.total_fees,
+                "total_funding":  self.total_funding,
+                "portfolio_peak": self.portfolio_peak,
+                "positions": {
+                    sym: {
+                        "symbol":            p.symbol,
+                        "side":              p.side,
+                        "entry_price":       p.entry_price,
+                        "amount":            p.amount,
+                        "margin":            p.margin,
+                        "leverage":          p.leverage,
+                        "take_profit_price": p.take_profit_price,
+                        "highest_price":     p.highest_price,
+                        "dca_done":          p.dca_done,
+                        "funding_paid":      p.funding_paid,
+                        "opened_at":         p.opened_at,
+                    }
+                    for sym, p in self.positions.items()
+                },
+            }, f, indent=2)
+
+    def _load(self):
+        if not os.path.exists(self.state_path):
+            return
+        try:
+            with open(self.state_path) as f:
+                data = json.load(f)
+            self.started_at     = data.get("started_at",     None)
+            self.balance        = data.get("balance",        self._starting)
+            self.total_trades   = data.get("total_trades",   0)
+            self.total_pnl      = data.get("total_pnl",      0.0)
+            self.total_fees     = data.get("total_fees",     0.0)
+            self.total_funding  = data.get("total_funding",  0.0)
+            self.portfolio_peak = data.get("portfolio_peak", 0.0)
+            self.positions = {}
+            for sym, d in data.get("positions", {}).items():
+                self.positions[sym] = FuturesPosition(**d)
+        except Exception:
+            pass
+
+
+_futures_shadows: list[FuturesShadowSimulator] = []
+
+
+def init_futures_shadows() -> list[FuturesShadowSimulator]:
+    global _futures_shadows
+    _futures_shadows = []
+    for name in config.get_futures_shadow_profiles():
+        overrides  = config.get_futures_shadow_overrides(name)
+        state_path = os.path.join(_DATA_DIR, f"futures_state_shadow_{name.lower()}.json")
+        _futures_shadows.append(FuturesShadowSimulator(name, state_path, overrides))
+    if _futures_shadows:
+        names = ", ".join(s.name for s in _futures_shadows)
+        notify(f"[FUTURES SHADOW] {len(_futures_shadows)} shadow(s) loaded: {names}", discord=False)
+    return _futures_shadows
+
+
+def get_futures_shadows() -> list[FuturesShadowSimulator]:
+    return _futures_shadows

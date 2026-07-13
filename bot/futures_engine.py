@@ -10,6 +10,7 @@ from .strategy import compute_signal, Signal
 from .futures_simulator import (
     init as sim_init, get_state, open_long, dca_long, close_long,
     check_stops, apply_funding,
+    init_futures_shadows, get_futures_shadows,
 )
 from .notifier import notify
 from . import db as _db
@@ -62,6 +63,8 @@ def _maybe_apply_funding(symbol: str, price: float) -> None:
         rate = get_funding_rate(symbol)
         if rate != 0.0:
             apply_funding(symbol, rate)
+            for sh in get_futures_shadows():
+                sh.apply_funding(symbol, rate)
         _next_funding[symbol] = get_next_funding_time(symbol)
     except Exception as e:
         log.warning(f"[FUTURES FUNDING] {symbol} fetch failed: {e}")
@@ -71,6 +74,7 @@ def _loop():
     global _running, _last_tick
 
     sim_init()
+    init_futures_shadows()
     notify(
         f"[FUTURES] Engine started — mode={config.FUTURES_MODE}  "
         f"pairs={', '.join(config.FUTURES_TRADING_PAIRS)}  "
@@ -157,6 +161,18 @@ def _loop():
                 has_pos     = sym in state.positions
 
                 if result.signal == Signal.BUY and not has_pos:
+                    if config.FUTURES_MAX_FUNDING_RATE > 0:
+                        try:
+                            funding = get_funding_rate(sym)
+                            if funding > config.FUTURES_MAX_FUNDING_RATE:
+                                notify(
+                                    f"[FUTURES] {sym} BUY suppressed — funding {funding*100:.4f}%/8h"
+                                    f" > max {config.FUTURES_MAX_FUNDING_RATE*100:.4f}%",
+                                    discord=False,
+                                )
+                                continue
+                        except Exception as _fe:
+                            log.warning(f"[FUTURES] funding rate fetch failed for {sym}: {_fe}")
                     open_long(sym, price)
 
                 elif has_pos:
@@ -168,6 +184,13 @@ def _loop():
                 # Futures exits are driven by check_stops (take-profit / trailing stop),
                 # not RSI overbought. RSI can cross "overbought" many times during a
                 # strong trend; the trailing stop locks in profit without cutting too early.
+
+            # Tick futures shadows
+            for sh in get_futures_shadows():
+                for sym in sh.symbols:
+                    if sym in prices and sym in dfs:
+                        sh.tick(sym, prices[sym], dfs[sym])
+                sh.log_snapshot(prices)
 
             # Snapshot portfolio value (cash + open position unrealised PnL)
             snap = get_state()
@@ -191,10 +214,14 @@ def _stop_loop():
             continue
         try:
             state = get_state()
-            if not state.positions:
+            shadow_has_positions = any(sh.positions for sh in get_futures_shadows())
+            if not state.positions and not shadow_has_positions:
                 continue
             prices = {}
-            for sym in list(state.positions):
+            syms_needed = set(state.positions)
+            for sh in get_futures_shadows():
+                syms_needed.update(sh.positions)
+            for sym in syms_needed:
                 try:
                     prices[sym] = get_mark_price(sym)
                 except Exception as e:
@@ -204,6 +231,8 @@ def _stop_loop():
                     if sym in prices:
                         _maybe_apply_funding(sym, prices[sym])
                 check_stops(prices)
+                for sh in get_futures_shadows():
+                    sh.check_stops(prices)
         except Exception as e:
             log.error(f"[FUTURES STOP-CHECK] {e}", exc_info=True)
 

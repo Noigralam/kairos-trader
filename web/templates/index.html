@@ -312,11 +312,14 @@
       <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
         <span class="tab-dot" style="background:var(--blue)"></span>Spot
       </button>
+      <button class="tab" data-tab="spot-shadow" onclick="switchTab('spot-shadow')" id="spot-shadow-tab-btn" style="display:none">
+        <span class="tab-dot" style="background:#d29922"></span>Spot Shadow
+      </button>
       <button class="tab" data-tab="futures" onclick="switchTab('futures')" id="futures-tab-btn" style="display:none">
         <span class="tab-dot" id="futures-tab-dot" style="background:var(--muted)"></span>Futures
       </button>
-      <button class="tab" data-tab="shadows" onclick="switchTab('shadows')" id="shadows-tab-btn" style="display:none">
-        <span class="tab-dot" style="background:#d29922"></span>Shadows
+      <button class="tab" data-tab="futures-shadow" onclick="switchTab('futures-shadow')" id="futures-shadow-tab-btn" style="display:none">
+        <span class="tab-dot" style="background:#58a6ff"></span>Futures Shadow
       </button>
     </div>
   </div>
@@ -354,6 +357,12 @@
 
   <!-- ═══════════════════════════ SPOT TAB ══════════════════════════════ -->
   <div id="tab-spot">
+
+    <div id="spot-sim-notice" style="display:none;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:10px 14px;margin-bottom:14px;color:var(--muted);font-size:13px">
+      Running in <strong style="color:#d29922">simulation</strong> mode — no live trades.
+      Live performance will appear here when <code>SPOT_MODE=live</code>.
+      Simulation data is in the <a href="#" onclick="switchTab('spot-shadow');return false" style="color:#58a6ff">Spot Shadow</a> tab.
+    </div>
 
     <div class="stats">
       <div class="stat-card">
@@ -492,6 +501,12 @@
   <!-- ═══════════════════════════ FUTURES TAB ═══════════════════════════ -->
   <div id="tab-futures" style="display:none">
 
+    <div id="futures-sim-notice" style="display:none;background:#21262d;border:1px solid #30363d;border-radius:6px;padding:10px 14px;margin-bottom:14px;color:var(--muted);font-size:13px">
+      Running in <strong style="color:#d29922">simulation</strong> mode — no live trades.
+      Live performance will appear here when <code>FUTURES_MODE=live</code>.
+      Simulation data is in the <a href="#" onclick="switchTab('futures-shadow');return false" style="color:#58a6ff">Futures Shadow</a> tab.
+    </div>
+
     <div class="stats futures-stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
       <div class="stat-card">
         <div class="label">Balance</div>
@@ -528,6 +543,7 @@
         </div>
       </div>
     </section>
+
 
     <section>
       <div class="chart-controls">
@@ -627,8 +643,8 @@
 
   </div><!-- /tab-futures -->
 
-  <!-- ═══════════════════════════ SHADOWS TAB ══════════════════════════ -->
-  <div id="tab-shadows" style="display:none">
+  <!-- ════════════════════════ SPOT SHADOWS TAB ════════════════════════ -->
+  <div id="tab-spot-shadow" style="display:none">
 
     <!-- Rankings table -->
     <section style="margin-bottom:8px">
@@ -780,7 +796,20 @@
       </div>
     </section>
 
-  </div><!-- /tab-shadows -->
+  </div><!-- /tab-spot-shadow -->
+
+  <!-- ═══════════════════════ FUTURES SHADOWS TAB ══════════════════════ -->
+  <div id="tab-futures-shadow" style="display:none">
+    <section>
+      <h2>Futures Shadow Comparison <span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:8px">vs main sim (2× lev, EMA gap 2%, funding filter 0.05%)</span></h2>
+      <table>
+        <thead><tr>
+          <th>Profile</th><th>Return</th><th>PnL $</th><th>Funding $</th><th>Trades</th><th>What differs</th>
+        </tr></thead>
+        <tbody id="f-shadows-body"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </section>
+  </div><!-- /tab-futures-shadow -->
 
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
   <section>
@@ -820,12 +849,13 @@
 
   function switchTab(name) {
     _activeTab = name;
-    document.getElementById('tab-spot').style.display    = name === 'spot'    ? '' : 'none';
-    document.getElementById('tab-futures').style.display = name === 'futures' ? '' : 'none';
-    document.getElementById('tab-shadows').style.display = name === 'shadows' ? '' : 'none';
+    document.getElementById('tab-spot').style.display           = name === 'spot'           ? '' : 'none';
+    document.getElementById('tab-spot-shadow').style.display    = name === 'spot-shadow'    ? '' : 'none';
+    document.getElementById('tab-futures').style.display        = name === 'futures'        ? '' : 'none';
+    document.getElementById('tab-futures-shadow').style.display = name === 'futures-shadow' ? '' : 'none';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
-    if (name === 'shadows') refreshShadowTab();
+    if (name === 'spot-shadow') refreshShadowTab();
   }
 
   function _syncSpotHeader() {
@@ -1067,6 +1097,9 @@
 
       _syncSpotHeader();
 
+      // Show simulation notice when not in live mode
+      document.getElementById('spot-sim-notice').style.display = s.mode === 'simulation' ? '' : 'none';
+
       // Stats
       document.getElementById('balance').textContent = fmt(s.balance);
       document.getElementById('total-trades').textContent = s.total_trades;
@@ -1180,7 +1213,7 @@
     const res = await fetch('/api/shadows');
     _shNames = (await res.json()).map(s => s.name);
     if (!_shNames.length) return;
-    document.getElementById('shadows-tab-btn').style.display = '';
+    document.getElementById('spot-shadow-tab-btn').style.display = '';
     _activeShadow = _shNames[0];
     const sel = document.getElementById('sh-selector');
     sel.innerHTML = _shNames.map(n =>
@@ -1443,9 +1476,12 @@
       const vsColor   = s.vs_live === null ? 'var(--muted)' : s.vs_live > 0 ? 'var(--green)' : s.vs_live < 0 ? 'var(--red)' : 'var(--muted)';
       const vsText    = s.vs_live === null ? '—' : (s.vs_live > 0 ? '+' : '') + s.vs_live.toFixed(2) + '%';
       const nameStyle = s.name === _activeShadow ? 'font-weight:600;color:var(--blue);cursor:pointer' : 'cursor:pointer';
-      return `<tr>
+      const badge     = s.is_main
+        ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
+        : `<span style="font-size:11px;background:var(--card);color:#3fb950;padding:1px 6px;border-radius:3px;margin-right:6px">SPOT</span>`;
+      return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
         <td style="color:var(--muted)">${i + 1}</td>
-        <td><span style="${nameStyle}" onclick="switchShadow('${s.name}')">${s.name}</span></td>
+        <td>${badge}<span style="${nameStyle}" onclick="switchShadow('${s.name}')">${s.name}</span></td>
         <td style="color:var(--muted);font-size:12px">${s.pairs.join(', ')}</td>
         <td style="color:${retColor}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
         <td style="color:${vsColor}">${vsText}</td>
@@ -1854,7 +1890,7 @@
   initShadowTab();
   setInterval(refresh, 60000);
   setInterval(refreshSignals, 60000);
-  setInterval(() => { if (_activeTab === 'shadows') refreshShadowTab(); }, 60000);
+  setInterval(() => { if (_activeTab === 'spot-shadow') refreshShadowTab(); }, 60000);
   setInterval(refreshShHeaderBlocks, 60000);
 
   // ── candlestick plugin ─────────────────────────────────────────────────────
@@ -2538,6 +2574,10 @@
 
       _syncFuturesHeader();
 
+      // Show simulation notice when not in live mode
+      const fSimNotice = document.getElementById('futures-sim-notice');
+      if (fSimNotice) fSimNotice.style.display = d.mode === 'simulation' ? '' : 'none';
+
       // Summary stats
       document.getElementById('f-balance').textContent = fmtUsdt(d.balance);
       const fOpenVal = Object.values(d.positions || {}).reduce((s, p) => s + p.unrealized_pnl, 0);
@@ -2814,12 +2854,50 @@
     } catch(e) { console.error(e); }
   }
 
+  async function refreshFuturesShadows() {
+    try {
+      const rows = await fetch('/api/futures/shadows').then(r => r.json());
+      const btn  = document.getElementById('futures-shadow-tab-btn');
+      if (!rows.length) { if (btn) btn.style.display = 'none'; return; }
+      if (btn) btn.style.display = '';
+      const tb = document.getElementById('f-shadows-body');
+      tb.innerHTML = rows.map(s => {
+        const retCls = s.return_pct >= 0 ? 'pos' : 'neg';
+        const pnlCls = s.pnl >= 0 ? 'pos' : 'neg';
+        const ov     = s.overrides;
+        const tags   = [];
+        if (ov.futures_max_funding_rate === 0)       tags.push('no funding filter');
+        else if (ov.futures_max_funding_rate != null) tags.push(`funding max ${(ov.futures_max_funding_rate*100).toFixed(3)}%`);
+        if (ov.futures_leverage != null)              tags.push(`${ov.futures_leverage}× leverage`);
+        if (ov.futures_ema_gap === 0)                 tags.push('no EMA gap filter');
+        else if (ov.futures_ema_gap != null)          tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
+        if (ov.futures_rsi_oversold != null)          tags.push(`oversold ${ov.futures_rsi_oversold}`);
+        if (ov.futures_rsi_period != null)            tags.push(`RSI(${ov.futures_rsi_period})`);
+        const note = tags.length ? tags.join(', ') : (s.is_main ? 'baseline (main sim)' : '—');
+        const fundingSign = s.funding <= 0 ? '' : '+';
+        const badge = s.is_main
+          ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
+          : ``;
+        return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
+          <td>${badge}${s.name}</td>
+          <td class="${retCls}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
+          <td class="${pnlCls}">${s.pnl >= 0 ? '+' : ''}$${Math.abs(s.pnl).toFixed(4)}</td>
+          <td>${fundingSign}$${s.funding.toFixed(4)}</td>
+          <td>${s.trades}</td>
+          <td style="color:var(--muted);font-size:12px">${note}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {}
+  }
+
   initFuturesChart();
 
   refreshFutures();
   refreshFuturesSignals();
+  refreshFuturesShadows();
   setInterval(refreshFutures, 30000);
   setInterval(refreshFuturesSignals, 60000);
+  setInterval(refreshFuturesShadows, 60000);
 </script>
 </body>
 </html>
