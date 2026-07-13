@@ -593,6 +593,12 @@ class SpotShadowSimulator:
         cooldown_until = self._stop_cooldowns.get(pair, 0)
         if cooldown_until > _time.time():
             return
+        fng_max = self._o("fng_max", None)
+        if fng_max is not None:
+            from .notifier import get_fng
+            fng_val, _ = get_fng()
+            if fng_val is not None and fng_val > fng_max:
+                return
         tp_pct      = self._o("tp_pct",  config.take_profit_for(pair))
         max_sz      = self.balance / (1 + SPOT_FEE)
         no_dca      = self._o("dca_max", config.dca_max_for(pair)) == 0
@@ -797,6 +803,242 @@ class SpotShadowSimulator:
         }
 
 
+class GridShadowSimulator:
+    """Grid trading shadow: maintains a ladder of fixed buy/sell levels around a reference price.
+    Each slot is funded with starting_balance / grid_levels EUR. Sells before buys on each candle."""
+
+    def __init__(self, name: str, state_path: str, overrides: dict):
+        self.name       = name
+        self.state_path = state_path
+        self.overrides  = overrides
+        self.pairs: list[str] | None = overrides.get("pairs", None)
+        self.interval: str = overrides.get("interval", config.SPOT_INTERVAL)
+        self._lock      = threading.Lock()
+
+        starting = float(overrides.get("balance", config.SPOT_SIMULATION_BALANCE))
+        self._starting_balance = starting
+        self.balance        = starting
+        self.total_trades   = 0
+        self.total_pnl      = 0.0
+        self.total_fees     = 0.0
+        self.portfolio_peak = 0.0
+        self.started_at: str | None = None
+
+        self._spacing  = float(overrides.get("grid_spacing", 0.015))
+        self._n_levels = int(overrides.get("grid_levels", 8))
+        self._slot_eur = starting / self._n_levels
+
+        # grid state: list of slot dicts (serialised to JSON)
+        self._grid_center: float | None = None
+        self._slots: list[dict] = []
+        self._highest_price: float = 0.0
+
+        self._load()
+        if self.started_at is None:
+            import datetime, zoneinfo
+            self.started_at = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+            self._save()
+
+    # --- compatibility helpers (app.py calls these on all shadows) ---
+
+    def _o(self, key: str, default):
+        if key == "dca_max":
+            return self._n_levels
+        return self.overrides.get(key, default)
+
+    def _trailing_stop_level(self, pos) -> float:
+        return 0.0  # grid exits at fixed sell targets, no trailing stop
+
+    @property
+    def _db_mode(self) -> str:
+        return f"shadow_{self.name.lower()}"
+
+    @property
+    def positions(self) -> dict:
+        """Aggregate all filled slots into one Position so dashboard/stop-check loop works."""
+        filled = [s for s in self._slots if s["filled"]]
+        if not filled:
+            return {}
+        pair         = (self.pairs or config.SPOT_TRADING_PAIRS)[0]
+        total_amount = sum(s["amount"] for s in filled)
+        total_cost   = sum(s["cost_eur"] for s in filled)
+        avg_entry    = total_cost / total_amount if total_amount > 0 else 0.0
+        pos = Position(
+            pair             = pair,
+            entry_price      = avg_entry,
+            amount           = total_amount,
+            value_eur        = total_cost,
+            take_profit_price= 0.0,
+            highest_price    = self._highest_price or avg_entry,
+            dca_count        = len(filled),
+            opened_at        = _time.time(),
+            partial_closed   = False,
+        )
+        return {pair: pos}
+
+    # --- grid management ---
+
+    def _init_grid(self, center: float):
+        self._grid_center = center
+        self._slots = []
+        for i in range(self._n_levels):
+            buy   = round(center * (1 - (i + 1) * self._spacing), 8)
+            sell  = round(buy  * (1 + self._spacing), 8)
+            self._slots.append({"level": i, "buy_price": buy, "sell_price": sell,
+                                 "amount": 0.0, "cost_eur": 0.0, "filled": False})
+
+    def _buy_slot(self, slot: dict, price: float) -> bool:
+        if self.balance < self._slot_eur * (1 + SPOT_FEE):
+            return False
+        fee    = self._slot_eur * SPOT_FEE
+        amount = self._slot_eur / price
+        slot["filled"]   = True
+        slot["amount"]   = amount
+        slot["cost_eur"] = self._slot_eur
+        self.balance    -= self._slot_eur + fee
+        self.total_fees += fee
+        if price > self._highest_price:
+            self._highest_price = price
+        pair = (self.pairs or config.SPOT_TRADING_PAIRS)[0]
+        log_trade(pair, "BUY", price, amount, self._slot_eur, fee,
+                  mode=self._db_mode, notes=f"grid_level_{slot['level']}")
+        return True
+
+    def _sell_slot(self, slot: dict, price: float):
+        pair      = (self.pairs or config.SPOT_TRADING_PAIRS)[0]
+        sell_val  = slot["amount"] * price
+        sell_fee  = sell_val  * SPOT_FEE
+        buy_fee   = slot["cost_eur"] * SPOT_FEE
+        pnl       = sell_val - slot["cost_eur"] - buy_fee - sell_fee
+        self.balance        += sell_val - sell_fee
+        self.total_trades   += 1
+        self.total_pnl      += pnl
+        self.total_fees     += sell_fee
+        log_trade(pair, "SELL", price, slot["amount"], sell_val, sell_fee,
+                  mode=self._db_mode, pnl=pnl, notes=f"grid_level_{slot['level']}")
+        slot["filled"]   = False
+        slot["amount"]   = 0.0
+        slot["cost_eur"] = 0.0
+
+    # --- main loop interface ---
+
+    def tick(self, pair: str, prices: dict):
+        from .candles import get_df
+        price = prices.get(pair)
+        if price is None:
+            return
+
+        with self._lock:
+            # First tick: initialise grid around current price and skip trading
+            if self._grid_center is None:
+                self._init_grid(price)
+                self._save()
+                return
+
+            df = get_df(pair, self.interval)
+            if df.empty:
+                return
+            last = df.iloc[-1]
+            high = float(last["high"])
+            low  = float(last["low"])
+            if high > self._highest_price:
+                self._highest_price = high
+
+            # Sells first (price rallied → close profitable slots before opening new ones)
+            for slot in self._slots:
+                if slot["filled"] and high >= slot["sell_price"]:
+                    self._sell_slot(slot, slot["sell_price"])
+
+            # Then buys (price dropped → open new slots)
+            for slot in self._slots:
+                if not slot["filled"] and low <= slot["buy_price"]:
+                    self._buy_slot(slot, slot["buy_price"])
+
+            # Shift grid up if all slots are empty and price rallied well above the top level
+            if not any(s["filled"] for s in self._slots):
+                top_buy = self._slots[0]["buy_price"]
+                if price > top_buy * (1 + self._spacing * 2):
+                    self._init_grid(price)
+
+            filled   = [s for s in self._slots if s["filled"]]
+            port_val = self.balance + sum(s["amount"] * price for s in filled)
+            if port_val > self.portfolio_peak:
+                self.portfolio_peak = port_val
+            log_balance(round(port_val, 2), self._db_mode)
+            self._save()
+
+    def check_stops(self, prices: dict):
+        """Between-candle: fire any sell targets hit by current price."""
+        with self._lock:
+            pair  = (self.pairs or config.SPOT_TRADING_PAIRS)[0]
+            price = prices.get(pair)
+            if price is None:
+                return
+            changed = False
+            for slot in self._slots:
+                if slot["filled"] and price >= slot["sell_price"]:
+                    self._sell_slot(slot, slot["sell_price"])
+                    changed = True
+            if price > self._highest_price:
+                self._highest_price = price
+                changed = True
+            if changed:
+                filled   = [s for s in self._slots if s["filled"]]
+                port_val = self.balance + sum(s["amount"] * price for s in filled)
+                if port_val > self.portfolio_peak:
+                    self.portfolio_peak = port_val
+                self._save()
+
+    # --- persistence ---
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+        with open(self.state_path, "w") as f:
+            json.dump({
+                "name":           self.name,
+                "started_at":     self.started_at,
+                "overrides":      self.overrides,
+                "balance":        self.balance,
+                "total_trades":   self.total_trades,
+                "total_pnl":      self.total_pnl,
+                "total_fees":     self.total_fees,
+                "portfolio_peak": self.portfolio_peak,
+                "grid_center":    self._grid_center,
+                "highest_price":  self._highest_price,
+                "slots":          self._slots,
+            }, f, indent=2)
+
+    def _load(self):
+        if not os.path.exists(self.state_path):
+            return
+        try:
+            with open(self.state_path) as f:
+                data = json.load(f)
+            self.started_at     = data.get("started_at",     None)
+            self.balance        = data.get("balance",        self._starting_balance)
+            self.total_trades   = data.get("total_trades",   0)
+            self.total_pnl      = data.get("total_pnl",      0.0)
+            self.total_fees     = data.get("total_fees",     0.0)
+            self.portfolio_peak = data.get("portfolio_peak", 0.0)
+            self._grid_center   = data.get("grid_center",    None)
+            self._highest_price = data.get("highest_price",  0.0)
+            self._slots         = data.get("slots",          [])
+        except Exception:
+            pass
+
+    def get_state(self) -> dict:
+        return {
+            "name":           self.name,
+            "overrides":      self.overrides,
+            "balance":        round(self.balance,        2),
+            "total_trades":   self.total_trades,
+            "total_pnl":      round(self.total_pnl,      2),
+            "total_fees":     round(self.total_fees,     4),
+            "portfolio_peak": round(self.portfolio_peak, 2),
+            "positions":      {},
+        }
+
+
 # --- module-level shadow registry ---
 
 _shadows: list[SpotShadowSimulator] = []
@@ -806,9 +1048,12 @@ def init_shadows() -> list[SpotShadowSimulator]:
     global _shadows
     _shadows = []
     for name in config.get_shadow_profiles():
-        overrides   = config.get_shadow_overrides(name)
-        state_path  = os.path.join(_DATA_DIR, f"spot_state_shadow_{name.lower()}.json")
-        _shadows.append(SpotShadowSimulator(name, state_path, overrides))
+        overrides  = config.get_shadow_overrides(name)
+        state_path = os.path.join(_DATA_DIR, f"spot_state_shadow_{name.lower()}.json")
+        if overrides.get("type") == "grid":
+            _shadows.append(GridShadowSimulator(name, state_path, overrides))
+        else:
+            _shadows.append(SpotShadowSimulator(name, state_path, overrides))
     if _shadows:
         names = ", ".join(s.name for s in _shadows)
         notify(f"[SHADOW] {len(_shadows)} shadow sim(s) loaded: {names}", discord=False)

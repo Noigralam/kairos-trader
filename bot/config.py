@@ -158,8 +158,15 @@ def get_shadow_overrides(name: str) -> dict:
         "PARTIAL_CLOSE_PCT":       ("partial_close_pct",    float),
         "PARTIAL_CLOSE_TRAIL_PCT": ("partial_close_trail",  float),
         "BALANCE":                 ("balance",              float),
+        "GRID_SPACING":            ("grid_spacing",         float),
+        "GRID_LEVELS":             ("grid_levels",          int),
+        "FNG_MAX":                 ("fng_max",              int),
     }
     result: dict = {}
+    # string params
+    type_val = os.getenv(f"{prefix}TYPE")
+    if type_val:
+        result["type"] = type_val.lower().strip()
     for env_suffix, (key, cast) in _param_map.items():
         val = os.getenv(f"{prefix}{env_suffix}")
         if val is not None:

@@ -1626,13 +1626,16 @@
     try {
       const res  = await fetch(`/api/shadow/${_activeShadow}/stats`);
       const stat = await res.json();
-      if (stat.total_trades) {
-        document.getElementById('sh-stat-winrate').textContent = stat.total_trades ? `${((stat.winning_trades||0)/stat.total_trades*100).toFixed(0)}%` : '—';
-        document.getElementById('sh-stat-avgpnl').innerHTML    = fmtPnl(stat.avg_pnl);
-        document.getElementById('sh-stat-best').innerHTML      = fmtPnl(stat.best_trade);
-        document.getElementById('sh-stat-worst').innerHTML     = fmtPnl(stat.worst_trade);
-        const h = Math.floor((stat.avg_hold_hours||0)); const m = Math.round(((stat.avg_hold_hours||0)-h)*60);
-        document.getElementById('sh-stat-hold').textContent    = stat.avg_hold_hours ? `${h}h ${String(m).padStart(2,'0')}m` : '—';
+      if (stat && stat.total) {
+        document.getElementById('sh-stat-winrate').textContent = `${stat.win_rate}%  (${stat.wins}W / ${stat.losses}L)`;
+        document.getElementById('sh-stat-winrate').style.color = stat.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
+        document.getElementById('sh-stat-avgpnl').textContent  = `${stat.avg_pnl > 0 ? '+' : ''}${stat.avg_pnl.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+        document.getElementById('sh-stat-avgpnl').style.color  = stat.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        document.getElementById('sh-stat-best').textContent    = `${stat.best >= 0 ? '+' : ''}${stat.best.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+        document.getElementById('sh-stat-best').style.color    = stat.best >= 0 ? 'var(--green)' : 'var(--red)';
+        document.getElementById('sh-stat-worst').textContent   = `${stat.worst >= 0 ? '+' : ''}${stat.worst.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+        document.getElementById('sh-stat-worst').style.color   = stat.worst >= 0 ? 'var(--green)' : 'var(--red)';
+        document.getElementById('sh-stat-hold').textContent    = stat.avg_hold_h != null ? `${stat.avg_hold_h}h` : '—';
       }
     } catch(e) {}
   }

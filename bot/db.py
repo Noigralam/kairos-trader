@@ -129,13 +129,17 @@ def get_balance_history(mode: str, days: float = 30):
 
 def get_trade_stats(mode: str):
     conn = sqlite3.connect(DB_PATH)
-    rows = conn.execute("""
-        SELECT side, pnl, timestamp, pair, notes
-        FROM trades WHERE mode = ? AND pnl IS NOT NULL
+    sell_rows = conn.execute("""
+        SELECT pnl, timestamp, pair
+        FROM trades WHERE mode = ? AND side = 'SELL' AND pnl IS NOT NULL
+    """, (mode,)).fetchall()
+    buy_rows_raw = conn.execute("""
+        SELECT timestamp, pair, notes
+        FROM trades WHERE mode = ? AND side = 'BUY'
     """, (mode,)).fetchall()
     conn.close()
 
-    sells = [(r[1], r[2], r[3]) for r in rows if r[0] == 'SELL']
+    sells = sell_rows
     if not sells:
         return None
 
@@ -148,18 +152,16 @@ def get_trade_stats(mode: str):
     win_rate   = len(wins) / len(pnls) * 100
 
     # avg hold time: match BUY→SELL pairs per pair
-    buy_rows  = [(r[2], r[3]) for r in rows if r[0] == 'BUY' and 'dca' not in (r[4] or '').lower()]
-    hold_times = []
+    hold_times   = []
     buys_by_pair = {}
-    for ts, pair in buy_rows:
-        buys_by_pair.setdefault(pair, []).append(ts)
-    for ts, pair, _ in sells:
+    for ts, pair, notes in buy_rows_raw:
+        if 'dca' not in (notes or '').lower():
+            buys_by_pair.setdefault(pair, []).append(ts)
+    for _, ts, pair in sells:
         if buys_by_pair.get(pair):
             buy_ts = buys_by_pair[pair].pop(0)
             try:
                 from datetime import datetime as dt
-                import zoneinfo as zi
-                tz = zi.ZoneInfo("Europe/Helsinki")
                 b = dt.fromisoformat(buy_ts)
                 s = dt.fromisoformat(ts)
                 hold_times.append((s - b).total_seconds() / 3600)
