@@ -319,7 +319,7 @@
         <span class="tab-dot" id="futures-tab-dot" style="background:var(--muted)"></span>Futures
       </button>
       <button class="tab" data-tab="futures-shadow" onclick="switchTab('futures-shadow')" id="futures-shadow-tab-btn" style="display:none">
-        <span class="tab-dot" style="background:#58a6ff"></span>Futures Shadow
+        <span class="tab-dot" style="background:#bc8cff"></span>Futures Shadow
       </button>
     </div>
   </div>
@@ -800,15 +800,128 @@
 
   <!-- ═══════════════════════ FUTURES SHADOWS TAB ══════════════════════ -->
   <div id="tab-futures-shadow" style="display:none">
-    <section>
-      <h2>Futures Shadow Comparison <span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:8px">vs main sim (2× lev, EMA gap 2%, funding filter 0.05%)</span></h2>
-      <table>
-        <thead><tr>
-          <th>Profile</th><th>Return</th><th>PnL $</th><th>Funding $</th><th>Trades</th><th>What differs</th>
-        </tr></thead>
-        <tbody id="f-shadows-body"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
-      </table>
+
+    <!-- Rankings table -->
+    <section style="margin-bottom:8px">
+      <h2>Rankings</h2>
+      <div class="tbl-wrap">
+        <table id="fsh-ranking-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable" onclick="sortFShRanking('name')">Profile</th>
+              <th class="sortable" onclick="sortFShRanking('symbols')">Symbols</th>
+              <th class="sortable desc" onclick="sortFShRanking('return_pct')">Return</th>
+              <th class="sortable" onclick="sortFShRanking('pnl')">PnL $</th>
+              <th class="sortable" onclick="sortFShRanking('funding')">Funding $</th>
+              <th class="sortable" onclick="sortFShRanking('trades')">Trades</th>
+              <th>What differs</th>
+            </tr>
+          </thead>
+          <tbody id="fsh-ranking-body">
+            <tr><td colspan="8" class="empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
+
+    <!-- PnL comparison chart -->
+    <section style="margin-bottom:16px">
+      <div class="chart-controls">
+        <h2>PnL History</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="btn-group" id="fsh-pnl-span-btns">
+            <button onclick="setFShPnlDays(1)"   data-days="1">1d</button>
+            <button onclick="setFShPnlDays(7)"   data-days="7">7d</button>
+            <button onclick="setFShPnlDays(30)"  data-days="30" class="active">30d</button>
+            <button onclick="setFShPnlDays(90)"  data-days="90">90d</button>
+            <button onclick="setFShPnlDays(0)"   data-days="0">All</button>
+          </div>
+          <div class="btn-group" id="fsh-pnl-mode-btns">
+            <button onclick="setFShPnlMode('pct')" data-mode="pct" class="active">% return</button>
+            <button onclick="setFShPnlMode('usd')" data-mode="usd">$ PnL</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-box" style="height:220px"><canvas id="fsh-pnl-chart"></canvas></div>
+    </section>
+
+    <!-- profile selector -->
+    <div id="fsh-selector-wrap" style="display:none;margin-bottom:16px">
+      <div class="btn-group" id="fsh-selector"></div>
+    </div>
+
+    <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <div class="stat-card">
+        <div class="label">Balance</div>
+        <div class="value"><span id="fsh-balance">—</span><span id="fsh-starting-balance" style="font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Portfolio Value</div>
+        <div class="value"><span id="fsh-portfolio-value">—</span><span id="fsh-portfolio-pct" style="font-size:13px;font-weight:400;margin-left:6px;"></span></div>
+      </div>
+      <div class="stat-card"><div class="label">Net P&amp;L</div><div class="value" id="fsh-pnl">—</div></div>
+      <div class="stat-card"><div class="label">Trades</div><div class="value" id="fsh-trades">—</div></div>
+      <div class="stat-card"><div class="label">Funding Paid</div><div class="value" id="fsh-funding">—</div></div>
+    </div>
+
+    <section>
+      <h2>Overrides</h2>
+      <div id="fsh-overrides" style="font-size:13px;color:var(--muted);padding:4px 0">—</div>
+      <div id="fsh-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:6px;"></div>
+    </section>
+
+    <section>
+      <h2>Performance</h2>
+      <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="stat-card"><div class="label">Win Rate</div><div class="value" id="fsh-stat-winrate">—</div></div>
+        <div class="stat-card"><div class="label">Avg PnL/trade</div><div class="value" id="fsh-stat-avgpnl">—</div></div>
+        <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="fsh-stat-best">—</div></div>
+        <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="fsh-stat-worst">—</div></div>
+        <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="fsh-stat-hold">—</div></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="chart-controls">
+        <h2>Portfolio Value</h2>
+        <div class="btn-group" id="fsh-balance-span-btns">
+          <button onclick="setFShBalanceDays(0.167)" data-days="0.167">4h</button>
+          <button onclick="setFShBalanceDays(1)"     data-days="1">1d</button>
+          <button onclick="setFShBalanceDays(7)"     data-days="7">7d</button>
+          <button onclick="setFShBalanceDays(30)"    data-days="30" class="active">30d</button>
+          <button onclick="setFShBalanceDays(90)"    data-days="90">90d</button>
+          <button onclick="setFShBalanceDays(0)"     data-days="0">All</button>
+        </div>
+      </div>
+      <div class="chart-box" style="height:160px"><canvas id="fsh-balance-chart"></canvas></div>
+    </section>
+
+    <section>
+      <div class="chart-controls">
+        <h2>Recent Trades</h2>
+        <a id="fsh-csv-btn" href="#" download class="csv-btn" title="Export trades as CSV">&#8595; CSV</a>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time (Helsinki)</th><th>Symbol</th><th>Side</th><th>Price</th>
+              <th>Amount</th><th>Notional $</th><th>PnL $</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="fsh-trades-body">
+            <tr><td colspan="8" class="empty">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="trades-pagination">
+        <button id="fsh-trades-prev" onclick="fshTradesPage(-1)" disabled>&#x2039; Prev</button>
+        <span id="fsh-trades-page-info">—</span>
+        <button id="fsh-trades-next" onclick="fshTradesPage(1)" disabled>Next &#x203a;</button>
+      </div>
+    </section>
+
   </div><!-- /tab-futures-shadow -->
 
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
@@ -856,6 +969,7 @@
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'spot-shadow') refreshShadowTab();
+    if (name === 'futures-shadow') refreshFShadowTab();
   }
 
   function _syncSpotHeader() {
@@ -1281,6 +1395,51 @@
 
     window.addEventListener('mouseup',  () => { isDragging = false; carousel.classList.remove('dragging'); });
     window.addEventListener('touchend', () => { isDragging = false; });
+  }
+
+  let _futuresShadowsInCarousel = false;
+  function _addFShadowsToCarousel(names) {
+    if (_futuresShadowsInCarousel || !names.length) return;
+    _futuresShadowsInCarousel = true;
+    const track = document.getElementById('sh-carousel-track');
+    if (!track) return;
+    const makeFSh = (n, sfx) => `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+        <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#bc8cff;">${n}</span>
+        <span style="font-size:10px;font-weight:600;color:var(--muted);">f-sim</span>
+        <span id="fsh-hdr-port-${n}${sfx}" style="font-size:12px;color:var(--muted);">—</span>
+        <span id="fsh-hdr-pnl-${n}${sfx}"  style="font-size:12px;color:var(--muted);">—</span>
+        <span id="fsh-hdr-tr-${n}${sfx}"   style="font-size:12px;color:var(--muted);">—</span>
+      </div>`;
+    // Insert originals just before F-copy block (end of first half); copies at very end
+    const fCopyPort = document.getElementById('hdr-fut-port-copy');
+    const fCopyBlock = fCopyPort ? fCopyPort.parentElement : null;
+    if (fCopyBlock) fCopyBlock.insertAdjacentHTML('beforebegin', names.map(n => makeFSh(n, '')).join(''));
+    else            track.insertAdjacentHTML('beforeend',         names.map(n => makeFSh(n, '')).join(''));
+    track.insertAdjacentHTML('beforeend', names.map(n => makeFSh(n, '-copy')).join(''));
+  }
+
+  async function refreshFShHeaderBlocks() {
+    for (const name of _fshNames) {
+      try {
+        const s = await fetch(`/api/futures/shadow/${name}/status`).then(r => r.json());
+        if (s.error) continue;
+        const pnl      = s.total_pnl ?? 0;
+        const port     = s.portfolio ?? s.balance;
+        const pct      = s.starting ? (port - s.starting) / s.starting * 100 : 0;
+        const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        for (const sfx of ['', '-copy']) {
+          const portEl = document.getElementById(`fsh-hdr-port-${name}${sfx}`);
+          const pnlEl  = document.getElementById(`fsh-hdr-pnl-${name}${sfx}`);
+          const trEl   = document.getElementById(`fsh-hdr-tr-${name}${sfx}`);
+          if (!portEl) continue;
+          portEl.textContent = `$${Number(port).toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
+          pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(4)} PnL`;
+          pnlEl.style.color  = pnlColor;
+          trEl.textContent   = `${s.total_trades} trades`;
+        }
+      } catch(e) {}
+    }
   }
 
   let _futuresInCarousel = false;
@@ -1891,7 +2050,7 @@
   setInterval(refresh, 60000);
   setInterval(refreshSignals, 60000);
   setInterval(() => { if (_activeTab === 'spot-shadow') refreshShadowTab(); }, 60000);
-  setInterval(refreshShHeaderBlocks, 60000);
+  setInterval(() => { refreshShHeaderBlocks(); refreshFShHeaderBlocks(); }, 60000);
 
   // ── candlestick plugin ─────────────────────────────────────────────────────
   Chart.register({
@@ -2224,9 +2383,8 @@
 
   async function loadBalanceChart() {
     try {
-      const qs   = _balanceDays > 0 ? `?days=${_balanceDays}` : '';
       const [rows, tradeData] = await Promise.all([
-        fetch(`/api/balance_history${qs}`).then(r => r.json()),
+        fetch(`/api/balance_history?days=${_balanceDays}`).then(r => r.json()),
         fetch('/api/trades?limit=9999').then(r => r.json()),
       ]);
       if (!rows.length) return;
@@ -2428,8 +2586,7 @@
 
   async function loadFuturesBalanceChart() {
     try {
-      const qs   = _fBalanceDays > 0 ? `?days=${_fBalanceDays}` : '';
-      const rows = await fetch(`/api/futures/balance_history${qs}`).then(r => r.json());
+      const rows = await fetch(`/api/futures/balance_history?days=${_fBalanceDays}`).then(r => r.json());
       if (!rows.length) return;
       const labels = rows.map(r => r.t);
       const values = rows.map(r => r.balance);
@@ -2557,8 +2714,9 @@
 
       _fLastStatus = d;
 
-      // Reveal futures tab button; put sim in carousel, live in header
+      // Reveal futures tab buttons; put sim in carousel, live in header
       document.getElementById('futures-tab-btn').style.display = '';
+      document.getElementById('futures-shadow-tab-btn').style.display = '';
       if (d.mode === 'live') {
         document.getElementById('f-header-block').style.display = 'flex';
       } else {
@@ -2854,40 +3012,299 @@
     } catch(e) { console.error(e); }
   }
 
+  // ── Futures Shadow Tab ───────────────────────────────────────────────────────
+  let _fshNames        = [];
+  let _activeFShadow   = null;
+  let _fshRankingData  = [];
+  let _fshRankingSort  = { col: 'return_pct', dir: -1 };
+  let _fshPnlDays      = 30;
+  let _fshPnlMode      = 'pct';
+  let _fshBalanceDays  = 30;
+  let _fshTradesPage   = 1;
+  let _fshTradesPages  = 1;
+  let _fshPnlChart     = null;
+  let _fshBalChart     = null;
+  let _fshInitDone     = false;
+
+  function _fmtPnlUsdt(n) {
+    if (n === null || n === undefined) return '—';
+    const cls = n >= 0 ? 'pos' : 'neg';
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}$${Math.abs(Number(n)).toFixed(4)}</span>`;
+  }
+
   async function refreshFuturesShadows() {
     try {
       const rows = await fetch('/api/futures/shadows').then(r => r.json());
-      const btn  = document.getElementById('futures-shadow-tab-btn');
-      if (!rows.length) { if (btn) btn.style.display = 'none'; return; }
-      if (btn) btn.style.display = '';
-      const tb = document.getElementById('f-shadows-body');
-      tb.innerHTML = rows.map(s => {
-        const retCls = s.return_pct >= 0 ? 'pos' : 'neg';
-        const pnlCls = s.pnl >= 0 ? 'pos' : 'neg';
-        const ov     = s.overrides;
-        const tags   = [];
-        if (ov.futures_max_funding_rate === 0)       tags.push('no funding filter');
-        else if (ov.futures_max_funding_rate != null) tags.push(`funding max ${(ov.futures_max_funding_rate*100).toFixed(3)}%`);
-        if (ov.futures_leverage != null)              tags.push(`${ov.futures_leverage}× leverage`);
-        if (ov.futures_ema_gap === 0)                 tags.push('no EMA gap filter');
-        else if (ov.futures_ema_gap != null)          tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
-        if (ov.futures_rsi_oversold != null)          tags.push(`oversold ${ov.futures_rsi_oversold}`);
-        if (ov.futures_rsi_period != null)            tags.push(`RSI(${ov.futures_rsi_period})`);
-        const note = tags.length ? tags.join(', ') : (s.is_main ? 'baseline (main sim)' : '—');
-        const fundingSign = s.funding <= 0 ? '' : '+';
-        const badge = s.is_main
-          ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
-          : ``;
-        return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
-          <td>${badge}${s.name}</td>
-          <td class="${retCls}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
-          <td class="${pnlCls}">${s.pnl >= 0 ? '+' : ''}$${Math.abs(s.pnl).toFixed(4)}</td>
-          <td>${fundingSign}$${s.funding.toFixed(4)}</td>
-          <td>${s.trades}</td>
-          <td style="color:var(--muted);font-size:12px">${note}</td>
-        </tr>`;
-      }).join('');
+      if (!rows.length) return;
+
+      _fshRankingData = rows;
+      _renderFShRanking();
+
+      if (!_fshInitDone) {
+        _fshNames = rows.map(s => s.name);
+        _activeFShadow = _fshNames[0];
+
+        const sel = document.getElementById('fsh-selector');
+        sel.innerHTML = _fshNames.map(n =>
+          `<button onclick="switchFShadow('${n}')" data-fsh="${n}">${n}</button>`
+        ).join('');
+        if (_fshNames.length > 1)
+          document.getElementById('fsh-selector-wrap').style.display = '';
+        _markFShSelector();
+        _addFShadowsToCarousel(_fshNames);
+        refreshFShHeaderBlocks();
+
+        _fshInitDone = true;
+      }
+
+      if (_activeTab === 'futures-shadow') refreshFShadowTab();
+    } catch(e) { console.error(e); }
+  }
+
+  function _markFShSelector() {
+    document.querySelectorAll('#fsh-selector button').forEach(b =>
+      b.classList.toggle('active', b.dataset.fsh === _activeFShadow));
+  }
+
+  function switchFShadow(name) {
+    _activeFShadow = name;
+    _markFShSelector();
+    refreshFShadowTab();
+  }
+
+  function sortFShRanking(col) {
+    if (_fshRankingSort.col === col) _fshRankingSort.dir *= -1;
+    else { _fshRankingSort.col = col; _fshRankingSort.dir = -1; }
+    document.querySelectorAll('#fsh-ranking-table thead th.sortable').forEach(th => {
+      th.classList.remove('asc', 'desc');
+      if (th.getAttribute('onclick') === `sortFShRanking('${col}')`)
+        th.classList.add(_fshRankingSort.dir === -1 ? 'desc' : 'asc');
+    });
+    _renderFShRanking();
+  }
+
+  function _renderFShRanking() {
+    const tbody = document.getElementById('fsh-ranking-body');
+    if (!_fshRankingData.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No data</td></tr>'; return; }
+    const { col, dir } = _fshRankingSort;
+    const sorted = [..._fshRankingData].sort((a, b) => {
+      let av = col === 'symbols' ? (a.symbols || []).join(',') : a[col];
+      let bv = col === 'symbols' ? (b.symbols || []).join(',') : b[col];
+      if (av === null) av = dir === 1 ? Infinity : -Infinity;
+      if (bv === null) bv = dir === 1 ? Infinity : -Infinity;
+      if (typeof av === 'string') return dir * av.localeCompare(bv);
+      return dir * (bv - av);
+    });
+    tbody.innerHTML = sorted.map((s, i) => {
+      const retCls = s.return_pct >= 0 ? 'pos' : 'neg';
+      const pnlCls = s.pnl >= 0 ? 'pos' : 'neg';
+      const nameStyle = s.name === _activeFShadow ? 'font-weight:600;color:var(--blue);cursor:pointer' : 'cursor:pointer';
+      const ov   = s.overrides || {};
+      const tags = [];
+      if (ov.futures_max_funding_rate === 0)        tags.push('no funding filter');
+      else if (ov.futures_max_funding_rate != null)  tags.push(`funding max ${(ov.futures_max_funding_rate*100).toFixed(3)}%`);
+      if (ov.futures_leverage != null)               tags.push(`${ov.futures_leverage}× lev`);
+      if (ov.futures_ema_gap === 0)                  tags.push('no EMA gap');
+      else if (ov.futures_ema_gap != null)           tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
+      if (ov.futures_rsi_oversold != null)           tags.push(`RSI<${ov.futures_rsi_oversold}`);
+      if (ov.futures_rsi_period != null)             tags.push(`RSI(${ov.futures_rsi_period})`);
+      const note  = s.is_main ? 'baseline' : (tags.length ? tags.join(', ') : '—');
+      const badge = s.is_main
+        ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
+        : `<span style="font-size:11px;background:var(--card);color:#bc8cff;padding:1px 6px;border-radius:3px;margin-right:6px">FUTURES</span>`;
+      const fundSign = s.funding <= 0 ? '' : '+';
+      return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
+        <td style="color:var(--muted)">${i + 1}</td>
+        <td>${badge}<span style="${nameStyle}" onclick="switchFShadow('${s.name}')">${s.name}</span></td>
+        <td style="color:var(--muted);font-size:12px">${(s.symbols || []).join(', ')}</td>
+        <td class="${retCls}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
+        <td class="${pnlCls}">${s.pnl >= 0 ? '+' : ''}$${Math.abs(s.pnl).toFixed(4)}</td>
+        <td style="color:var(--muted)">${fundSign}$${Math.abs(s.funding).toFixed(4)}</td>
+        <td>${s.trades}</td>
+        <td style="color:var(--muted);font-size:12px">${note}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function refreshFShadowTab() {
+    if (!_activeFShadow) return;
+    await Promise.all([
+      refreshFShadowStatus(),
+      refreshFShadowStats(),
+      refreshFShadowTrades(),
+      refreshFShPnlChart(),
+      refreshFShBalanceChart(),
+    ]);
+  }
+
+  async function refreshFShadowStatus() {
+    if (!_activeFShadow) return;
+    try {
+      const d = await fetch(`/api/futures/shadow/${_activeFShadow}/status`).then(r => r.json());
+      if (d.error) return;
+
+      document.getElementById('fsh-balance').textContent = `$${Number(d.balance).toFixed(2)}`;
+      document.getElementById('fsh-starting-balance').textContent = d.starting ? `· from $${Number(d.starting).toFixed(2)}` : '';
+      const port = d.portfolio ?? d.balance;
+      document.getElementById('fsh-portfolio-value').textContent = `$${Number(port).toFixed(2)}`;
+      if (d.starting) {
+        const pct = (port - d.starting) / d.starting * 100;
+        const el  = document.getElementById('fsh-portfolio-pct');
+        el.textContent  = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+        el.style.color  = pct >= 0 ? 'var(--green)' : 'var(--red)';
+      }
+      document.getElementById('fsh-pnl').innerHTML     = _fmtPnlUsdt(d.total_pnl);
+      document.getElementById('fsh-trades').textContent = d.total_trades;
+      const funding = d.total_funding ?? 0;
+      const fEl = document.getElementById('fsh-funding');
+      fEl.innerHTML = `<span class="${funding <= 0 ? 'pos' : 'neg'}">${funding <= 0 ? '' : '+'}$${Math.abs(funding).toFixed(4)}</span>`;
+
+      // overrides
+      const ov   = d.overrides || {};
+      const tags = [];
+      if (ov.futures_max_funding_rate === 0)        tags.push('no funding filter');
+      else if (ov.futures_max_funding_rate != null)  tags.push(`funding max ${(ov.futures_max_funding_rate*100).toFixed(3)}%`);
+      if (ov.futures_leverage != null)               tags.push(`${ov.futures_leverage}× leverage`);
+      if (ov.futures_ema_gap === 0)                  tags.push('no EMA gap filter');
+      else if (ov.futures_ema_gap != null)           tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
+      if (ov.futures_rsi_oversold != null)           tags.push(`RSI oversold < ${ov.futures_rsi_oversold}`);
+      if (ov.futures_rsi_period != null)             tags.push(`RSI period ${ov.futures_rsi_period}`);
+      if (ov.futures_pos_pct != null)                tags.push(`pos size ${(ov.futures_pos_pct*100).toFixed(0)}%`);
+      document.getElementById('fsh-overrides').textContent = d.is_main ? 'Main simulation (baseline)' : (tags.length ? tags.join(' · ') : 'No overrides — identical to main');
+      document.getElementById('fsh-since').textContent = d.started_at ? `Since ${d.started_at.slice(0, 16).replace('T', ' ')}` : '';
+
+      const csvBtn = document.getElementById('fsh-csv-btn');
+      if (csvBtn) csvBtn.href = `/api/futures/shadow/${_activeFShadow}/trades/csv`;
+    } catch(e) { console.error(e); }
+  }
+
+  async function refreshFShadowStats() {
+    if (!_activeFShadow) return;
+    try {
+      const stat = await fetch(`/api/futures/shadow/${_activeFShadow}/stats`).then(r => r.json());
+      if (!stat) return;
+      const wr = document.getElementById('fsh-stat-winrate');
+      const ap = document.getElementById('fsh-stat-avgpnl');
+      const be = document.getElementById('fsh-stat-best');
+      const wo = document.getElementById('fsh-stat-worst');
+      const hd = document.getElementById('fsh-stat-hold');
+      wr.textContent = stat.win_rate != null ? `${stat.win_rate}% (${stat.wins}W / ${stat.losses}L)` : '—';
+      ap.innerHTML   = stat.avg_pnl != null  ? _fmtPnlUsdt(stat.avg_pnl) : '—';
+      be.innerHTML   = stat.best != null     ? _fmtPnlUsdt(stat.best)    : '—';
+      wo.innerHTML   = stat.worst != null    ? _fmtPnlUsdt(stat.worst)   : '—';
+      hd.textContent = stat.avg_hold_h != null ? `${Number(stat.avg_hold_h).toFixed(1)}h` : '—';
     } catch(e) {}
+  }
+
+  async function refreshFShadowTrades() {
+    if (!_activeFShadow) return;
+    try {
+      const data = await fetch(`/api/futures/shadow/${_activeFShadow}/trades?page=${_fshTradesPage}&limit=${_TRADES_PER_PAGE}`).then(r => r.json());
+      _fshTradesPages = data.pages || 1;
+      _fshTradesPage  = data.page  || 1;
+      const tbody = document.getElementById('fsh-trades-body');
+      if (!data.trades.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+      } else {
+        tbody.innerHTML = data.trades.map(t => `<tr>
+          <td style="color:var(--muted);font-size:12px">${t.timestamp}</td>
+          <td>${t.pair}</td>
+          <td class="${t.side === 'BUY' ? 'pos' : 'neg'}">${t.side}</td>
+          <td>$${Number(t.price).toFixed(4)}</td>
+          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>$${Number(t.value_eur || 0).toFixed(2)}</td>
+          <td>${_fmtPnlUsdt(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+        </tr>`).join('');
+      }
+      _renderTradesPagination(_fshTradesPage, _fshTradesPages, 'fsh-trades-prev', 'fsh-trades-next', 'fsh-trades-page-info');
+    } catch(e) {}
+  }
+
+  function fshTradesPage(dir) {
+    _fshTradesPage = Math.max(1, Math.min(_fshTradesPages, _fshTradesPage + dir));
+    refreshFShadowTrades();
+  }
+
+  async function refreshFShPnlChart() {
+    try {
+      const raw = await fetch(`/api/futures/shadows/pnl_history?days=${_fshPnlDays}`).then(r => r.json());
+      const names = Object.keys(raw);
+      if (!names.length) return;
+      const labels = [...new Set(names.flatMap(n => raw[n].map(p => p.t)))].sort();
+      const _CHART_COLORS = ['#79c0ff','#56d364','#e3b341','#ff7b72','#d2a8ff','#388bfd','#2ea043','#bb8009'];
+      const datasets = names.map((n, i) => {
+        const map = Object.fromEntries(raw[n].map(p => [p.t, _fshPnlMode === 'pct' ? p.pct : p.pnl]));
+        return {
+          label: n,
+          data: labels.map(l => map[l] ?? null),
+          borderColor: _CHART_COLORS[i % _CHART_COLORS.length],
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          spanGaps: true,
+        };
+      });
+      if (_fshPnlChart) _fshPnlChart.destroy();
+      _fshPnlChart = new Chart(document.getElementById('fsh-pnl-chart'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          animation: false, responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: '#8b949e', maxTicksLimit: 8 }, grid: { color: '#21262d' } },
+            y: { ticks: { color: '#8b949e', callback: v => _fshPnlMode === 'pct' ? v.toFixed(1) + '%' : '$' + v.toFixed(2) }, grid: { color: '#21262d' } },
+          },
+        },
+      });
+    } catch(e) {}
+  }
+
+  function setFShPnlDays(d) {
+    _fshPnlDays = d;
+    document.querySelectorAll('#fsh-pnl-span-btns button').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.days) === d));
+    refreshFShPnlChart();
+  }
+
+  function setFShPnlMode(m) {
+    _fshPnlMode = m;
+    document.querySelectorAll('#fsh-pnl-mode-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === m));
+    refreshFShPnlChart();
+  }
+
+  async function refreshFShBalanceChart() {
+    if (!_activeFShadow) return;
+    try {
+      const rows = await fetch(`/api/futures/shadow/${_activeFShadow}/balance_history?days=${_fshBalanceDays}`).then(r => r.json());
+      const labels = rows.map(r => r.t);
+      const data   = rows.map(r => r.balance);
+      if (_fshBalChart) _fshBalChart.destroy();
+      _fshBalChart = new Chart(document.getElementById('fsh-balance-chart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{ data, borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.08)', borderWidth: 1.5, pointRadius: 0, fill: true }],
+        },
+        options: {
+          animation: false, responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#8b949e', maxTicksLimit: 6 }, grid: { color: '#21262d' } },
+            y: { ticks: { color: '#8b949e', callback: v => '$' + v.toFixed(0) }, grid: { color: '#21262d' } },
+          },
+        },
+      });
+    } catch(e) {}
+  }
+
+  function setFShBalanceDays(d) {
+    _fshBalanceDays = d;
+    document.querySelectorAll('#fsh-balance-span-btns button').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.days) === d));
+    refreshFShBalanceChart();
   }
 
   initFuturesChart();

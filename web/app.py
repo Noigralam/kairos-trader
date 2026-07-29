@@ -117,7 +117,7 @@ def api_balance_history():
     out = []
     for ts, bal in rows:
         try:
-            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%d.%m. %H:%M")
         except Exception:
             t = ts
         out.append({"t": t, "balance": bal})
@@ -261,7 +261,7 @@ class _MainFuturesShim:
         self._state   = state
         self.symbols  = list(config.FUTURES_TRADING_PAIRS)
         self._starting = config.FUTURES_SIMULATION_BALANCE
-        self._db_mode = config.FUTURES_MODE
+        self._db_mode = f"futures_{config.FUTURES_MODE}"
 
     @property
     def balance(self):       return self._state.balance
@@ -355,7 +355,7 @@ def api_shadows_pnl_history():
         result = []
         for ts, bal in rows:
             try:
-                t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+                t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%d.%m. %H:%M")
             except Exception:
                 t = ts
             pnl = bal - starting
@@ -474,7 +474,7 @@ def api_shadow_balance_history(name):
     out = []
     for ts, bal in rows:
         try:
-            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%d.%m. %H:%M")
         except Exception:
             t = ts
         out.append({"t": t, "balance": bal})
@@ -613,7 +613,7 @@ def api_shadow_chart(name, pair):
     sl  = slice(-limit, None)
     labels = (df["open_time"].iloc[sl]
               .dt.tz_convert(_tz)
-              .dt.strftime("%m-%d %H:%M").tolist())
+              .dt.strftime("%d.%m. %H:%M").tolist())
     label_set = set(labels)
 
     _interval_mins = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440}
@@ -627,7 +627,7 @@ def api_shadow_chart(name, pair):
         try:
             t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
             t = t.replace(minute=(t.minute // _candle_mins) * _candle_mins, second=0, microsecond=0)
-            label = t.strftime("%m-%d %H:%M")
+            label = t.strftime("%d.%m. %H:%M")
         except Exception:
             continue
         if label not in label_set:
@@ -818,7 +818,7 @@ def api_chart(pair):
     sl = slice(-limit, None)
     labels = (df["open_time"].iloc[sl]
               .dt.tz_convert(_zi.ZoneInfo("Europe/Helsinki"))
-              .dt.strftime("%m-%d %H:%M").tolist())
+              .dt.strftime("%d.%m. %H:%M").tolist())
     label_set = set(labels)
 
     # actual executed trades for this pair — map to chart labels
@@ -838,7 +838,7 @@ def api_chart(pair):
             t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
             # floor to candle boundary so label matches chart x-axis
             t = t.replace(minute=(t.minute // _candle_mins) * _candle_mins, second=0, microsecond=0)
-            label = t.strftime("%m-%d %H:%M")
+            label = t.strftime("%d.%m. %H:%M")
         except Exception:
             continue
         if label not in label_set:
@@ -933,7 +933,7 @@ def api_futures_chart(symbol):
     sl  = slice(-limit, None)
     labels = (df["open_time"].iloc[sl]
               .dt.tz_convert(_tz)
-              .dt.strftime("%m-%d %H:%M").tolist())
+              .dt.strftime("%d.%m. %H:%M").tolist())
     label_set = set(labels)
 
     actual_buys = []; actual_sells = []; actual_dcas = []
@@ -945,7 +945,7 @@ def api_futures_chart(symbol):
         try:
             t = _dt.datetime.fromisoformat(ts).astimezone(_tz)
             t = t.replace(minute=(t.minute // 15) * 15, second=0, microsecond=0)
-            label = t.strftime("%m-%d %H:%M")
+            label = t.strftime("%d.%m. %H:%M")
         except Exception:
             continue
         if label not in label_set:
@@ -1001,7 +1001,7 @@ def api_futures_balance_history():
     out = []
     for ts, bal in rows:
         try:
-            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%m-%d %H:%M")
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%d.%m. %H:%M")
         except Exception:
             t = ts
         out.append({"t": t, "balance": bal})
@@ -1083,6 +1083,152 @@ def api_futures_shadows():
             "trades":     sh.total_trades,
         })
     return jsonify(rows)
+
+
+def _get_futures_shadow(name: str):
+    from bot.futures_simulator import get_futures_shadows, get_state as fget_state
+    if name.upper() == "MAIN" and config.FUTURES_MODE == "simulation":
+        return _MainFuturesShim(fget_state())
+    return next((s for s in get_futures_shadows() if s.name.upper() == name.upper()), None)
+
+
+@app.route("/api/futures/shadow/<name>/status")
+def api_futures_shadow_status(name):
+    if not config.FUTURES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return jsonify({"error": "not found"}), 404
+    from bot.futures_exchange import get_mark_price as _gmp
+    prices = {}
+    for sym in sh.symbols:
+        try:
+            prices[sym] = _gmp(sym)
+        except Exception:
+            pass
+    open_pnl = sum(p.unrealized_pnl(prices[s]) for s, p in sh.positions.items() if s in prices)
+    starting = sh._starting
+    import sqlite3 as _sq3
+    conn = _sq3.connect(db.DB_PATH)
+    row  = conn.execute("SELECT MIN(timestamp) FROM balance_history WHERE mode = ?", (sh._db_mode,)).fetchone()
+    conn.close()
+    return jsonify({
+        "name":          sh.name,
+        "is_main":       getattr(sh, "is_main", False),
+        "overrides":     sh.overrides,
+        "symbols":       sh.symbols,
+        "balance":       round(sh.balance, 2),
+        "total_trades":  sh.total_trades,
+        "total_pnl":     round(sh.total_pnl, 4),
+        "total_fees":    round(sh.total_fees, 4),
+        "total_funding": round(sh.total_funding, 4),
+        "portfolio":     round(sh.balance + open_pnl, 2),
+        "starting":      starting,
+        "started_at":    row[0] if row and row[0] else None,
+    })
+
+
+@app.route("/api/futures/shadow/<name>/trades")
+def api_futures_shadow_trades(name):
+    if not config.FUTURES_ENABLED:
+        return jsonify({"trades": [], "total": 0, "page": 1, "pages": 1})
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return jsonify({"trades": [], "total": 0, "page": 1, "pages": 1})
+    import zoneinfo as _zi, datetime as _dt
+    tz     = _zi.ZoneInfo("Europe/Helsinki")
+    cols   = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
+    limit  = int(request.args.get("limit", 15))
+    page   = max(1, int(request.args.get("page", 1)))
+    offset = (page - 1) * limit
+    rows   = db.get_trades(limit, mode=sh._db_mode, offset=offset)
+    total  = db.get_trade_count(mode=sh._db_mode)
+    pages  = max(1, math.ceil(total / limit))
+    trades = []
+    for row in rows:
+        d = dict(zip(cols, row))
+        try:
+            d["timestamp"] = _dt.datetime.fromisoformat(d["timestamp"]).astimezone(tz).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            pass
+        trades.append(d)
+    return jsonify({"trades": trades, "total": total, "page": page, "pages": pages})
+
+
+@app.route("/api/futures/shadow/<name>/trades/csv")
+def api_futures_shadow_trades_csv(name):
+    if not config.FUTURES_ENABLED:
+        return Response("", mimetype="text/csv")
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return Response("", mimetype="text/csv")
+    cols = ["id", "timestamp", "pair", "side", "price", "amount", "value_eur", "fee", "mode", "pnl", "notes"]
+    rows = db.get_trades(9999, mode=sh._db_mode)
+    lines = [",".join(cols)]
+    for row in rows:
+        lines.append(",".join("" if v is None else str(v) for v in row))
+    return Response("\n".join(lines), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=futures_shadow_{name.lower()}_trades.csv"})
+
+
+@app.route("/api/futures/shadow/<name>/stats")
+def api_futures_shadow_stats(name):
+    if not config.FUTURES_ENABLED:
+        return jsonify(None)
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return jsonify(None)
+    return jsonify(db.get_trade_stats(sh._db_mode))
+
+
+@app.route("/api/futures/shadow/<name>/balance_history")
+def api_futures_shadow_balance_history(name):
+    if not config.FUTURES_ENABLED:
+        return jsonify([])
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return jsonify([])
+    import zoneinfo as _zi, datetime as _dt
+    tz   = _zi.ZoneInfo("Europe/Helsinki")
+    days = float(request.args.get("days", 30))
+    rows = db.get_balance_history(sh._db_mode, max(days, 0))
+    out  = []
+    for ts, bal in rows:
+        try:
+            t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%d.%m. %H:%M")
+        except Exception:
+            t = ts
+        out.append({"t": t, "balance": round(bal, 2)})
+    return jsonify(out)
+
+
+@app.route("/api/futures/shadows/pnl_history")
+def api_futures_shadows_pnl_history():
+    if not config.FUTURES_ENABLED:
+        return jsonify({})
+    from bot.futures_simulator import get_futures_shadows, get_state as fget_state
+    import zoneinfo as _zi, datetime as _dt
+    tz   = _zi.ZoneInfo("Europe/Helsinki")
+    days = float(request.args.get("days", 30))
+    out  = {}
+
+    def _series(db_mode, starting):
+        rows = db.get_balance_history(db_mode, max(days, 0))
+        result = []
+        for ts, bal in rows:
+            try:
+                t = _dt.datetime.fromisoformat(ts).astimezone(tz).strftime("%d.%m. %H:%M")
+            except Exception:
+                t = ts
+            pnl = bal - starting
+            result.append({"t": t, "pnl": round(pnl, 4), "pct": round(pnl / starting * 100, 3) if starting else 0})
+        return result
+
+    if config.FUTURES_MODE == "simulation":
+        out["MAIN"] = _series(f"futures_{config.FUTURES_MODE}", config.FUTURES_SIMULATION_BALANCE)
+    for sh in get_futures_shadows():
+        out[sh.name] = _series(sh._db_mode, sh._starting)
+    return jsonify(out)
 
 
 @app.route("/api/futures/status")

@@ -10,7 +10,7 @@ from .spot_exchange import get_klines, get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
 from .spot_simulator import open_position, close_position, partial_close_position, dca_position, get_state, check_stops, manual_add, init_shadows, get_shadows
-from .notifier import notify, notify_tick, bot_status_alert, build_chart, extreme_alert, daily_summary
+from .notifier import notify, notify_tick, bot_status_alert, build_chart, daily_summary
 from . import db as _db
 
 INTERVAL_SECONDS = {
@@ -169,17 +169,6 @@ def _loop():
                 above    = price > result.ema_trend
                 was_above = prev.get("above_ema")
 
-                if result.rsi < 20:
-                    extreme_alert(pair, f"RSI extremely oversold at {result.rsi:.1f}", result.rsi, price, result.ema_trend)
-                elif result.rsi > 85:
-                    extreme_alert(pair, f"RSI extremely overbought at {result.rsi:.1f}", result.rsi, price, result.ema_trend)
-
-                if was_above is not None:
-                    if not was_above and above:
-                        extreme_alert(pair, "Price crossed ABOVE EMA200 — bullish trend change", result.rsi, price, result.ema_trend)
-                    elif was_above and not above:
-                        extreme_alert(pair, "Price crossed BELOW EMA200 — bearish trend change", result.rsi, price, result.ema_trend)
-
                 _prev_tick[pair] = {"price": price, "rsi": result.rsi, "ema200": result.ema_trend, "above_ema": above}
 
             # Daily summary at first tick of a new day
@@ -190,9 +179,13 @@ def _loop():
                 daily_summary(state, config.SPOT_TRADING_PAIRS, prices, results)
             _last_summary_date = today
 
-            # Discord tick embed
-            chart_buf = build_chart(config.SPOT_TRADING_PAIRS, prices, results)
-            notify_tick(config.SPOT_TRADING_PAIRS, prices, results, state, chart_buf)
+            # Discord tick — only when there's something to act on or monitor
+            from .strategy import Signal
+            _has_signal = any(r.signal in (Signal.BUY, Signal.SELL) for r in results.values())
+            _has_position = bool(state.positions)
+            if _has_signal or _has_position:
+                chart_buf = build_chart(config.SPOT_TRADING_PAIRS, prices, results)
+                notify_tick(config.SPOT_TRADING_PAIRS, prices, results, state, chart_buf)
 
             # Check stop-loss and take-profit on every tick
             check_stops(prices)

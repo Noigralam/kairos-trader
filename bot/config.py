@@ -153,6 +153,7 @@ def get_shadow_overrides(name: str) -> dict:
         "MIN_EXIT_PROFIT_PCT":     ("spot_min_exit",            float),
         "TIME_STOP_DAYS":          ("spot_time_stop_days",      float),
         "STOP_COOLDOWN_CANDLES":   ("spot_stop_cooldown",       int),
+        "REENTRY_DROP_PCT":        ("spot_reentry_drop_pct",   float),
         "PARTIAL_CLOSE_PCT":       ("spot_partial_close_pct",   float),
         "PARTIAL_CLOSE_TRAIL_PCT": ("spot_partial_close_trail", float),
         # ── Position sizing / DCA ─────────────────────────────────

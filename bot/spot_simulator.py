@@ -502,6 +502,7 @@ class SpotShadowSimulator:
         self.portfolio_peak = 0.0
         self.started_at: str | None = None
         self._stop_cooldowns: dict[str, float] = {}
+        self._reentry_drop_prices: dict[str, float] = {}
         self._load()
         if self.started_at is None:
             import datetime, zoneinfo
@@ -593,6 +594,11 @@ class SpotShadowSimulator:
         cooldown_until = self._stop_cooldowns.get(pair, 0)
         if cooldown_until > _time.time():
             return
+        reentry_threshold = self._reentry_drop_prices.get(pair)
+        if reentry_threshold is not None:
+            if price > reentry_threshold:
+                return
+            del self._reentry_drop_prices[pair]
         fng_max = self._o("spot_fng_max", None)
         if fng_max is not None:
             from .notifier import get_fng
@@ -674,6 +680,9 @@ class SpotShadowSimulator:
             if candles > 0:
                 secs = candles * _INTERVAL_SECONDS.get(self.interval, 900)
                 self._stop_cooldowns[pair] = _time.time() + secs
+            drop_pct = self._o("spot_reentry_drop_pct", 0.0)
+            if drop_pct > 0:
+                self._reentry_drop_prices[pair] = price * (1 - drop_pct)
         log_trade(pair, "SELL", price, pos.amount, exit_value, sell_fee, mode=self._db_mode, pnl=pnl, notes=reason)
 
     # --- public API ---
