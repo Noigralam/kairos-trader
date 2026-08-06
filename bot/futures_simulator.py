@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 import threading
 import time as _time
+
+log = logging.getLogger("cryptobot")
 from dataclasses import dataclass, field
 from . import config
 from .futures_risk import (
@@ -95,7 +98,10 @@ def _load():
 def init():
     if config.FUTURES_MODE == "live":
         _load()
-        _state.balance = get_usdt_balance()
+        try:
+            _state.balance = get_usdt_balance()
+        except Exception as e:
+            log.warning(f"[FUTURES] Binance balance fetch failed at startup ({e}) — using last saved balance ${_state.balance:.2f}")
         # Ensure leverage and margin type are set for each pair
         for sym in config.FUTURES_TRADING_PAIRS:
             try:

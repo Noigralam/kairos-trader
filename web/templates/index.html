@@ -353,6 +353,10 @@
   </div>
 </header>
 
+<div id="api-error-banner" style="display:none;background:#b91c1c;color:#fff;padding:10px 20px;font-size:13px;font-weight:600;letter-spacing:0.02em;text-align:center;position:sticky;top:0;z-index:999;">
+  ⚠ Binance API unreachable — <span id="api-error-msg"></span>
+</div>
+
 <div class="container">
 
   <!-- ═══════════════════════════ SPOT TAB ══════════════════════════════ -->
@@ -1210,6 +1214,15 @@
       const logs = await logRes.json();
 
       _syncSpotHeader();
+
+      // Binance API error banner
+      const banner = document.getElementById('api-error-banner');
+      if (s.api_error) {
+        document.getElementById('api-error-msg').textContent = s.api_error;
+        banner.style.display = '';
+      } else {
+        banner.style.display = 'none';
+      }
 
       // Show simulation notice when not in live mode
       document.getElementById('spot-sim-notice').style.display = s.mode === 'simulation' ? '' : 'none';

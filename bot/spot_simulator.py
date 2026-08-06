@@ -92,9 +92,12 @@ def init():
     if config.SPOT_MODE == "live":
         # In live mode, balance is always fetched from Binance — just load positions.
         _load()
-        _state.balance = get_eur_balance()
-        _save()
-        notify(f"[LIVE] Started — Binance EUR balance: €{_state.balance:.2f}  open positions: {list(_state.positions.keys()) or 'none'}")
+        try:
+            _state.balance = get_eur_balance()
+            _save()
+            notify(f"[LIVE] Started — Binance EUR balance: €{_state.balance:.2f}  open positions: {list(_state.positions.keys()) or 'none'}")
+        except Exception as e:
+            log.warning(f"[LIVE] Binance balance fetch failed at startup ({e}) — using last saved balance €{_state.balance:.2f}")
     else:
         _load()
 

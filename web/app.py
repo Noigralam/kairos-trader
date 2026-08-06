@@ -1,7 +1,7 @@
 import math
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from bot import spot_engine as engine, spot_simulator as simulator, db, config
-from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy
+from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy, get_api_error
 from bot.notifier import get_recent_logs
 from bot.spot_exchange import get_price
 from bot.candles import get_df
@@ -25,6 +25,7 @@ def api_status():
     state = simulator.get_state()
     return jsonify({
         "status": engine.get_status(),
+        "api_error": get_api_error(),
         "last_tick": get_last_tick(),
         "uptime": get_uptime(),
         "live_since": get_live_since(),

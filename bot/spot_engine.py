@@ -35,6 +35,7 @@ _prev_tick: dict = {}          # pair -> {price, rsi, ema200, above_ema}
 _last_summary_date = None      # date of last daily summary
 _start_time: float = None      # epoch time when bot last started
 _missed_tick_alerted: bool = False  # avoid spamming missed-tick alerts
+_api_error: str | None = None  # set when Binance API is unreachable, cleared on success
 
 
 def _arrow(cur: float, prev: float | None) -> str:
@@ -49,6 +50,10 @@ def get_status() -> str:
 
 def get_last_tick() -> str:
     return _last_tick
+
+
+def get_api_error() -> str | None:
+    return _api_error
 
 
 def _set_status(new_status: BotStatus):
@@ -103,7 +108,7 @@ def _loop():
 
         try:
             import datetime, zoneinfo
-            global _last_tick, _last_tick_time, _missed_tick_alerted
+            global _last_tick, _last_tick_time, _missed_tick_alerted, _api_error
 
             # Retry candle sync + price fetch up to 3 times before giving up on this tick
             prices = None
@@ -116,12 +121,14 @@ def _loop():
                     for pair, interval in shadow_intervals:
                         sync_candles(pair, interval)
                     prices = {pair: get_price(pair) for pair in all_pairs}
+                    _api_error = None  # clear on success
                     break
                 except Exception as _fetch_err:
                     if _attempt < 2:
                         log.warning(f"[TICK] Data fetch failed (attempt {_attempt+1}/3): {_fetch_err} — retrying in 30s")
                         time.sleep(30)
                     else:
+                        _api_error = str(_fetch_err)
                         raise
 
             _last_tick = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).strftime("%H:%M")
