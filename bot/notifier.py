@@ -229,32 +229,6 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
     _send_tick({"embeds": [embed]}, chart_buf)
 
 
-def extreme_alert(pair: str, condition: str, rsi: float, price: float, ema: float):
-    """Extreme condition alert — never deleted from channel."""
-    if "oversold" in condition.lower():
-        color, emoji = 0x3fb950, "🚨🟢"
-    elif "overbought" in condition.lower():
-        color, emoji = 0xf85149, "🚨🔴"
-    elif "above" in condition.lower():
-        color, emoji = 0x3fb950, "📈"
-    else:
-        color, emoji = 0xf85149, "📉"
-
-    content = "@everyone" if config.SPOT_MODE == "live" else ""
-    embed = {
-        "title":       f"{emoji} EXTREME — {pair}",
-        "description": condition,
-        "color":       color,
-        "fields": [
-            {"name": "Price",  "value": f"€{price:,.2f}", "inline": True},
-            {"name": "RSI",    "value": f"{rsi:.1f}",     "inline": True},
-            {"name": "EMA200", "value": f"€{ema:,.2f}",   "inline": True},
-        ],
-        "timestamp": _utcnow_iso(),
-    }
-    _send({"content": content, "embeds": [embed]})
-    _terminal(f"[EXTREME] {pair} — {condition}")
-
 
 def daily_summary(state, pairs: list, prices: dict, results: dict):
     """Daily performance summary embed."""

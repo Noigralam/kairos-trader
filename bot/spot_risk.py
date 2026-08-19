@@ -41,12 +41,6 @@ def apply_dca(position: Position, dca_price: float, dca_value_eur: float, tp_pct
     position.dca_count += 1
 
 
-def create_position(pair: str, entry_price: float, balance: float) -> Position:
-    size = balance * config.SPOT_POSITION_SIZE_PCT
-    amount = size / entry_price
-    take_profit_price = entry_price * (1 + config.SPOT_TAKE_PROFIT_PCT)
-    return Position(pair, entry_price, amount, size, take_profit_price, entry_price)
-
 
 def update_peak(position: Position, current_price: float) -> bool:
     """Update highest_price if price moved up. Returns True if updated."""

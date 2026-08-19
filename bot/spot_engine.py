@@ -1,12 +1,14 @@
+import datetime
 import logging
 import os
 import threading
 import time
+import zoneinfo
 from enum import Enum
 from . import config
 
 log = logging.getLogger("cryptobot")
-from .spot_exchange import get_klines, get_price
+from .spot_exchange import get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
 from .spot_simulator import open_position, close_position, partial_close_position, dca_position, get_state, check_stops, manual_add, init_shadows, get_shadows
@@ -31,7 +33,6 @@ _stop_thread: threading.Thread = None
 _lock = threading.Lock()
 _last_tick: str = None
 _last_tick_time: float = None  # epoch of last successful tick
-_prev_tick: dict = {}          # pair -> {price, rsi, ema200, above_ema}
 _last_summary_date = None      # date of last daily summary
 _start_time: float = None      # epoch time when bot last started
 _missed_tick_alerted: bool = False  # avoid spamming missed-tick alerts
@@ -64,12 +65,20 @@ def _set_status(new_status: BotStatus):
 
 
 def _seconds_until_next_candle(sleep_sec: int) -> int:
-    import datetime
     now = datetime.datetime.now()
     elapsed = (now.minute * 60 + now.second) % sleep_sec
     # +15s grace period: Binance takes a few seconds to close and publish a candle.
     # Without it we'd fetch the previous (already-stored) candle and skip the new one.
     return sleep_sec - elapsed + 15
+
+
+def _daily_ema(pair: str) -> float | None:
+    if not config.SPOT_DAILY_EMA_FILTER:
+        return None
+    df1d = get_df(pair, "1d", limit=210)
+    if len(df1d) < 201:
+        return None
+    return float(df1d["close"].ewm(span=200, adjust=False).mean().iloc[-1])
 
 
 def _loop():
@@ -107,7 +116,6 @@ def _loop():
             continue
 
         try:
-            import datetime, zoneinfo
             global _last_tick, _last_tick_time, _missed_tick_alerted, _api_error
 
             # Retry candle sync + price fetch up to 3 times before giving up on this tick
@@ -139,14 +147,6 @@ def _loop():
                 discord=False,
             )
 
-            def _daily_ema(pair: str) -> float | None:
-                if not config.SPOT_DAILY_EMA_FILTER:
-                    return None
-                df1d = get_df(pair, "1d", limit=210)
-                if len(df1d) < 201:
-                    return None
-                return float(df1d["close"].ewm(span=200, adjust=False).mean().iloc[-1])
-
             state = get_state()
             results = {pair: compute_signal(get_df(pair, config.SPOT_INTERVAL),
                                             rsi_period=config.rsi_period_for(pair),
@@ -169,25 +169,14 @@ def _loop():
                     discord=False,
                 )
 
-            # Extreme condition alerts (not deleted from channel)
-            for pair, result in results.items():
-                price    = prices[pair]
-                prev     = _prev_tick.get(pair, {})
-                above    = price > result.ema_trend
-                was_above = prev.get("above_ema")
-
-                _prev_tick[pair] = {"price": price, "rsi": result.rsi, "ema200": result.ema_trend, "above_ema": above}
-
             # Daily summary at first tick of a new day
-            import datetime as _dt
             global _last_summary_date
-            today = _dt.date.today()
+            today = datetime.date.today()
             if _last_summary_date is not None and today != _last_summary_date:
                 daily_summary(state, config.SPOT_TRADING_PAIRS, prices, results)
             _last_summary_date = today
 
             # Discord tick — only when there's something to act on or monitor
-            from .strategy import Signal
             _has_signal = any(r.signal in (Signal.BUY, Signal.SELL) for r in results.values())
             _has_position = bool(state.positions)
             if _has_signal or _has_position:

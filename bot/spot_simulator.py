@@ -1,11 +1,14 @@
 import json
+import logging
 import os
 import threading
 import time as _time
 from dataclasses import dataclass, field
 from . import config
-from .spot_risk import Position, create_position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
+from .spot_risk import Position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert, notify
+
+log = logging.getLogger("cryptobot")
 from .db import log_trade, log_balance
 from .spot_exchange import round_qty, get_min_notional, get_eur_balance, get_free_balance, place_order
 
@@ -318,7 +321,7 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
         log_trade(pair, "BUY", price, bought, dca_value, buy_fee, mode="simulation", notes="dca")
 
 
-_INTERVAL_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400}
+_INTERVAL_SECONDS = config.INTERVAL_SECONDS
 
 
 def _set_stop_cooldown(pair: str):

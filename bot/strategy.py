@@ -21,7 +21,7 @@ def _ema(series: pd.Series, period: int) -> pd.Series:
     return series.ewm(span=period, adjust=False).mean()
 
 
-def _rsi(series: pd.Series, period: int = 14) -> pd.Series:
+def rsi_series(series: pd.Series, period: int = 14) -> pd.Series:
     delta = series.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -52,7 +52,7 @@ def compute_signal(
         return StrategyResult(Signal.HOLD, "Not enough candles", 0.0, 0.0)
 
     close = df["close"]
-    rsi = float(_rsi(close, rsi_period).iloc[-1])
+    rsi = float(rsi_series(close, rsi_period).iloc[-1])
     ema_t = float(_ema(close, ema_trend).iloc[-1])
     price = float(close.iloc[-1])
     ema_threshold = ema_t * (1 + ema_gap)
