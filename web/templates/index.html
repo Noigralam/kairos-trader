@@ -427,6 +427,35 @@
     </section>
 
     <section>
+      <h2>Market Conditions</h2>
+      <div class="signals-grid" id="signals-grid">
+        <div class="signal-card"><div class="commentary">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-controls">
+        <h2>Price Chart</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="btn-group" id="pair-btns"></div>
+          <div class="btn-group" id="span-btns">
+            <button onclick="setSpan('4h')"  data-span="4h">4h</button>
+            <button onclick="setSpan('1d')"  data-span="1d" class="active">1d</button>
+            <button onclick="setSpan('3d')"  data-span="3d">3d</button>
+            <button onclick="setSpan('1w')"  data-span="1w">1w</button>
+            <button onclick="setSpan('2w')"  data-span="2w">2w</button>
+            <button onclick="setSpan('1m')"  data-span="1m">1m</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box price-box"><canvas id="price-chart"></canvas></div>
+        <div class="chart-box candle-box"><canvas id="candle-chart"></canvas></div>
+        <div class="chart-box rsi-box"><canvas id="rsi-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section>
       <div class="chart-controls">
         <h2>Recent Trades</h2>
         <a href="/api/trades/csv" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
@@ -455,35 +484,6 @@
         <button id="spot-trades-prev" onclick="spotTradesPage(-1)" disabled>‹ Prev</button>
         <span id="spot-trades-page-info">—</span>
         <button id="spot-trades-next" onclick="spotTradesPage(1)" disabled>Next ›</button>
-      </div>
-    </section>
-
-    <section>
-      <h2>Market Conditions</h2>
-      <div class="signals-grid" id="signals-grid">
-        <div class="signal-card"><div class="commentary">Loading…</div></div>
-      </div>
-    </section>
-
-    <section class="chart-section">
-      <div class="chart-controls">
-        <h2>Price Chart</h2>
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <div class="btn-group" id="pair-btns"></div>
-          <div class="btn-group" id="span-btns">
-            <button onclick="setSpan('4h')"  data-span="4h">4h</button>
-            <button onclick="setSpan('1d')"  data-span="1d" class="active">1d</button>
-            <button onclick="setSpan('3d')"  data-span="3d">3d</button>
-            <button onclick="setSpan('1w')"  data-span="1w">1w</button>
-            <button onclick="setSpan('2w')"  data-span="2w">2w</button>
-            <button onclick="setSpan('1m')"  data-span="1m">1m</button>
-          </div>
-        </div>
-      </div>
-      <div class="chart-wrap">
-        <div class="chart-box price-box"><canvas id="price-chart"></canvas></div>
-        <div class="chart-box candle-box"><canvas id="candle-chart"></canvas></div>
-        <div class="chart-box rsi-box"><canvas id="rsi-chart"></canvas></div>
       </div>
     </section>
 
@@ -566,6 +566,35 @@
     </section>
 
     <section>
+      <h2>Market Conditions</h2>
+      <div class="signals-grid" id="f-signals-grid">
+        <div class="signal-card"><div class="commentary">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-controls">
+        <h2>Price Chart</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="btn-group" id="f-pair-btns"></div>
+          <div class="btn-group" id="f-span-btns">
+            <button onclick="setFSpan('4h')"  data-span="4h">4h</button>
+            <button onclick="setFSpan('1d')"  data-span="1d" class="active">1d</button>
+            <button onclick="setFSpan('3d')"  data-span="3d">3d</button>
+            <button onclick="setFSpan('1w')"  data-span="1w">1w</button>
+            <button onclick="setFSpan('2w')"  data-span="2w">2w</button>
+            <button onclick="setFSpan('1m')"  data-span="1m">1m</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box price-box"><canvas id="f-price-chart"></canvas></div>
+        <div class="chart-box candle-box"><canvas id="f-candle-chart"></canvas></div>
+        <div class="chart-box rsi-box"><canvas id="f-rsi-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section>
       <div class="chart-controls">
         <h2>Recent Trades</h2>
         <a href="/api/futures/trades/csv" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
@@ -593,35 +622,6 @@
         <button id="fut-trades-prev" onclick="futTradesPage(-1)" disabled>‹ Prev</button>
         <span id="fut-trades-page-info">—</span>
         <button id="fut-trades-next" onclick="futTradesPage(1)" disabled>Next ›</button>
-      </div>
-    </section>
-
-    <section>
-      <h2>Market Conditions</h2>
-      <div class="signals-grid" id="f-signals-grid">
-        <div class="signal-card"><div class="commentary">Loading…</div></div>
-      </div>
-    </section>
-
-    <section class="chart-section">
-      <div class="chart-controls">
-        <h2>Price Chart</h2>
-        <div style="display:flex;gap:12px;flex-wrap:wrap">
-          <div class="btn-group" id="f-pair-btns"></div>
-          <div class="btn-group" id="f-span-btns">
-            <button onclick="setFSpan('4h')"  data-span="4h">4h</button>
-            <button onclick="setFSpan('1d')"  data-span="1d" class="active">1d</button>
-            <button onclick="setFSpan('3d')"  data-span="3d">3d</button>
-            <button onclick="setFSpan('1w')"  data-span="1w">1w</button>
-            <button onclick="setFSpan('2w')"  data-span="2w">2w</button>
-            <button onclick="setFSpan('1m')"  data-span="1m">1m</button>
-          </div>
-        </div>
-      </div>
-      <div class="chart-wrap">
-        <div class="chart-box price-box"><canvas id="f-price-chart"></canvas></div>
-        <div class="chart-box candle-box"><canvas id="f-candle-chart"></canvas></div>
-        <div class="chart-box rsi-box"><canvas id="f-rsi-chart"></canvas></div>
       </div>
     </section>
 
@@ -748,31 +748,6 @@
     </section>
 
     <section>
-      <div class="chart-controls">
-        <h2>Recent Trades</h2>
-        <a id="sh-csv-btn" href="#" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
-      </div>
-      <div class="tbl-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Time (Helsinki)</th><th>Pair</th><th>Side</th><th>Price</th>
-              <th>Amount</th><th>Value (EUR)</th><th>PnL</th><th>Hold</th><th>Notes</th>
-            </tr>
-          </thead>
-          <tbody id="sh-trades-body">
-            <tr><td colspan="9" class="empty">No trades yet</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="trades-pagination">
-        <button id="sh-trades-prev" onclick="shTradesPage(-1)" disabled>‹ Prev</button>
-        <span id="sh-trades-page-info">—</span>
-        <button id="sh-trades-next" onclick="shTradesPage(1)" disabled>Next ›</button>
-      </div>
-    </section>
-
-    <section>
       <h2>Market Conditions</h2>
       <div class="signals-grid" id="sh-signals-grid">
         <div class="signal-card"><div class="commentary">Loading…</div></div>
@@ -798,6 +773,31 @@
         <div class="chart-box price-box"><canvas id="sh-price-chart"></canvas></div>
         <div class="chart-box candle-box"><canvas id="sh-candle-chart"></canvas></div>
         <div class="chart-box rsi-box"><canvas id="sh-rsi-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="chart-controls">
+        <h2>Recent Trades</h2>
+        <a id="sh-csv-btn" href="#" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time (Helsinki)</th><th>Pair</th><th>Side</th><th>Price</th>
+              <th>Amount</th><th>Value (EUR)</th><th>PnL</th><th>Hold</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="sh-trades-body">
+            <tr><td colspan="9" class="empty">No trades yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="trades-pagination">
+        <button id="sh-trades-prev" onclick="shTradesPage(-1)" disabled>‹ Prev</button>
+        <span id="sh-trades-page-info">—</span>
+        <button id="sh-trades-next" onclick="shTradesPage(1)" disabled>Next ›</button>
       </div>
     </section>
 
