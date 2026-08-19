@@ -445,8 +445,12 @@ def api_shadow_trades(name):
     offset = (page - 1) * limit
     rows   = db.get_trades(limit, mode=s._db_mode, offset=offset)
     total  = db.get_trade_count(mode=s._db_mode)
+    hold_times = db.get_hold_times(s._db_mode)
+    trades = [dict(zip(cols, row)) for row in rows]
+    for t in trades:
+        t["hold_h"] = hold_times.get(t["id"])
     return jsonify({
-        "trades": [dict(zip(cols, row)) for row in rows],
+        "trades": trades,
         "total":  total,
         "page":   page,
         "pages":  max(1, math.ceil(total / limit)),

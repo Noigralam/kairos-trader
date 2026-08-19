@@ -757,11 +757,11 @@
           <thead>
             <tr>
               <th>Time (Helsinki)</th><th>Pair</th><th>Side</th><th>Price</th>
-              <th>Amount</th><th>Value (EUR)</th><th>PnL</th><th>Notes</th>
+              <th>Amount</th><th>Value (EUR)</th><th>PnL</th><th>Hold</th><th>Notes</th>
             </tr>
           </thead>
           <tbody id="sh-trades-body">
-            <tr><td colspan="8" class="empty">No trades yet</td></tr>
+            <tr><td colspan="9" class="empty">No trades yet</td></tr>
           </tbody>
         </table>
       </div>
@@ -1817,7 +1817,7 @@
       _shTradesPages = data.pages;
       const tb = document.getElementById('sh-trades-body');
       if (!data.trades.length) {
-        tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+        tb.innerHTML = '<tr><td colspan="9" class="empty">No trades yet</td></tr>';
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
           <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
@@ -1827,6 +1827,7 @@
           <td>${Number(t.amount).toFixed(6)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
           <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
