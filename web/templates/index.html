@@ -442,11 +442,12 @@
               <th>Amount</th>
               <th>Value (EUR)</th>
               <th>PnL</th>
+              <th>Hold</th>
               <th>Notes</th>
             </tr>
           </thead>
           <tbody id="trades-body">
-            <tr><td colspan="8" class="empty">No trades yet</td></tr>
+            <tr><td colspan="9" class="empty">No trades yet</td></tr>
           </tbody>
         </table>
       </div>
@@ -950,6 +951,13 @@
     const cls = n >= 0 ? 'pos' : 'neg';
     return `<span class="${cls}">${n >= 0 ? '+' : ''}${_fi(n)} €</span>`;
   }
+  function fmtHold(h) {
+    if (h === null || h === undefined) return '—';
+    if (h < 1)  return `${Math.round(h * 60)}m`;
+    if (h < 24) return `${h.toFixed(1)}h`;
+    const days = Math.floor(h / 24), rem = Math.round(h % 24);
+    return rem > 0 ? `${days}d ${rem}h` : `${days}d`;
+  }
 
   // ── tab switching ─────────────────────────────────────────────────────────
   let _activeTab = 'spot';
@@ -1179,7 +1187,7 @@
       document.getElementById('hdr-spot-trades').textContent = `${data.total} trades`;
       const tb = document.getElementById('trades-body');
       if (!data.trades.length) {
-        tb.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+        tb.innerHTML = '<tr><td colspan="9" class="empty">No trades yet</td></tr>';
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
           <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
@@ -1189,6 +1197,7 @@
           <td>${Number(t.amount).toFixed(6)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
           <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
         </tr>`).join('');
       }

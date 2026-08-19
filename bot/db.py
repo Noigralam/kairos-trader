@@ -63,6 +63,38 @@ def log_trade(pair, side, price, amount, value_eur, fee, mode, pnl=None, notes=N
     conn.close()
 
 
+def get_hold_times(mode: str) -> dict:
+    """Returns {sell_trade_id: hold_hours} by matching BUY→SELL pairs chronologically."""
+    conn = sqlite3.connect(DB_PATH)
+    buys  = conn.execute(
+        "SELECT timestamp, pair, notes FROM trades WHERE mode=? AND side='BUY' ORDER BY timestamp",
+        (mode,)
+    ).fetchall()
+    sells = conn.execute(
+        "SELECT id, timestamp, pair FROM trades WHERE mode=? AND side='SELL' ORDER BY timestamp",
+        (mode,)
+    ).fetchall()
+    conn.close()
+
+    buys_by_pair: dict = {}
+    for ts, pair, notes in buys:
+        if 'dca' not in (notes or '').lower():
+            buys_by_pair.setdefault(pair, []).append(ts)
+
+    result: dict = {}
+    for tid, ts, pair in sells:
+        if buys_by_pair.get(pair):
+            buy_ts = buys_by_pair[pair].pop(0)
+            try:
+                from datetime import datetime as _dt
+                b = _dt.fromisoformat(buy_ts)
+                s = _dt.fromisoformat(ts)
+                result[tid] = round((s - b).total_seconds() / 3600, 1)
+            except Exception:
+                pass
+    return result
+
+
 def get_trades(limit=50, mode: str = None, offset: int = 0):
     conn = sqlite3.connect(DB_PATH)
     if mode:

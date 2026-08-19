@@ -70,8 +70,12 @@ def api_trades():
     offset = (page - 1) * limit
     rows   = db.get_trades(limit, mode=config.SPOT_MODE, offset=offset)
     total  = db.get_trade_count(mode=config.SPOT_MODE)
+    hold_times = db.get_hold_times(config.SPOT_MODE)
+    trades = [dict(zip(cols, row)) for row in rows]
+    for t in trades:
+        t["hold_h"] = hold_times.get(t["id"])
     return jsonify({
-        "trades": [dict(zip(cols, row)) for row in rows],
+        "trades": trades,
         "total":  total,
         "page":   page,
         "pages":  max(1, math.ceil(total / limit)),
