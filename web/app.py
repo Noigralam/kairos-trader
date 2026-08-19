@@ -1120,6 +1120,7 @@ def api_futures_shadow_trades(name):
     rows   = db.get_trades(limit, mode=sh._db_mode, offset=offset)
     total  = db.get_trade_count(mode=sh._db_mode)
     pages  = max(1, math.ceil(total / limit))
+    hold_times = db.get_hold_times(sh._db_mode)
     trades = []
     for row in rows:
         d = dict(zip(cols, row))
@@ -1127,6 +1128,7 @@ def api_futures_shadow_trades(name):
             d["timestamp"] = datetime.datetime.fromisoformat(d["timestamp"]).astimezone(_TZ).strftime("%Y-%m-%d %H:%M")
         except Exception:
             pass
+        d["hold_h"] = hold_times.get(d["id"])
         trades.append(d)
     return jsonify({"trades": trades, "total": total, "page": page, "pages": pages})
 

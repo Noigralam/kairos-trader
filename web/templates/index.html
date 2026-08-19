@@ -912,11 +912,11 @@
           <thead>
             <tr>
               <th>Time (Helsinki)</th><th>Symbol</th><th>Side</th><th>Price</th>
-              <th>Amount</th><th>Notional $</th><th>PnL $</th><th>Notes</th>
+              <th>Amount</th><th>Notional $</th><th>PnL $</th><th>Hold</th><th>Notes</th>
             </tr>
           </thead>
           <tbody id="fsh-trades-body">
-            <tr><td colspan="8" class="empty">No trades yet</td></tr>
+            <tr><td colspan="9" class="empty">No trades yet</td></tr>
           </tbody>
         </table>
       </div>
@@ -3227,7 +3227,7 @@
       _fshTradesPage  = data.page  || 1;
       const tbody = document.getElementById('fsh-trades-body');
       if (!data.trades.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty">No trades yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">No trades yet</td></tr>';
       } else {
         tbody.innerHTML = data.trades.map(t => `<tr>
           <td style="color:var(--muted);font-size:12px">${t.timestamp}</td>
@@ -3237,6 +3237,7 @@
           <td>${Number(t.amount).toFixed(6)}</td>
           <td>$${Number(t.value_eur || 0).toFixed(2)}</td>
           <td>${_fmtPnlUsdt(t.pnl)}</td>
+          <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
           <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
