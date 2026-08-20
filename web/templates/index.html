@@ -1615,7 +1615,10 @@
       const field = _shPnlMode === 'pct' ? 'pct' : 'pnl';
 
       // Build a unified sorted time axis across all series
-      const allTimes = [...new Set(names.flatMap(n => data[n].map(p => p.t)))].sort();
+      const allPoints = names.flatMap(n => data[n].map(p => ({t: p.t, sk: p.sk})));
+      const seenT = new Set(); const sortedPoints = [];
+      allPoints.sort((a,b) => a.sk - b.sk).forEach(p => { if (!seenT.has(p.t)) { seenT.add(p.t); sortedPoints.push(p); }});
+      const allTimes = sortedPoints.map(p => p.t);
       if (!allTimes.length) return;
 
       const datasets = names.map((name, i) => {
@@ -3520,7 +3523,10 @@
       const raw = await fetch(`/api/futures/shadows/pnl_history?days=${_fshPnlDays}`).then(r => r.json());
       const names = Object.keys(raw);
       if (!names.length) return;
-      const labels = [...new Set(names.flatMap(n => raw[n].map(p => p.t)))].sort();
+      const allPts = names.flatMap(n => raw[n].map(p => ({t: p.t, sk: p.sk})));
+      const seenTF = new Set(); const sortedPts = [];
+      allPts.sort((a,b) => a.sk - b.sk).forEach(p => { if (!seenTF.has(p.t)) { seenTF.add(p.t); sortedPts.push(p); }});
+      const labels = sortedPts.map(p => p.t);
       const _CHART_COLORS = ['#79c0ff','#56d364','#e3b341','#ff7b72','#d2a8ff','#388bfd','#2ea043','#bb8009'];
       const datasets = names.map((n, i) => {
         const map = Object.fromEntries(raw[n].map(p => [p.t, _fshPnlMode === 'pct' ? p.pct : p.pnl]));

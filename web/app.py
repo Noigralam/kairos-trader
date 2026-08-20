@@ -437,11 +437,13 @@ def api_shadows_pnl_history():
         result = []
         for ts, bal in rows:
             try:
-                t = datetime.datetime.fromisoformat(ts).astimezone(_TZ).strftime("%d.%m. %H:%M")
+                dt = datetime.datetime.fromisoformat(ts).astimezone(_TZ)
+                t  = dt.strftime("%d.%m. %H:%M")
+                sk = dt.timestamp()
             except Exception:
-                t = ts
+                t = ts; sk = 0
             pnl = bal - starting
-            result.append({"t": t, "pnl": round(pnl, 2), "pct": round(pnl / starting * 100, 3) if starting else 0})
+            result.append({"t": t, "sk": sk, "pnl": round(pnl, 2), "pct": round(pnl / starting * 100, 3) if starting else 0})
         return result
 
     if config.SPOT_MODE == "simulation":
@@ -1521,11 +1523,13 @@ def api_futures_shadows_pnl_history():
         result = []
         for ts, bal in rows:
             try:
-                t = datetime.datetime.fromisoformat(ts).astimezone(_TZ).strftime("%d.%m. %H:%M")
+                dt = datetime.datetime.fromisoformat(ts).astimezone(_TZ)
+                t  = dt.strftime("%d.%m. %H:%M")
+                sk = dt.timestamp()
             except Exception:
-                t = ts
+                t = ts; sk = 0
             pnl = bal - starting
-            result.append({"t": t, "pnl": round(pnl, 4), "pct": round(pnl / starting * 100, 3) if starting else 0})
+            result.append({"t": t, "sk": sk, "pnl": round(pnl, 4), "pct": round(pnl / starting * 100, 3) if starting else 0})
         return result
 
     if config.FUTURES_MODE == "simulation":
