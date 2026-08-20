@@ -1506,7 +1506,7 @@
           const trEl   = document.getElementById(`fsh-hdr-tr-${name}${sfx}`);
           if (!portEl) continue;
           portEl.textContent = `$${Number(port).toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
-          pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(4)} PnL`;
+          pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(2)} PnL`;
           pnlEl.style.color  = pnlColor;
           trEl.textContent   = `${s.total_trades} trades`;
         }
@@ -3109,7 +3109,7 @@
   function _fmtPnlUsdt(n) {
     if (n === null || n === undefined) return '—';
     const cls = n >= 0 ? 'pos' : 'neg';
-    return `<span class="${cls}">${n >= 0 ? '+' : ''}$${Math.abs(Number(n)).toFixed(4)}</span>`;
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}$${Math.abs(Number(n)).toFixed(2)}</span>`;
   }
 
   async function refreshFuturesShadows() {
@@ -3202,8 +3202,8 @@
         <td>${badge}<span style="${nameStyle}" onclick="switchFShadow('${s.name}')">${s.name}</span></td>
         <td style="color:var(--muted);font-size:12px">${(s.symbols || []).join(', ')}</td>
         <td class="${retCls}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
-        <td class="${pnlCls}">${s.pnl >= 0 ? '+' : ''}$${Math.abs(s.pnl).toFixed(4)}</td>
-        <td style="color:var(--muted)">${fundSign}$${Math.abs(s.funding).toFixed(4)}</td>
+        <td class="${pnlCls}">${s.pnl >= 0 ? '+' : ''}$${Math.abs(s.pnl).toFixed(2)}</td>
+        <td style="color:var(--muted)">${fundSign}$${Math.abs(s.funding).toFixed(2)}</td>
         <td>${s.trades}</td>
         <td style="color:var(--muted);font-size:12px">${note}</td>
       </tr>`;
@@ -3460,7 +3460,7 @@
       document.getElementById('fsh-trades').textContent = d.total_trades;
       const funding = d.total_funding ?? 0;
       const fEl = document.getElementById('fsh-funding');
-      fEl.innerHTML = `<span class="${funding <= 0 ? 'pos' : 'neg'}">${funding <= 0 ? '' : '+'}$${Math.abs(funding).toFixed(4)}</span>`;
+      fEl.innerHTML = `<span class="${funding <= 0 ? 'pos' : 'neg'}">${funding <= 0 ? '' : '+'}$${Math.abs(funding).toFixed(2)}</span>`;
 
       document.getElementById('fsh-since').textContent = d.started_at ? `Since ${d.started_at.slice(0, 16).replace('T', ' ')}` : '';
 
@@ -3501,7 +3501,7 @@
           <td style="color:var(--muted);font-size:12px">${t.timestamp}</td>
           <td>${t.pair}</td>
           <td class="${t.side === 'BUY' ? 'pos' : 'neg'}">${t.side}</td>
-          <td>$${Number(t.price).toFixed(4)}</td>
+          <td>$${Number(t.price).toFixed(2)}</td>
           <td>${Number(t.amount).toFixed(6)}</td>
           <td>$${Number(t.value_eur || 0).toFixed(2)}</td>
           <td>${_fmtPnlUsdt(t.pnl)}</td>
