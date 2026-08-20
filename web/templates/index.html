@@ -516,6 +516,10 @@
       Simulation data is in the <a href="#" onclick="switchTab('futures-shadow');return false" style="color:#58a6ff">Futures Shadow</a> tab.
     </div>
 
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+      <button onclick="openSettingsModal('futures')" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">⚙ Settings</button>
+    </div>
+
     <div class="stats futures-stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
       <div class="stat-card">
         <div class="label">Balance</div>
@@ -878,9 +882,10 @@
     </div>
 
     <section>
-      <h2>Overrides</h2>
-      <div id="fsh-overrides" style="font-size:13px;color:var(--muted);padding:4px 0">—</div>
-      <div id="fsh-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:6px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div id="fsh-since" style="font-size:11px;color:var(--muted);opacity:0.6;"></div>
+        <button onclick="openSettingsModal('futures-shadow')" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">⚙ Settings</button>
+      </div>
     </section>
 
     <section>
@@ -3187,18 +3192,6 @@
       const fEl = document.getElementById('fsh-funding');
       fEl.innerHTML = `<span class="${funding <= 0 ? 'pos' : 'neg'}">${funding <= 0 ? '' : '+'}$${Math.abs(funding).toFixed(4)}</span>`;
 
-      // overrides
-      const ov   = d.overrides || {};
-      const tags = [];
-      if (ov.futures_max_funding_rate === 0)        tags.push('no funding filter');
-      else if (ov.futures_max_funding_rate != null)  tags.push(`funding max ${(ov.futures_max_funding_rate*100).toFixed(3)}%`);
-      if (ov.futures_leverage != null)               tags.push(`${ov.futures_leverage}× leverage`);
-      if (ov.futures_ema_gap === 0)                  tags.push('no EMA gap filter');
-      else if (ov.futures_ema_gap != null)           tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
-      if (ov.futures_rsi_oversold != null)           tags.push(`RSI oversold < ${ov.futures_rsi_oversold}`);
-      if (ov.futures_rsi_period != null)             tags.push(`RSI period ${ov.futures_rsi_period}`);
-      if (ov.futures_pos_pct != null)                tags.push(`pos size ${(ov.futures_pos_pct*100).toFixed(0)}%`);
-      document.getElementById('fsh-overrides').textContent = d.is_main ? 'Main simulation (baseline)' : (tags.length ? tags.join(' · ') : 'No overrides — identical to main');
       document.getElementById('fsh-since').textContent = d.started_at ? `Since ${d.started_at.slice(0, 16).replace('T', ' ')}` : '';
 
       const csvBtn = document.getElementById('fsh-csv-btn');
@@ -3424,6 +3417,48 @@ function _renderConfigTable(cfg, overrides) {
   return html;
 }
 
+function _renderFuturesConfigTable(cfg, overrides) {
+  const ov   = overrides || {};
+  const syms = cfg.symbols || cfg.per_sym ? Object.keys(cfg.per_sym || {}) : [];
+  const pp   = cfg.per_sym || {};
+
+  let html = '<table style="width:100%;border-collapse:collapse">';
+  html += '<tr><td colspan="2" style="padding:8px 0 4px;color:#58a6ff;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">General</td></tr>';
+  html += _settingsRow('Interval',          cfg.interval || '15m', false);
+  html += _settingsRow('Fee',               (cfg.fee_pct ?? '—') + '%', false);
+  html += _settingsRow('Margin type',       cfg.margin_type || '—', false);
+  html += _settingsRow('Stop-check',        cfg.stop_check_interval ? cfg.stop_check_interval + 's' : '—', false);
+
+  syms.forEach(sym => {
+    const p = pp[sym] || {};
+    html += `<tr><td colspan="2" style="padding:10px 0 4px;color:#58a6ff;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${sym}</td></tr>`;
+    html += '<tr><td colspan="2" style="padding:0 0 3px;color:#30363d;font-size:11px">── Signal</td></tr>';
+    html += _settingsRow('RSI period',      p.rsi_period,     'futures_rsi_period'     in ov);
+    html += _settingsRow('RSI oversold',    p.rsi_oversold,   'futures_rsi_oversold'   in ov);
+    html += _settingsRow('RSI overbought',  p.rsi_overbought, 'futures_rsi_overbought' in ov);
+    html += _settingsRow('EMA gap',         _pct(p.ema_gap_pct), 'futures_ema_gap'     in ov);
+    html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── Position</td></tr>';
+    html += _settingsRow('Leverage',        p.leverage + '×', 'futures_leverage' in ov);
+    html += _settingsRow('Size',            _pct(p.position_size_pct), 'futures_pos_pct' in ov);
+    html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── DCA</td></tr>';
+    html += _settingsRow('First drop',      _pct(p.dca_drop_pct), false);
+    html += _settingsRow('Size/tranche',    _pct(p.dca_size_pct), false);
+    html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── Exit</td></tr>';
+    html += _settingsRow('Take profit',     _pct(p.take_profit_pct),   false);
+    html += _settingsRow('Trailing stop',   _pct(p.trailing_stop_pct), false);
+    html += _settingsRow('Profit floor',    _pct(p.profit_floor_pct),  false);
+    html += _settingsRow('Min RSI exit',    _pct(p.min_exit_pct),      false);
+    html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── Risk</td></tr>';
+    html += _settingsRow('Max drawdown',    p.max_drawdown_pct > 0 ? _pct(p.max_drawdown_pct) : 'off', false);
+    html += _settingsRow('Max funding rate',p.max_funding_rate > 0 ? (p.max_funding_rate * 100).toFixed(3) + '%' : 'off', 'futures_max_funding_rate' in ov);
+  });
+
+  html += '</table>';
+  if (Object.keys(ov).length)
+    html += '<p style="margin:12px 0 0;font-size:11px;color:#d29922">★ highlighted values are shadow overrides</p>';
+  return html;
+}
+
 async function openSettingsModal(context) {
   const modal = document.getElementById('settings-modal');
   const body  = document.getElementById('settings-modal-body');
@@ -3436,11 +3471,20 @@ async function openSettingsModal(context) {
       title.textContent = 'Spot Settings';
       const cfg = await fetch('/api/config').then(r => r.json());
       body.innerHTML = _renderConfigTable(cfg, {});
-    } else {
+    } else if (context === 'shadow') {
       const name = _activeShadow;
-      title.textContent = `Shadow: ${name}`;
+      title.textContent = `Spot Shadow: ${name}`;
       const cfg = await fetch(`/api/shadow/${name}/config`).then(r => r.json());
       body.innerHTML = _renderConfigTable(cfg, cfg.overrides || {});
+    } else if (context === 'futures') {
+      title.textContent = 'Futures Settings';
+      const cfg = await fetch('/api/futures/config').then(r => r.json());
+      body.innerHTML = _renderFuturesConfigTable(cfg, {});
+    } else if (context === 'futures-shadow') {
+      const name = _activeFShadow;
+      title.textContent = `Futures Shadow: ${name}`;
+      const cfg = await fetch(`/api/futures/shadow/${name}/config`).then(r => r.json());
+      body.innerHTML = _renderFuturesConfigTable(cfg, cfg.overrides || {});
     }
   } catch(e) {
     body.innerHTML = `<span style="color:var(--muted)">Failed to load config: ${e}</span>`;

@@ -742,6 +742,85 @@ def api_shadow_chart(name, pair):
     })
 
 
+def _futures_config_for_sym(sym: str) -> dict:
+    return {
+        "rsi_period":        config.futures_rsi_period_for(sym),
+        "rsi_oversold":      config.futures_rsi_oversold_for(sym),
+        "rsi_overbought":    config.futures_rsi_overbought_for(sym),
+        "ema_gap_pct":       round(config.futures_ema_gap_for(sym) * 100, 2),
+        "leverage":          config.FUTURES_LEVERAGE,
+        "position_size_pct": round(config.FUTURES_POSITION_SIZE_PCT * 100, 2),
+        "dca_drop_pct":      round(config.FUTURES_DCA_DROP_PCT * 100, 2),
+        "dca_size_pct":      round(config.FUTURES_DCA_SIZE_PCT * 100, 2),
+        "take_profit_pct":   round(config.FUTURES_TAKE_PROFIT_PCT * 100, 2),
+        "trailing_stop_pct": round(config.FUTURES_TRAILING_STOP_PCT * 100, 2),
+        "profit_floor_pct":  round(config.FUTURES_PROFIT_FLOOR_PCT * 100, 2),
+        "min_exit_pct":      round(config.FUTURES_MIN_EXIT_PROFIT_PCT * 100, 2),
+        "max_drawdown_pct":  round(config.FUTURES_MAX_DRAWDOWN_PCT * 100, 2),
+        "max_funding_rate":  config.FUTURES_MAX_FUNDING_RATE,
+    }
+
+
+@app.route("/api/futures/config")
+def api_futures_config():
+    if not config.FUTURES_ENABLED:
+        return jsonify({"enabled": False})
+    syms = list(config.FUTURES_TRADING_PAIRS)
+    return jsonify({
+        "enabled":             True,
+        "mode":                config.FUTURES_MODE,
+        "interval":            "15m",
+        "symbols":             syms,
+        "fee_pct":             round(config.FUTURES_FEE * 100, 4),
+        "margin_type":         config.FUTURES_MARGIN_TYPE,
+        "stop_check_interval": config.FUTURES_STOP_CHECK_INTERVAL,
+        "per_sym":             {s: _futures_config_for_sym(s) for s in syms},
+    })
+
+
+@app.route("/api/futures/shadow/<name>/config")
+def api_futures_shadow_config(name):
+    if not config.FUTURES_ENABLED:
+        return jsonify({"error": "futures disabled"}), 404
+    from bot.futures_simulator import get_futures_shadows
+    sh = next((s for s in get_futures_shadows() if s.name.upper() == name.upper()), None)
+    if sh is None:
+        return jsonify({"error": "not found"}), 404
+    syms = sh.symbols
+    ov   = sh.overrides
+
+    def _ov(key, default):
+        return ov.get(key, default)
+
+    per_sym = {}
+    for s in syms:
+        base = _futures_config_for_sym(s)
+        per_sym[s] = {
+            "rsi_period":        int(_ov("futures_rsi_period",     base["rsi_period"])),
+            "rsi_oversold":      int(_ov("futures_rsi_oversold",   base["rsi_oversold"])),
+            "rsi_overbought":    int(_ov("futures_rsi_overbought", base["rsi_overbought"])),
+            "ema_gap_pct":       round(float(_ov("futures_ema_gap", base["ema_gap_pct"] / 100)) * 100, 2),
+            "leverage":          int(_ov("futures_leverage",        base["leverage"])),
+            "position_size_pct": round(float(_ov("futures_pos_pct", base["position_size_pct"] / 100)) * 100, 2),
+            "dca_drop_pct":      base["dca_drop_pct"],
+            "dca_size_pct":      base["dca_size_pct"],
+            "take_profit_pct":   base["take_profit_pct"],
+            "trailing_stop_pct": base["trailing_stop_pct"],
+            "profit_floor_pct":  base["profit_floor_pct"],
+            "min_exit_pct":      base["min_exit_pct"],
+            "max_drawdown_pct":  base["max_drawdown_pct"],
+            "max_funding_rate":  float(_ov("futures_max_funding_rate", base["max_funding_rate"])),
+        }
+
+    return jsonify({
+        "name":     sh.name,
+        "interval": "15m",
+        "symbols":  syms,
+        "overrides": ov,
+        "per_sym":  per_sym,
+    })
+
+
 @app.route("/api/futures/signals")
 def api_futures_signals():
     if not config.FUTURES_ENABLED:
