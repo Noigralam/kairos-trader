@@ -915,6 +915,35 @@
     </section>
 
     <section>
+      <h2>Market Conditions</h2>
+      <div class="signals-grid" id="fsh-signals-grid">
+        <div class="signal-card"><div class="commentary">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <div class="chart-controls">
+        <h2>Price Chart</h2>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="btn-group" id="fsh-sym-btns"></div>
+          <div class="btn-group" id="fsh-span-btns2">
+            <button onclick="setFShSpan2('4h')"  data-span="4h">4h</button>
+            <button onclick="setFShSpan2('1d')"  data-span="1d" class="active">1d</button>
+            <button onclick="setFShSpan2('3d')"  data-span="3d">3d</button>
+            <button onclick="setFShSpan2('1w')"  data-span="1w">1w</button>
+            <button onclick="setFShSpan2('2w')"  data-span="2w">2w</button>
+            <button onclick="setFShSpan2('1m')"  data-span="1m">1m</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-box price-box"><canvas id="fsh-price-chart"></canvas></div>
+        <div class="chart-box candle-box"><canvas id="fsh-candle-chart"></canvas></div>
+        <div class="chart-box rsi-box"><canvas id="fsh-rsi-chart"></canvas></div>
+      </div>
+    </section>
+
+    <section>
       <div class="chart-controls">
         <h2>Recent Trades</h2>
         <a id="fsh-csv-btn" href="#" download class="csv-btn" title="Export trades as CSV">&#8595; CSV</a>
@@ -993,7 +1022,11 @@
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'spot-shadow')    refreshShadowTab();
-    if (name === 'futures-shadow') refreshFShadowTab();
+    if (name === 'futures-shadow') {
+      refreshFShadowTab();
+      if (_fshPriceChart) { _fshPriceChart.resize(); _fshCandleChart?.resize(); _fshRsiChart?.resize(); }
+      else if (_activeFShadow) initFShadowChart();
+    }
     if (name === 'futures') {
       refreshFuturesSignals();
       if (_fPriceChart) { _fPriceChart.resize(); _fCandleChart?.resize(); _fRsiChart?.resize(); }
@@ -3062,6 +3095,12 @@
   let _fshTradesPages  = 1;
   let _fshPnlChart     = null;
   let _fshBalChart     = null;
+  let _fshPriceChart   = null;
+  let _fshCandleChart  = null;
+  let _fshRsiChart     = null;
+  let _fshChartSym     = null;
+  let _fshChartSpan    = '1d';
+  let _fshSignals      = {};
   let _fshInitDone     = false;
 
   function _fmtPnlUsdt(n) {
@@ -3106,6 +3145,10 @@
 
   function switchFShadow(name) {
     _activeFShadow = name;
+    _fshChartSym  = null;
+    if (_fshPriceChart)  { _fshPriceChart.destroy();  _fshPriceChart  = null; }
+    if (_fshCandleChart) { _fshCandleChart.destroy(); _fshCandleChart = null; }
+    if (_fshRsiChart)    { _fshRsiChart.destroy();    _fshRsiChart    = null; }
     _markFShSelector();
     refreshFShadowTab();
   }
@@ -3172,7 +3215,226 @@
       refreshFShadowTrades(),
       refreshFShPnlChart(),
       refreshFShBalanceChart(),
+      refreshFShadowSignals(),
     ]);
+  }
+
+  async function refreshFShadowSignals() {
+    if (!_activeFShadow) return;
+    try {
+      const res  = await fetch(`/api/futures/shadow/${_activeFShadow}/signals`);
+      _fshSignals = await res.json();
+      const grid  = document.getElementById('fsh-signals-grid');
+      const pb    = document.getElementById('fsh-sym-btns');
+      const syms  = Object.keys(_fshSignals);
+
+      const currentSymBtns = [...pb.querySelectorAll('button')].map(b => b.dataset.sym).join(',');
+      if (currentSymBtns !== syms.join(',')) {
+        pb.innerHTML = syms.map(s => `<button onclick="setFShSym('${s}')" data-sym="${s}">${s}</button>`).join('');
+        const keep = syms.includes(_fshChartSym) ? _fshChartSym : syms[0];
+        if (keep) setFShSym(keep);
+      } else if (!_fshPriceChart && _fshChartSym) {
+        loadFShadowChart();
+      }
+
+      grid.innerHTML = syms.map(sym => {
+        const d = _fshSignals[sym];
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${sym}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+
+        const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
+        const trendLabel = d.above_trend
+          ? `↑ $${Math.abs(d.gap).toLocaleString('fi-FI', {minimumFractionDigits: 2})} above EMA200`
+          : `↓ $${Math.abs(d.gap).toLocaleString('fi-FI', {minimumFractionDigits: 2})} below EMA200`;
+        const rsiPct      = Math.min(100, Math.max(0, d.rsi));
+        const rsiBarColor = d.rsi < d.rsi_oversold ? 'var(--green)' : d.rsi > d.rsi_overbought ? 'var(--red)' : 'var(--blue)';
+
+        const pos = d.position;
+        let posBlock = '';
+        if (pos) {
+          const pnlCls  = pos.unrealized_pnl >= 0 ? 'pos' : 'neg';
+          const pnlSign = pos.unrealized_pnl >= 0 ? '+' : '';
+          const pctSign = pos.pnl_pct >= 0 ? '+' : '';
+
+          const rangeMin = pos.liquidation_price;
+          const rangeMax = pos.entry_price * (1 + 1 / pos.leverage);
+          const range    = rangeMax - rangeMin;
+          const pin = v => range > 0 ? Math.min(100, Math.max(0, (v - rangeMin) / range * 100)).toFixed(1) : 50;
+
+          const liqDist  = ((pos.mark_price - pos.liquidation_price) / pos.mark_price * 100).toFixed(1);
+          const liqColor = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
+
+          posBlock = `<div class="position-block">
+            <div class="pos-row"><span class="plabel">Entry</span><span class="pvalue">${fmtUsdt(pos.entry_price, 4)} <span class="lev-badge" style="margin-left:4px">${pos.leverage}x</span></span></div>
+            <div class="pos-row"><span class="plabel">Unrealised PnL</span><span class="pvalue ${pnlCls}">${pnlSign}${fmtUsdt(Math.abs(pos.unrealized_pnl))} (${pctSign}${pos.pnl_pct}%)</span></div>
+            <div style="margin:8px 0 4px">
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+                <span style="color:${liqColor}">Liq ${fmtUsdt(pos.liquidation_price, 4)} (${liqDist}% away)</span>
+                <span>Trail ${fmtUsdt(pos.trailing_stop, 4)}</span>
+              </div>
+              <div class="liq-bar-wrap">
+                <div class="liq-bar-pin" style="left:${pin(pos.entry_price)}%" title="Entry"></div>
+                <div class="liq-bar-pin" style="left:${pin(pos.trailing_stop)}%;background:var(--red)" title="Trail stop"></div>
+                <div class="liq-bar-pin" style="left:${pin(pos.mark_price)}%;background:#fff;width:3px;height:14px;top:-5px" title="Mark price"></div>
+              </div>
+            </div>
+            <div class="pos-row"><span class="plabel">Peak</span><span class="pvalue">${fmtUsdt(pos.highest_price, 4)}</span></div>
+            <div class="pos-row"><span class="plabel">Margin</span><span class="pvalue">${fmtUsdt(pos.margin)}</span></div>
+            <div class="pos-row" style="margin-top:8px"><span class="plabel">${Number(pos.amount).toFixed(4)} units</span></div>
+          </div>`;
+        }
+
+        return `<div class="signal-card">
+          <div class="pair-name">${sym} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
+          <div class="metrics">
+            <div class="metric"><div class="mlabel">Mark Price</div><div class="mvalue">${fmtUsdt(d.price, 4)}</div></div>
+            <div class="metric"><div class="mlabel">RSI (${d.rsi_period})</div><div class="mvalue" style="color:${rsiColor(d.rsi, d.rsi_overbought)}">${d.rsi}</div></div>
+            <div class="metric"><div class="mlabel">EMA200</div><div class="mvalue">${fmtUsdt(d.ema200, 2)}</div></div>
+          </div>
+          <div class="rsi-bar-wrap">
+            <div class="fill" style="width:${rsiPct}%;background:${rsiBarColor}"></div>
+            <div class="marker" style="left:${d.rsi_oversold}%"></div>
+            <div class="marker-label" style="left:${d.rsi_oversold}%">${d.rsi_oversold}</div>
+            <div class="marker" style="left:${d.rsi_overbought}%"></div>
+            <div class="marker-label" style="left:${d.rsi_overbought}%">${d.rsi_overbought}</div>
+          </div>
+          <div class="metric" style="margin-bottom:10px">
+            <div class="mlabel">Trend</div>
+            <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
+          </div>
+          <div class="commentary">${d.commentary}</div>
+          ${posBlock}
+        </div>`;
+      }).join('');
+    } catch(e) { console.error('fsh signals', e); }
+  }
+
+  async function initFShadowChart() {
+    if (!_activeFShadow) return;
+    try {
+      const res  = await fetch(`/api/futures/shadow/${_activeFShadow}/signals`);
+      _fshSignals = await res.json();
+      const syms  = Object.keys(_fshSignals);
+      const pb    = document.getElementById('fsh-sym-btns');
+      pb.innerHTML = syms.map(s => `<button onclick="setFShSym('${s}')" data-sym="${s}">${s}</button>`).join('');
+      if (syms.length) setFShSym(syms[0]);
+    } catch(e) { console.error('fsh chart init', e); }
+  }
+
+  function setFShSym(s) {
+    _fshChartSym = s;
+    document.querySelectorAll('#fsh-sym-btns button').forEach(b =>
+      b.classList.toggle('active', b.dataset.sym === s));
+    loadFShadowChart();
+  }
+
+  function setFShSpan2(s) {
+    _fshChartSpan = s;
+    document.querySelectorAll('#fsh-span-btns2 button').forEach(b =>
+      b.classList.toggle('active', b.dataset.span === s));
+    loadFShadowChart();
+  }
+
+  async function loadFShadowChart() {
+    if (!_fshChartSym || !_activeFShadow) return;
+    try {
+      const data = await fetch(`/api/futures/shadow/${_activeFShadow}/chart/${_fshChartSym}?span=${_fshChartSpan}`).then(r => r.json());
+      if (!data.labels || !data.labels.length) return;
+      const _os = data.rsi_oversold  ?? 30;
+      const _ob = data.rsi_overbought ?? 75;
+
+      const buyDs        = { label: 'Buy signal',    data: data.buys,         backgroundColor: '#3fb950cc', pointRadius: 5, pointStyle: 'triangle', showLine: false, type: 'scatter' };
+      const sellDs       = { label: 'Sell signal',   data: data.sells,        backgroundColor: '#f85149cc', pointRadius: 5, pointStyle: 'triangle', showLine: false, type: 'scatter', rotation: 180 };
+      const blockedDs    = { label: 'Blocked buy',   data: data.blocked_buys, backgroundColor: '#f8514966', pointRadius: 3, pointStyle: 'circle',   showLine: false, type: 'scatter' };
+      const actualBuyDs  = { label: 'Actual buy',    data: data.actual_buys,  backgroundColor: '#3fb950',   pointRadius: 7, pointStyle: 'star',     showLine: false, type: 'scatter' };
+      const actualSellDs = { label: 'Actual sell',   data: data.actual_sells, backgroundColor: '#f85149',   pointRadius: 7, pointStyle: 'star',     showLine: false, type: 'scatter' };
+      const actualDcaDs  = { label: 'Actual DCA',    data: data.actual_dcas,  backgroundColor: '#d29922',   pointRadius: 5, pointStyle: 'rectRot',  showLine: false, type: 'scatter' };
+      const bbUpperDs    = { label: 'BB Upper',       data: data.bb_upper,    borderColor: '#8b949e66', borderWidth: 1, pointRadius: 0, tension: 0.3, fill: false };
+      const bbLowerDs    = { label: 'BB Lower',       data: data.bb_lower,    borderColor: '#8b949e66', borderWidth: 1, pointRadius: 0, tension: 0.3, fill: '-1', backgroundColor: '#8b949e11' };
+      const volDs        = { label: 'Volume',         data: data.volume,      backgroundColor: data.vol_colors, yAxisID: 'yVol', type: 'bar', barPercentage: 0.8 };
+
+      if (_fshPriceChart) {
+        _fshPriceChart.data.labels = data.labels;
+        _fshPriceChart.data.datasets[0].data = data.prices;
+        _fshPriceChart.data.datasets[1].data = data.ema200;
+        _fshPriceChart.data.datasets[2].data = data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _fshPriceChart.data.datasets[3].data = data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _fshPriceChart.data.datasets[4].data = data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean);
+        _fshPriceChart.data.datasets[5].data = data.actual_buys;
+        _fshPriceChart.data.datasets[6].data = data.actual_sells;
+        _fshPriceChart.data.datasets[7].data = data.actual_dcas;
+        _fshPriceChart.data.datasets[8].data = data.bb_upper;
+        _fshPriceChart.data.datasets[9].data = data.bb_lower;
+        _fshPriceChart.data.datasets[10].data            = data.volume;
+        _fshPriceChart.data.datasets[10].backgroundColor = data.vol_colors;
+        _fshPriceChart.update('none');
+      } else {
+        const ctx = document.getElementById('fsh-price-chart').getContext('2d');
+        _fshPriceChart = new Chart(ctx, {
+          type: 'line',
+          data: { labels: data.labels, datasets: [
+            { label: 'Price', data: data.prices, borderColor: '#58a6ff', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false },
+            { label: 'EMA200', data: data.ema200, borderColor: '#d29922', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false, borderDash: [4,2] },
+            { ...buyDs,  data: data.buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean) },
+            { ...sellDs, data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean) },
+            { ...blockedDs, data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean) },
+            actualBuyDs, actualSellDs, actualDcaDs, bbUpperDs, bbLowerDs, volDs,
+          ]},
+          options: { ...CHART_OPTS, scales: { ...CHART_OPTS.scales,
+            yVol: { display: false, position: 'right', max: Math.max(...(data.volume||[0])) * 5 },
+          }},
+        });
+      }
+
+      const ohlcMin = Math.min(...data.ohlc.map(c => c.l));
+      const ohlcMax = Math.max(...data.ohlc.map(c => c.h));
+      const ohlcPad = (ohlcMax - ohlcMin) * 0.03;
+      if (_fshCandleChart) {
+        _fshCandleChart.data.labels  = data.labels;
+        _fshCandleChart.data._ohlc   = data.ohlc;
+        _fshCandleChart.options.scales.y.min = ohlcMin - ohlcPad;
+        _fshCandleChart.options.scales.y.max = ohlcMax + ohlcPad;
+        _fshCandleChart.update('none');
+      } else {
+        const ctx2 = document.getElementById('fsh-candle-chart').getContext('2d');
+        _fshCandleChart = new Chart(ctx2, {
+          type: 'candlestick_custom',
+          data: { labels: data.labels, _ohlc: data.ohlc, datasets: [{ label: 'OHLC', data: [] }] },
+          options: { ...CHART_OPTS, scales: { x: CHART_OPTS.scales.x,
+            y: { ...CHART_OPTS.scales.y, min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad } } },
+        });
+      }
+
+      if (_fshRsiChart) {
+        _fshRsiChart.data.labels           = data.labels;
+        _fshRsiChart.data.datasets[0].data = data.rsi;
+        _fshRsiChart.update('none');
+      } else {
+        const ctx3 = document.getElementById('fsh-rsi-chart').getContext('2d');
+        _fshRsiChart = new Chart(ctx3, {
+          type: 'line',
+          data: { labels: data.labels, datasets: [{ label: 'RSI', data: data.rsi,
+            borderColor: '#bc8cff', borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false }] },
+          options: { ...CHART_OPTS, scales: { x: CHART_OPTS.scales.x,
+            y: { ...CHART_OPTS.scales.y, min: 0, max: 100,
+              ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => v },
+              afterDraw: chart => {
+                const yScale = chart.scales.y;
+                const xScale = chart.scales.x;
+                const ctx    = chart.ctx;
+                ctx.save();
+                ctx.strokeStyle = '#3fb95066'; ctx.lineWidth = 1; ctx.setLineDash([4,2]);
+                const yos = yScale.getPixelForValue(_os);
+                ctx.beginPath(); ctx.moveTo(xScale.left, yos); ctx.lineTo(xScale.right, yos); ctx.stroke();
+                const yob = yScale.getPixelForValue(_ob);
+                ctx.strokeStyle = '#f8514966';
+                ctx.beginPath(); ctx.moveTo(xScale.left, yob); ctx.lineTo(xScale.right, yob); ctx.stroke();
+                ctx.restore();
+              }
+            },
+          }},
+        });
+      }
+    } catch(e) { console.error('fsh chart', e); }
   }
 
   async function refreshFShadowStatus() {

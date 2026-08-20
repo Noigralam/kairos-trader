@@ -821,6 +821,180 @@ def api_futures_shadow_config(name):
     })
 
 
+@app.route("/api/futures/shadow/<name>/signals")
+def api_futures_shadow_signals(name):
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return jsonify({"error": "not found"}), 404
+    from bot.futures_exchange import get_mark_price
+    from bot.candles import get_df as _get_df
+    out = {}
+    for sym in sh.symbols:
+        try:
+            price        = get_mark_price(sym)
+            rsi_period   = sh._o("futures_rsi_period",     config.futures_rsi_period_for(sym))
+            rsi_oversold = sh._o("futures_rsi_oversold",   config.futures_rsi_oversold_for(sym))
+            rsi_ob       = sh._o("futures_rsi_overbought", config.futures_rsi_overbought_for(sym))
+            ema_gap      = sh._o("futures_ema_gap",        config.futures_ema_gap_for(sym))
+            df           = _get_df(sym, "15m", limit=250)
+            result       = compute_signal(df, rsi_period=rsi_period, rsi_oversold=rsi_oversold,
+                                          rsi_overbought=rsi_ob, ema_gap=ema_gap)
+            gap           = price - result.ema_trend
+            ema_threshold = result.ema_trend * (1 + ema_gap)
+            above_trend   = price >= ema_threshold
+            has_position  = sym in sh.positions
+
+            if result.signal == Signal.BUY and not has_position:
+                commentary = f"RSI hit oversold ({result.rsi:.1f}) and price is above EMA200 — long signal firing."
+            elif result.signal == Signal.SELL and has_position:
+                commentary = f"RSI recovered ({result.rsi:.1f}) — trailing stop will manage exit."
+            elif result.signal == Signal.SELL and not has_position:
+                commentary = f"RSI overbought ({result.rsi:.1f}) but no position — nothing to do."
+            elif not above_trend:
+                commentary = (f"Price is ${abs(gap):,.2f} below EMA200 — downtrend guard active."
+                              if price < result.ema_trend else
+                              f"Price above EMA200 but within {ema_gap*100:.0f}% gap filter.")
+            elif result.rsi >= rsi_oversold:
+                commentary = (f"Holding long — RSI {result.rsi:.1f}, watching for {rsi_ob}." if has_position
+                              else f"Trend healthy, RSI {result.rsi:.1f} — waiting for dip below {rsi_oversold}.")
+            else:
+                commentary = result.reason
+
+            pos      = sh.positions.get(sym)
+            pos_data = None
+            if pos:
+                pos_data = {
+                    "entry_price":       round(pos.entry_price, 4),
+                    "mark_price":        round(price, 4),
+                    "amount":            pos.amount,
+                    "margin":            round(pos.margin, 2),
+                    "leverage":          pos.leverage,
+                    "unrealized_pnl":    round(pos.unrealized_pnl(price), 4),
+                    "pnl_pct":           round(pos.pnl_pct(price) * 100, 2),
+                    "liquidation_price": round(pos.liquidation_price(), 4),
+                    "trailing_stop":     round(pos.trailing_stop_level(), 4),
+                    "take_profit_price": round(pos.take_profit_price, 4),
+                    "highest_price":     round(pos.highest_price, 4),
+                    "dca_done":          pos.dca_done,
+                }
+
+            out[sym] = {
+                "price":          round(price, 4),
+                "rsi":            round(result.rsi, 1),
+                "rsi_period":     rsi_period,
+                "rsi_oversold":   rsi_oversold,
+                "rsi_overbought": rsi_ob,
+                "ema200":         round(result.ema_trend, 4),
+                "ema_threshold":  round(ema_threshold, 4),
+                "above_trend":    above_trend,
+                "gap":            round(gap, 4),
+                "signal":         result.signal.value,
+                "commentary":     commentary,
+                "has_position":   has_position,
+                "position":       pos_data,
+            }
+        except Exception as e:
+            out[sym] = {"error": str(e)}
+    return jsonify(out)
+
+
+@app.route("/api/futures/shadow/<name>/chart/<symbol>")
+def api_futures_shadow_chart(name, symbol):
+    sh = _get_futures_shadow(name)
+    if sh is None:
+        return jsonify({"error": "not found"}), 404
+    from bot.candles import get_df as _get_df
+    span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672, "2w": 1344, "1m": 2880}
+    span  = request.args.get("span", "1d")
+    limit = span_candles.get(span, 96)
+    sym   = symbol.upper()
+
+    df = _get_df(sym, "15m", limit=limit + 210)
+    if df.empty:
+        return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
+
+    close = df["close"]
+    ema   = close.ewm(span=200, adjust=False).mean()
+
+    _bb_period = 20
+    bb_mid   = close.rolling(_bb_period).mean()
+    bb_std   = close.rolling(_bb_period).std()
+    bb_upper = bb_mid + 2 * bb_std
+    bb_lower = bb_mid - 2 * bb_std
+
+    _rp   = sh._o("futures_rsi_period",     config.futures_rsi_period_for(sym))
+    _ros  = sh._o("futures_rsi_oversold",   config.futures_rsi_oversold_for(sym))
+    _rob  = sh._o("futures_rsi_overbought", config.futures_rsi_overbought_for(sym))
+    _egap = sh._o("futures_ema_gap",        config.futures_ema_gap_for(sym))
+    rsi   = rsi_series(close, _rp)
+
+    buy_prices   = [None] * len(df)
+    sell_prices  = [None] * len(df)
+    blocked_buys = [None] * len(df)
+    for i in range(210, len(df)):
+        r = rsi.iloc[i]; e = ema.iloc[i]; p = close.iloc[i]
+        if r < _ros and p >= e * (1 + _egap):
+            buy_prices[i] = round(p, 4)
+        elif r < _ros:
+            blocked_buys[i] = round(p, 4)
+        elif r > _rob:
+            sell_prices[i] = round(p, 4)
+
+    sl  = slice(-limit, None)
+    labels = (df["open_time"].iloc[sl]
+              .dt.tz_convert(_TZ)
+              .dt.strftime("%d.%m. %H:%M").tolist())
+    label_set = set(labels)
+
+    actual_buys = []; actual_sells = []; actual_dcas = []
+    for row in db.get_trades(200, mode=sh._db_mode):
+        _, ts, tpair, side, price, *_ = row
+        notes = row[-1] or ""
+        if tpair != sym:
+            continue
+        try:
+            t = datetime.datetime.fromisoformat(ts).astimezone(_TZ)
+            t = t.replace(minute=(t.minute // 15) * 15, second=0, microsecond=0)
+            label = t.strftime("%d.%m. %H:%M")
+        except Exception:
+            continue
+        if label not in label_set:
+            continue
+        pt = {"x": label, "y": round(price, 4)}
+        if side == "BUY" and "dca" in notes.lower():
+            actual_dcas.append(pt)
+        elif side == "BUY":
+            actual_buys.append(pt)
+        elif side == "SELL":
+            actual_sells.append(pt)
+
+    vol_up     = (close >= df["open"]).iloc[sl]
+    vol_colors = ['#3fb95066' if u else '#f8514966' for u in vol_up]
+    ohlc = [{"x": lbl, "o": round(o, 4), "h": round(h, 4), "l": round(l, 4), "c": round(c, 4)}
+            for lbl, o, h, l, c in zip(
+                labels,
+                df["open"].iloc[sl].tolist(), df["high"].iloc[sl].tolist(),
+                df["low"].iloc[sl].tolist(),  close.iloc[sl].tolist())]
+
+    return jsonify({
+        "labels":       labels,
+        "prices":       close.iloc[sl].round(4).tolist(),
+        "ema200":       ema.iloc[sl].round(4).tolist(),
+        "bb_upper":     bb_upper.iloc[sl].round(4).tolist(),
+        "bb_lower":     bb_lower.iloc[sl].round(4).tolist(),
+        "ohlc":         ohlc,
+        "volume":       df["volume"].iloc[sl].round(4).tolist(),
+        "vol_colors":   vol_colors,
+        "rsi":          rsi.iloc[sl].round(2).tolist(),
+        "buys":         buy_prices[-limit:],
+        "sells":        sell_prices[-limit:],
+        "blocked_buys": blocked_buys[-limit:],
+        "actual_buys":  actual_buys,
+        "actual_sells": actual_sells,
+        "actual_dcas":  actual_dcas,
+    })
+
+
 @app.route("/api/futures/signals")
 def api_futures_signals():
     if not config.FUTURES_ENABLED:
