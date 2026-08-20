@@ -368,6 +368,10 @@
       Simulation data is in the <a href="#" onclick="switchTab('spot-shadow');return false" style="color:#58a6ff">Spot Shadow</a> tab.
     </div>
 
+    <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+      <button onclick="openSettingsModal('spot')" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">⚙ Settings</button>
+    </div>
+
     <div class="stats">
       <div class="stat-card">
         <div class="label">Balance</div>
@@ -716,9 +720,12 @@
     </div>
 
     <section>
-      <h2>Overrides</h2>
-      <div id="sh-overrides" style="font-size:13px;color:var(--muted);padding:4px 0">—</div>
-      <div id="sh-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:6px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div id="sh-since" style="font-size:11px;color:var(--muted);opacity:0.6;"></div>
+        </div>
+        <button onclick="openSettingsModal('shadow')" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">⚙ Settings</button>
+      </div>
     </section>
 
     <section>
@@ -1697,8 +1704,6 @@
       pctEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
       pctEl.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('sh-starting-balance').textContent = `· from ${fmt(s.starting_balance)}`;
-      const ov = Object.entries(s.overrides).map(([k,v]) => `<span style="margin-right:14px"><strong>${k}</strong> = ${v}</span>`).join('');
-      document.getElementById('sh-overrides').innerHTML = ov || '<span>all defaults from Spot config</span>';
       const sinceEl = document.getElementById('sh-since');
       if (s.started_at) {
         const since = new Date(s.started_at);
@@ -3339,6 +3344,110 @@
   setInterval(refreshFutures, 30000);
   setInterval(refreshFuturesSignals, 60000);
   setInterval(refreshFuturesShadows, 60000);
+</script>
+
+<!-- ═══════════════════ SETTINGS MODAL ═══════════════════ -->
+<div id="settings-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeSettingsModal()">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;width:min(560px,94vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #30363d">
+      <span id="settings-modal-title" style="font-size:15px;font-weight:600;color:#e6edf3">Settings</span>
+      <button onclick="closeSettingsModal()" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">&times;</button>
+    </div>
+    <div id="settings-modal-body" style="overflow-y:auto;padding:16px 18px;font-size:13px;color:#e6edf3">
+      Loading…
+    </div>
+  </div>
+</div>
+
+<script>
+function closeSettingsModal() {
+  document.getElementById('settings-modal').style.display = 'none';
+}
+
+function _pct(v) { return v + '%'; }
+function _settingsRow(label, value, overridden) {
+  const col = overridden ? '#d29922' : '#8b949e';
+  return `<tr>
+    <td style="padding:4px 8px 4px 0;color:#8b949e;white-space:nowrap">${label}</td>
+    <td style="padding:4px 0;color:${col};font-weight:${overridden?600:400}">${value}</td>
+  </tr>`;
+}
+
+function _renderConfigTable(cfg, overrides) {
+  const ov = overrides || {};
+  const pairs = cfg.pairs || [];
+  const pp = cfg.per_pair || {};
+
+  const globalRows = [
+    ['Interval',             cfg.interval || '—'],
+    ['Fee',                  _pct(cfg.fee_pct ?? '—')],
+    ['Daily EMA200 filter',  cfg.daily_ema_filter ? 'on' : 'off'],
+    ['Stop-check interval',  cfg.stop_check_interval ? cfg.stop_check_interval + 's' : '—'],
+  ].filter(r => r[1] !== '—');
+
+  let html = '<table style="width:100%;border-collapse:collapse">';
+
+  if (cfg.extra && Object.keys(cfg.extra).length) {
+    html += '<tr><td colspan="2" style="padding:8px 0 4px;color:#58a6ff;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Extras</td></tr>';
+    if (cfg.extra.reentry_drop_pct !== undefined)
+      html += _settingsRow('Re-entry drop', _pct(cfg.extra.reentry_drop_pct), true);
+    if (cfg.extra.stop_cooldown_candles !== undefined)
+      html += _settingsRow('Stop cooldown', cfg.extra.stop_cooldown_candles + ' candles', true);
+  }
+
+  html += '<tr><td colspan="2" style="padding:8px 0 4px;color:#58a6ff;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">General</td></tr>';
+  globalRows.forEach(([l, v]) => html += _settingsRow(l, v, false));
+
+  pairs.forEach(pair => {
+    const p = pp[pair] || {};
+    const o = ov;
+    html += `<tr><td colspan="2" style="padding:10px 0 4px;color:#58a6ff;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${pair}</td></tr>`;
+    html += '<tr><td colspan="2" style="padding:0 0 3px;color:#30363d;font-size:11px">── Signal</td></tr>';
+    html += _settingsRow('RSI period',     p.rsi_period,    'spot_rsi_period'    in o);
+    html += _settingsRow('RSI oversold',   p.rsi_oversold,  'spot_rsi_oversold'  in o);
+    html += _settingsRow('RSI overbought', p.rsi_overbought,'spot_rsi_overbought'in o);
+    html += _settingsRow('EMA gap',        _pct(p.ema_gap_pct), 'spot_ema_gap'   in o);
+    html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── DCA</td></tr>';
+    html += _settingsRow('First drop',  _pct(p.dca_drop_pct), 'spot_dca_drop' in o);
+    html += _settingsRow('Max tranches',p.dca_max,            'spot_dca_max'  in o);
+    html += _settingsRow('Step',        _pct(p.dca_step_pct), false);
+    html += _settingsRow('Size/tranche',_pct(p.dca_size_pct), false);
+    html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── Exit</td></tr>';
+    html += _settingsRow('Take profit',    _pct(p.take_profit_pct),   'spot_take_profit'   in o);
+    html += _settingsRow('Trailing stop',  _pct(p.trailing_stop_pct), 'spot_trailing_stop' in o);
+    html += _settingsRow('Profit floor',   _pct(p.profit_floor_pct),  'spot_profit_floor'  in o);
+    html += _settingsRow('Min RSI exit',   _pct(p.min_exit_pct),      'spot_min_exit'      in o);
+  });
+  html += '</table>';
+  if (overrides && Object.keys(ov).length)
+    html += '<p style="margin:12px 0 0;font-size:11px;color:#d29922">★ highlighted values are shadow overrides</p>';
+  return html;
+}
+
+async function openSettingsModal(context) {
+  const modal = document.getElementById('settings-modal');
+  const body  = document.getElementById('settings-modal-body');
+  const title = document.getElementById('settings-modal-title');
+  modal.style.display = 'flex';
+  body.innerHTML = 'Loading…';
+
+  try {
+    if (context === 'spot') {
+      title.textContent = 'Spot Settings';
+      const cfg = await fetch('/api/config').then(r => r.json());
+      body.innerHTML = _renderConfigTable(cfg, {});
+    } else {
+      const name = _activeShadow;
+      title.textContent = `Shadow: ${name}`;
+      const cfg = await fetch(`/api/shadow/${name}/config`).then(r => r.json());
+      body.innerHTML = _renderConfigTable(cfg, cfg.overrides || {});
+    }
+  } catch(e) {
+    body.innerHTML = `<span style="color:var(--muted)">Failed to load config: ${e}</span>`;
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettingsModal(); });
 </script>
 </body>
 </html>

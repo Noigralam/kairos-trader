@@ -117,6 +117,83 @@ def api_stats():
     return jsonify(db.get_trade_stats(config.SPOT_MODE))
 
 
+def _spot_config_for_pair(pair: str) -> dict:
+    return {
+        "rsi_period":    config.rsi_period_for(pair),
+        "rsi_oversold":  config.rsi_oversold_for(pair),
+        "rsi_overbought":config.rsi_overbought_for(pair),
+        "ema_gap_pct":   round(config.ema_gap_for(pair) * 100, 2),
+        "dca_drop_pct":  round(config.dca_drop_for(pair) * 100, 2),
+        "dca_max":       config.dca_max_for(pair),
+        "dca_step_pct":  round(config.SPOT_DCA_STEP_PCT * 100, 2),
+        "dca_size_pct":  round(config.SPOT_DCA_SIZE_PCT * 100, 2),
+        "take_profit_pct":   round(config.take_profit_for(pair) * 100, 2),
+        "trailing_stop_pct": round(config.trailing_stop_for(pair) * 100, 2),
+        "profit_floor_pct":  round(config.profit_floor_for(pair) * 100, 2),
+        "min_exit_pct":      round(config.min_exit_for(pair) * 100, 2),
+    }
+
+
+@app.route("/api/config")
+def api_config():
+    pairs = list(config.SPOT_TRADING_PAIRS)
+    return jsonify({
+        "mode":              config.SPOT_MODE,
+        "interval":          config.SPOT_INTERVAL,
+        "pairs":             pairs,
+        "fee_pct":           round(config.SPOT_FEE * 100, 3),
+        "daily_ema_filter":  config.SPOT_DAILY_EMA_FILTER,
+        "stop_check_interval": config.SPOT_STOP_CHECK_INTERVAL,
+        "per_pair":          {p: _spot_config_for_pair(p) for p in pairs},
+    })
+
+
+@app.route("/api/shadow/<name>/config")
+def api_shadow_config(name):
+    s = _get_shadow(name)
+    if s is None:
+        return jsonify({"error": "not found"}), 404
+    pairs = s.pairs or list(config.SPOT_TRADING_PAIRS)
+    defaults = _spot_config_for_pair(pairs[0]) if pairs else {}
+    ov = s.overrides
+
+    def _ov(spot_key, default):
+        return ov.get(spot_key, default)
+
+    per_pair = {}
+    for p in pairs:
+        base = _spot_config_for_pair(p)
+        per_pair[p] = {
+            "rsi_period":        int(_ov("spot_rsi_period",     base["rsi_period"])),
+            "rsi_oversold":      int(_ov("spot_rsi_oversold",   base["rsi_oversold"])),
+            "rsi_overbought":    int(_ov("spot_rsi_overbought", base["rsi_overbought"])),
+            "ema_gap_pct":       round(float(_ov("spot_ema_gap",        base["ema_gap_pct"] / 100)) * 100, 2),
+            "dca_drop_pct":      round(float(_ov("spot_dca_drop",       base["dca_drop_pct"] / 100)) * 100, 2),
+            "dca_max":           int(_ov("spot_dca_max",         base["dca_max"])),
+            "dca_step_pct":      round(float(_ov("spot_dca_step",       base["dca_step_pct"] / 100)) * 100, 2),
+            "dca_size_pct":      round(float(_ov("spot_dca_size",       base["dca_size_pct"] / 100)) * 100, 2),
+            "take_profit_pct":   round(float(_ov("spot_take_profit",    base["take_profit_pct"] / 100)) * 100, 2),
+            "trailing_stop_pct": round(float(_ov("spot_trailing_stop",  base["trailing_stop_pct"] / 100)) * 100, 2),
+            "profit_floor_pct":  round(float(_ov("spot_profit_floor",   base["profit_floor_pct"] / 100)) * 100, 2),
+            "min_exit_pct":      round(float(_ov("spot_min_exit",       base["min_exit_pct"] / 100)) * 100, 2),
+        }
+
+    extra = {}
+    if "spot_reentry_drop_pct" in ov:
+        extra["reentry_drop_pct"] = round(float(ov["spot_reentry_drop_pct"]) * 100, 2)
+    if "spot_stop_cooldown_candles" in ov:
+        extra["stop_cooldown_candles"] = int(ov["spot_stop_cooldown_candles"])
+
+    return jsonify({
+        "name":     s.name,
+        "interval": s.interval,
+        "pairs":    pairs,
+        "overrides": ov,
+        "per_pair": per_pair,
+        "extra":    extra,
+    })
+
+
 @app.route("/api/balance_history")
 def api_balance_history():
     days = float(request.args.get("days", 30))
