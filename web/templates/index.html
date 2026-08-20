@@ -992,8 +992,13 @@
     document.getElementById('tab-futures-shadow').style.display = name === 'futures-shadow' ? '' : 'none';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
-    if (name === 'spot-shadow') refreshShadowTab();
+    if (name === 'spot-shadow')    refreshShadowTab();
     if (name === 'futures-shadow') refreshFShadowTab();
+    if (name === 'futures') {
+      refreshFuturesSignals();
+      if (_fPriceChart) { _fPriceChart.resize(); _fCandleChart?.resize(); _fRsiChart?.resize(); }
+      else initFuturesChart();
+    }
   }
 
   function _syncSpotHeader() {
