@@ -2592,7 +2592,7 @@
           <div class="position-block">
             <div class="pos-row">
               <span class="plabel">Entry</span>
-              <span class="pvalue">${fmtUsdt(pos.entry_price, 4)} <span class="lev-badge" style="margin-left:4px">${pos.leverage}x</span></span>
+              <span class="pvalue">${fmtUsdt(pos.entry_price)} <span class="lev-badge" style="margin-left:4px">${pos.leverage}x</span></span>
             </div>
             <div class="pos-row">
               <span class="plabel">Unrealised PnL</span>
@@ -2600,8 +2600,8 @@
             </div>
             <div style="margin:8px 0 4px">
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
-                <span style="color:${liqColor}">Liq ${fmtUsdt(pos.liquidation_price, 4)} (${liqDist}% away)</span>
-                <span>Trail ${fmtUsdt(pos.trailing_stop, 4)}</span>
+                <span style="color:${liqColor}">Liq ${fmtUsdt(pos.liquidation_price)} (${liqDist}% away)</span>
+                <span>Trail ${fmtUsdt(pos.trailing_stop)}</span>
               </div>
               <div class="liq-bar-wrap">
                 <div class="liq-bar-pin" style="left:${pin(pos.entry_price)}%" title="Entry"></div>
@@ -2611,7 +2611,7 @@
             </div>
             <div class="pos-row">
               <span class="plabel">Peak</span>
-              <span class="pvalue">${fmtUsdt(pos.highest_price, 4)}</span>
+              <span class="pvalue">${fmtUsdt(pos.highest_price)}</span>
             </div>
             <div class="pos-row">
               <span class="plabel">Margin</span>
@@ -2629,7 +2629,7 @@
           <div class="metrics">
             <div class="metric">
               <div class="mlabel">Mark Price</div>
-              <div class="mvalue">${fmtUsdt(d.price, 4)}${priceArrow}</div>
+              <div class="mvalue">${fmtUsdt(d.price)}${priceArrow}</div>
             </div>
             <div class="metric">
               <div class="mlabel">RSI (${d.rsi_period})</div>
@@ -2637,7 +2637,7 @@
             </div>
             <div class="metric">
               <div class="mlabel">EMA200</div>
-              <div class="mvalue">${fmtUsdt(d.ema200, 2)}${emaArrow}</div>
+              <div class="mvalue">${fmtUsdt(d.ema200)}${emaArrow}</div>
             </div>
           </div>
           <div class="rsi-bar-wrap">
@@ -2718,7 +2718,7 @@
           <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side.toLowerCase()}">${t.side}</td>
-          <td>${fmtUsdt(t.price, 4)}</td>
+          <td>${fmtUsdt(t.price)}</td>
           <td>${Number(t.amount).toFixed(4)}</td>
           <td>${fmtUsdt(t.value_eur)}</td>
           <td>${t.pnl != null ? fmtPnlUsdt(t.pnl) : '—'}</td>
@@ -2887,12 +2887,12 @@
             <div class="pnl-usd ${pnlCls}">${pnlSign}${fmtUsdt(Math.abs(p.unrealized_pnl))}
               <span style="font-size:14px;font-weight:400;margin-left:6px">${pctSign}${p.pnl_pct}%</span>
             </div>
-            <div class="pnl-sub">Mark: ${fmtUsdt(p.mark_price, 4)} · Entry: ${fmtUsdt(p.entry_price, 4)}</div>
+            <div class="pnl-sub">Mark: ${fmtUsdt(p.mark_price)} · Entry: ${fmtUsdt(p.entry_price)}</div>
           </div>
           <div style="margin-bottom:6px">
             <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
-              <span style="color:${liqColor}">Liq ${fmtUsdt(p.liquidation_price, 4)} (${liqDist}% away)</span>
-              <span>Trail ${fmtUsdt(p.trailing_stop, 4)}</span>
+              <span style="color:${liqColor}">Liq ${fmtUsdt(p.liquidation_price)} (${liqDist}% away)</span>
+              <span>Trail ${fmtUsdt(p.trailing_stop)}</span>
             </div>
             <div class="liq-bar-wrap">
               <div class="liq-bar-pin" style="left:${pin(p.entry_price)}%" title="Entry"></div>
@@ -2901,11 +2901,11 @@
             </div>
           </div>
           <div class="fp-row"><span class="fp-label">Margin</span><span class="fp-val">${fmtUsdt(p.margin)}</span></div>
-          <div class="fp-row"><span class="fp-label">Take profit</span><span class="fp-val" style="opacity:0.5">${fmtUsdt(p.take_profit_price, 4)}</span></div>
+          <div class="fp-row"><span class="fp-label">Take profit</span><span class="fp-val" style="opacity:0.5">${fmtUsdt(p.take_profit_price)}</span></div>
           <div class="fp-row"><span class="fp-label">DCA trigger</span><span class="fp-val">${dcaStr}</span></div>
           <div class="fp-row">
             <span class="fp-label">Funding paid</span>
-            <span class="fp-val ${p.funding_paid > 0 ? 'neg' : p.funding_paid < 0 ? 'pos' : ''}">${p.funding_paid !== 0 ? (p.funding_paid > 0 ? '-' : '+') + fmtUsdt(Math.abs(p.funding_paid), 4) : '—'}</span>
+            <span class="fp-val ${p.funding_paid > 0 ? 'neg' : p.funding_paid < 0 ? 'pos' : ''}">${p.funding_paid !== 0 ? (p.funding_paid > 0 ? '-' : '+') + fmtUsdt(Math.abs(p.funding_paid)) : '—'}</span>
           </div>
           <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--muted)">${Number(p.amount).toFixed(4)} units</span>
@@ -3267,12 +3267,12 @@
           const liqColor = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
 
           posBlock = `<div class="position-block">
-            <div class="pos-row"><span class="plabel">Entry</span><span class="pvalue">${fmtUsdt(pos.entry_price, 4)} <span class="lev-badge" style="margin-left:4px">${pos.leverage}x</span></span></div>
+            <div class="pos-row"><span class="plabel">Entry</span><span class="pvalue">${fmtUsdt(pos.entry_price)} <span class="lev-badge" style="margin-left:4px">${pos.leverage}x</span></span></div>
             <div class="pos-row"><span class="plabel">Unrealised PnL</span><span class="pvalue ${pnlCls}">${pnlSign}${fmtUsdt(Math.abs(pos.unrealized_pnl))} (${pctSign}${pos.pnl_pct}%)</span></div>
             <div style="margin:8px 0 4px">
               <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
-                <span style="color:${liqColor}">Liq ${fmtUsdt(pos.liquidation_price, 4)} (${liqDist}% away)</span>
-                <span>Trail ${fmtUsdt(pos.trailing_stop, 4)}</span>
+                <span style="color:${liqColor}">Liq ${fmtUsdt(pos.liquidation_price)} (${liqDist}% away)</span>
+                <span>Trail ${fmtUsdt(pos.trailing_stop)}</span>
               </div>
               <div class="liq-bar-wrap">
                 <div class="liq-bar-pin" style="left:${pin(pos.entry_price)}%" title="Entry"></div>
@@ -3280,7 +3280,7 @@
                 <div class="liq-bar-pin" style="left:${pin(pos.mark_price)}%;background:#fff;width:3px;height:14px;top:-5px" title="Mark price"></div>
               </div>
             </div>
-            <div class="pos-row"><span class="plabel">Peak</span><span class="pvalue">${fmtUsdt(pos.highest_price, 4)}</span></div>
+            <div class="pos-row"><span class="plabel">Peak</span><span class="pvalue">${fmtUsdt(pos.highest_price)}</span></div>
             <div class="pos-row"><span class="plabel">Margin</span><span class="pvalue">${fmtUsdt(pos.margin)}</span></div>
             <div class="pos-row" style="margin-top:8px"><span class="plabel">${Number(pos.amount).toFixed(4)} units</span></div>
           </div>`;
@@ -3289,9 +3289,9 @@
         return `<div class="signal-card">
           <div class="pair-name">${sym} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
           <div class="metrics">
-            <div class="metric"><div class="mlabel">Mark Price</div><div class="mvalue">${fmtUsdt(d.price, 4)}</div></div>
+            <div class="metric"><div class="mlabel">Mark Price</div><div class="mvalue">${fmtUsdt(d.price)}</div></div>
             <div class="metric"><div class="mlabel">RSI (${d.rsi_period})</div><div class="mvalue" style="color:${rsiColor(d.rsi, d.rsi_overbought)}">${d.rsi}</div></div>
-            <div class="metric"><div class="mlabel">EMA200</div><div class="mvalue">${fmtUsdt(d.ema200, 2)}</div></div>
+            <div class="metric"><div class="mlabel">EMA200</div><div class="mvalue">${fmtUsdt(d.ema200)}</div></div>
           </div>
           <div class="rsi-bar-wrap">
             <div class="fill" style="width:${rsiPct}%;background:${rsiBarColor}"></div>
