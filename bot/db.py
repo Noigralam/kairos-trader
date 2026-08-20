@@ -64,34 +64,34 @@ def log_trade(pair, side, price, amount, value_eur, fee, mode, pnl=None, notes=N
 
 
 def get_hold_times(mode: str) -> dict:
-    """Returns {sell_trade_id: hold_hours} by matching BUY→SELL pairs chronologically."""
+    """Returns {sell_trade_id: hold_hours}.
+
+    Tracks the first non-DCA BUY that opened each position. Subsequent
+    non-DCA BUYs (manual adds) while a position is already open are ignored
+    so they don't corrupt the hold time of the next independent position.
+    """
     conn = sqlite3.connect(DB_PATH)
-    buys  = conn.execute(
-        "SELECT timestamp, pair, notes FROM trades WHERE mode=? AND side='BUY' ORDER BY timestamp",
-        (mode,)
-    ).fetchall()
-    sells = conn.execute(
-        "SELECT id, timestamp, pair FROM trades WHERE mode=? AND side='SELL' ORDER BY timestamp",
+    rows = conn.execute(
+        "SELECT id, timestamp, pair, side, notes FROM trades WHERE mode=? ORDER BY timestamp",
         (mode,)
     ).fetchall()
     conn.close()
 
-    buys_by_pair: dict = {}
-    for ts, pair, notes in buys:
-        if 'dca' not in (notes or '').lower():
-            buys_by_pair.setdefault(pair, []).append(ts)
-
+    from datetime import datetime as _dt
+    entry_time: dict = {}  # pair → open timestamp
     result: dict = {}
-    for tid, ts, pair in sells:
-        if buys_by_pair.get(pair):
-            buy_ts = buys_by_pair[pair].pop(0)
+    for tid, ts, pair, side, notes in rows:
+        if side == 'BUY' and 'dca' not in (notes or '').lower():
+            if pair not in entry_time:
+                entry_time[pair] = ts
+        elif side == 'SELL' and pair in entry_time:
             try:
-                from datetime import datetime as _dt
-                b = _dt.fromisoformat(buy_ts)
+                b = _dt.fromisoformat(entry_time[pair])
                 s = _dt.fromisoformat(ts)
                 result[tid] = round((s - b).total_seconds() / 3600, 1)
             except Exception:
                 pass
+            del entry_time[pair]
     return result
 
 
