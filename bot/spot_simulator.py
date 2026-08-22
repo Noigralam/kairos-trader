@@ -109,6 +109,36 @@ def get_state() -> SimState:
     return _state
 
 
+def sync_position_from_binance(pair: str) -> dict:
+    """
+    Reconcile the tracked position amount for `pair` against the actual free
+    balance reported by Binance.  Updates in-memory state and persists to disk.
+    Returns a summary dict with old/new amounts and the delta.
+    Only valid in live mode.
+    """
+    if config.SPOT_MODE != "live":
+        return {"error": "only valid in live mode"}
+    if pair not in _state.positions:
+        return {"error": f"no open position for {pair}"}
+
+    asset = pair.replace("EUR", "").replace("USDT", "")
+    actual = get_free_balance(asset)
+    pos    = _state.positions[pair]
+    old_amount = pos.amount
+
+    if actual <= 0:
+        return {"error": f"Binance reports 0 free {asset}"}
+
+    delta = actual - old_amount
+    # Recalculate cost basis so entry_price stays proportional
+    pos.value_eur = pos.value_eur * (actual / old_amount) if old_amount else pos.value_eur
+    pos.amount    = actual
+    _save()
+
+    log.info(f"[SYNC] {pair} position amount updated: {old_amount:.6f} → {actual:.6f} ({delta:+.6f} {asset})")
+    return {"pair": pair, "asset": asset, "old": old_amount, "new": actual, "delta": delta}
+
+
 def reset():
     global _state
     _state = SimState()

@@ -1632,6 +1632,10 @@ def api_control():
     elif action == "manual_buy" and pair:
         size_pct = float(data.get("size_pct", 0.5))
         manual_buy(pair, size_pct)
+    elif action == "sync_position" and pair:
+        from bot.spot_simulator import sync_position_from_binance
+        result = sync_position_from_binance(pair)
+        return jsonify({"status": engine.get_status(), "sync": result})
 
     return jsonify({"status": engine.get_status()})
 

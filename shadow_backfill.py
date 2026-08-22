@@ -103,183 +103,215 @@ def _fut_params(s):
 
 # ── spot simulation ────────────────────────────────────────────────────────────
 
-def simulate_spot_pair(pair, df, start_dt, cutoff_dt, params, balance_in, conn, db_mode):
+def _process_spot_candle(pair, i, precomp, st, balance, p, recording, ts, trade_rows):
     """
-    Simulate one spot pair from start_dt to cutoff_dt.
-    Runs full warmup before start_dt but only writes DB rows from start_dt onward.
-    Returns final cash balance.
+    Process one candle for one pair within a shared-balance multi-pair simulation.
+    Mutates `st` (per-pair state dict) and `balance` in place via return value.
+    Returns (new_balance, had_trade) where had_trade=True means the candle was
+    consumed by a trade event (caller should not write a mid-candle snapshot for
+    this pair on its own, but the combined mark will still be written).
     """
-    p = params
-    rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = _precompute(df, p["rsi_period"])
-
-    balance        = balance_in
-    position       = None
-    entry_candle   = 0
-    dca_count      = 0
-    cooldown_until = 0
-    partial_closed = False
-    last_stop_price = None
-
-    balance_rows = []
-    trade_rows   = []
-
+    rsi_arr, ema_arr, close_arr, hi_arr, lo_arr = precomp
+    price = float(close_arr[i])
+    rsi   = float(rsi_arr[i])
+    ema   = float(ema_arr[i])
+    hi    = float(hi_arr[i])
+    lo    = float(lo_arr[i])
     dca_step_eff = p["dca_step"] if p["dca_step"] else p["dca_drop"]
 
-    for i in range(WARMUP, len(close_arr)):
-        t = _candle_dt(df, i)
-        if t >= cutoff_dt:
-            break
+    position = st["position"]
 
-        recording = (t >= start_dt)
-        ts = _ts_str(t)
+    if position is not None:
+        spot_update_peak(position, hi)
 
-        price = float(close_arr[i])
-        rsi   = float(rsi_arr[i])
-        ema   = float(ema_arr[i])
-        hi    = float(hi_arr[i])
-        lo    = float(lo_arr[i])
+        if st["partial_closed"]:
+            stop_level = position.peak() * (1 - p["partial_trail"])
+        else:
+            stop_level = max(
+                position.entry_price * (1 + SPOT_FEE + p["floor_pct"]) / (1 - SPOT_FEE),
+                position.peak() * (1 - p["trail_pct"]),
+            )
+        tp_price = position.entry_price * (1 + p["tp_pct"])
 
-        if position is not None:
-            spot_update_peak(position, hi)
-
-            if partial_closed:
-                stop_level = position.peak() * (1 - p["partial_trail"])
-            else:
-                stop_level = max(
-                    position.entry_price * (1 + SPOT_FEE + p["floor_pct"]) / (1 - SPOT_FEE),
-                    position.peak() * (1 - p["trail_pct"]),
-                )
-            tp_price = position.entry_price * (1 + p["tp_pct"])
-
-            # take-profit / partial close
-            if hi >= tp_price and not partial_closed:
-                ep = tp_price
-                if p["partial_pct"] > 0:
-                    sell_amt = position.amount * p["partial_pct"]
-                    bf = position.value_eur * p["partial_pct"] * SPOT_FEE
-                    sf = sell_amt * ep * SPOT_FEE
-                    pnl = (ep - position.entry_price) * sell_amt - bf - sf
-                    balance += sell_amt * ep - sf
-                    if recording:
-                        trade_rows.append((ts, pair, "SELL", ep, sell_amt, sell_amt * ep, bf + sf, pnl, "partial_tp"))
-                    position.amount    *= (1 - p["partial_pct"])
-                    position.value_eur *= (1 - p["partial_pct"])
-                    partial_closed = True
-                else:
-                    bf  = position.value_eur * SPOT_FEE
-                    sf  = position.amount * ep * SPOT_FEE
-                    pnl = spot_calc_pnl(position, ep, bf, sf)
-                    balance += position.amount * ep - sf
-                    if recording:
-                        trade_rows.append((ts, pair, "SELL", ep, position.amount, position.amount * ep, bf + sf, pnl, "take_profit"))
-                    position = None
-                    partial_closed = False
+        # take-profit / partial close
+        if hi >= tp_price and not st["partial_closed"]:
+            ep = tp_price
+            if p["partial_pct"] > 0:
+                sell_amt = position.amount * p["partial_pct"]
+                bf = position.value_eur * p["partial_pct"] * SPOT_FEE
+                sf = sell_amt * ep * SPOT_FEE
+                pnl = (ep - position.entry_price) * sell_amt - bf - sf
+                balance += sell_amt * ep - sf
                 if recording:
-                    balance_rows.append((ts, round(balance + (position.amount * ep if position else 0), 2)))
-                continue
-
-            # trailing stop
-            if position is not None and position.peak() > stop_level and lo <= stop_level:
-                ep  = stop_level
+                    trade_rows.append((ts, pair, "SELL", ep, sell_amt, sell_amt * ep, bf + sf, pnl, "partial_tp"))
+                position.amount    *= (1 - p["partial_pct"])
+                position.value_eur *= (1 - p["partial_pct"])
+                st["partial_closed"] = True
+            else:
                 bf  = position.value_eur * SPOT_FEE
                 sf  = position.amount * ep * SPOT_FEE
                 pnl = spot_calc_pnl(position, ep, bf, sf)
                 balance += position.amount * ep - sf
                 if recording:
-                    trade_rows.append((ts, pair, "SELL", ep, position.amount, position.amount * ep, bf + sf, pnl, "trailing_stop"))
-                last_stop_price = ep
-                position = None
-                partial_closed = False
-                if p["cooldown"] > 0:
-                    cooldown_until = i + p["cooldown"]
-                if recording:
-                    balance_rows.append((ts, round(balance, 2)))
-                continue
+                    trade_rows.append((ts, pair, "SELL", ep, position.amount, position.amount * ep, bf + sf, pnl, "take_profit"))
+                st["position"] = None
+                st["partial_closed"] = False
+            return balance, True
 
-            # time stop
-            if (p["time_stop_days"] > 0
-                    and (i - entry_candle) > p["time_stop_days"] * CANDLES_PER_DAY
-                    and position.peak() <= stop_level):
-                bf  = position.value_eur * SPOT_FEE
-                sf  = position.amount * price * SPOT_FEE
-                pnl = spot_calc_pnl(position, price, bf, sf)
-                balance += position.amount * price - sf
-                if recording:
-                    trade_rows.append((ts, pair, "SELL", price, position.amount, position.amount * price, bf + sf, pnl, "time_stop"))
-                position = None
-                partial_closed = False
-                if recording:
-                    balance_rows.append((ts, round(balance, 2)))
-                continue
+        # trailing stop
+        position = st["position"]
+        if position is not None and position.peak() > stop_level and lo <= stop_level:
+            ep  = stop_level
+            bf  = position.value_eur * SPOT_FEE
+            sf  = position.amount * ep * SPOT_FEE
+            pnl = spot_calc_pnl(position, ep, bf, sf)
+            balance += position.amount * ep - sf
+            if recording:
+                trade_rows.append((ts, pair, "SELL", ep, position.amount, position.amount * ep, bf + sf, pnl, "trailing_stop"))
+            st["last_stop_price"] = ep
+            st["position"] = None
+            st["partial_closed"] = False
+            if p["cooldown"] > 0:
+                st["cooldown_until"] = i + p["cooldown"]
+            return balance, True
 
-        # DCA
-        if position is not None and dca_count < p["dca_max"]:
-            next_drop = p["dca_drop"] + dca_count * dca_step_eff
-            if (position.entry_price - price) / position.entry_price >= next_drop:
-                spend = balance * p["dca_size"]
-                if spend >= 1:
-                    fee = spend * SPOT_FEE
-                    amt = (spend - fee) / price
-                    spot_apply_dca(position, price, spend - fee)
-                    balance -= spend
-                    dca_count += 1
-                    if recording:
-                        trade_rows.append((ts, pair, "BUY", price, amt, spend, fee, None, f"dca_{dca_count}"))
-                        mark = balance + position.amount * price
-                        balance_rows.append((ts, round(mark, 2)))
-                    continue
-
-        # entry
-        if (position is None and i >= cooldown_until
-                and rsi < p["rsi_buy"]
-                and price > ema * (1 + p["ema_gap"])):
-            if p["reentry_drop"] > 0 and last_stop_price is not None:
-                if price > last_stop_price * (1 - p["reentry_drop"]):
-                    if recording:
-                        balance_rows.append((ts, round(balance, 2)))
-                    continue
-            spend = balance * p["pos_pct"]
-            if spend >= 1:
-                fee    = spend * SPOT_FEE
-                amt    = (spend - fee) / price
-                tp_p   = price * (1 + p["tp_pct"])
-                position = Position(pair, price, amt, spend - fee, tp_p, price)
-                balance -= spend
-                entry_candle = i
-                dca_count = 0
-                partial_closed = False
-                last_stop_price = None
-                if recording:
-                    trade_rows.append((ts, pair, "BUY", price, amt, spend, fee, None, "signal"))
-                    mark = balance + position.amount * price
-                    balance_rows.append((ts, round(mark, 2)))
-                continue
-
-        # RSI sell signal
-        if (position is not None and not partial_closed
-                and rsi > p["rsi_sell"]
-                and price >= position.entry_price * (1 + p["min_exit"])):
+        # time stop
+        position = st["position"]
+        if (position is not None
+                and p["time_stop_days"] > 0
+                and (i - st["entry_candle"]) > p["time_stop_days"] * CANDLES_PER_DAY
+                and position.peak() <= stop_level):
             bf  = position.value_eur * SPOT_FEE
             sf  = position.amount * price * SPOT_FEE
             pnl = spot_calc_pnl(position, price, bf, sf)
             balance += position.amount * price - sf
             if recording:
-                trade_rows.append((ts, pair, "SELL", price, position.amount, position.amount * price, bf + sf, pnl, "signal"))
-            position = None
-            partial_closed = False
-            if recording:
-                balance_rows.append((ts, round(balance, 2)))
-            continue
+                trade_rows.append((ts, pair, "SELL", price, position.amount, position.amount * price, bf + sf, pnl, "time_stop"))
+            st["position"] = None
+            st["partial_closed"] = False
+            return balance, True
 
-        # periodic mark snapshot
-        if recording and i % 4 == 0:
-            mark = balance + (position.amount * price if position else 0)
-            balance_rows.append((ts, round(mark, 2)))
+    # DCA
+    position = st["position"]
+    if position is not None and st["dca_count"] < p["dca_max"]:
+        next_drop = p["dca_drop"] + st["dca_count"] * dca_step_eff
+        if (position.entry_price - price) / position.entry_price >= next_drop:
+            spend = balance * p["dca_size"]
+            if spend >= 1:
+                fee = spend * SPOT_FEE
+                amt = (spend - fee) / price
+                spot_apply_dca(position, price, spend - fee)
+                balance -= spend
+                st["dca_count"] += 1
+                if recording:
+                    trade_rows.append((ts, pair, "BUY", price, amt, spend, fee, None, f"dca_{st['dca_count']}"))
+                return balance, True
+
+    # entry
+    if (st["position"] is None and i >= st["cooldown_until"]
+            and rsi < p["rsi_buy"]
+            and price > ema * (1 + p["ema_gap"])):
+        if p["reentry_drop"] > 0 and st["last_stop_price"] is not None:
+            if price > st["last_stop_price"] * (1 - p["reentry_drop"]):
+                return balance, False
+        spend = balance * p["pos_pct"]
+        if spend >= 1:
+            fee    = spend * SPOT_FEE
+            amt    = (spend - fee) / price
+            tp_p   = price * (1 + p["tp_pct"])
+            st["position"] = Position(pair, price, amt, spend - fee, tp_p, price)
+            balance -= spend
+            st["entry_candle"] = i
+            st["dca_count"] = 0
+            st["partial_closed"] = False
+            st["last_stop_price"] = None
+            if recording:
+                trade_rows.append((ts, pair, "BUY", price, amt, spend, fee, None, "signal"))
+            return balance, True
+
+    # RSI sell signal
+    position = st["position"]
+    if (position is not None and not st["partial_closed"]
+            and rsi > p["rsi_sell"]
+            and price >= position.entry_price * (1 + p["min_exit"])):
+        bf  = position.value_eur * SPOT_FEE
+        sf  = position.amount * price * SPOT_FEE
+        pnl = spot_calc_pnl(position, price, bf, sf)
+        balance += position.amount * price - sf
+        if recording:
+            trade_rows.append((ts, pair, "SELL", price, position.amount, position.amount * price, bf + sf, pnl, "signal"))
+        st["position"] = None
+        st["partial_closed"] = False
+        return balance, True
+
+    return balance, False
+
+
+def simulate_spot_shadow(pairs, dfs, start_dt, cutoff_dt, params, balance_in, conn, db_mode):
+    """
+    Simulate one or more spot pairs sharing a single balance pool.
+    Writes ONE combined portfolio mark per candle to balance_history,
+    preventing the duplicate-entry / false-spike bug in multi-pair shadows.
+    """
+    p = params
+    precomp = {pair: _precompute(dfs[pair], p["rsi_period"]) for pair in pairs}
+
+    # candle index lookup: pair -> {datetime: array_index}
+    pair_indices = {}
+    for pair in pairs:
+        df = dfs[pair]
+        pair_indices[pair] = {}
+        for i in range(WARMUP, len(df)):
+            t = _candle_dt(df, i)
+            pair_indices[pair][t] = i
+
+    all_times = sorted(set().union(*[set(pi.keys()) for pi in pair_indices.values()]))
+
+    states = {pair: {
+        "position": None, "entry_candle": 0, "dca_count": 0,
+        "cooldown_until": 0, "partial_closed": False, "last_stop_price": None,
+    } for pair in pairs}
+
+    balance      = balance_in
+    balance_rows = []
+    trade_rows   = []
+
+    for tick_num, t in enumerate(all_times):
+        if t >= cutoff_dt:
+            break
+
+        recording = (t >= start_dt)
+        ts        = _ts_str(t)
+        had_trade = False
+
+        for pair in pairs:
+            if t not in pair_indices[pair]:
+                continue
+            i  = pair_indices[pair][t]
+            st = states[pair]
+            balance, traded = _process_spot_candle(
+                pair, i, precomp[pair], st, balance, p, recording, ts, trade_rows
+            )
+            if traded:
+                had_trade = True
+
+        # ONE combined mark per candle tick
+        if recording and (had_trade or tick_num % 4 == 0):
+            total_mark = balance
+            for pair in pairs:
+                pos = states[pair]["position"]
+                if pos is not None and t in pair_indices[pair]:
+                    i = pair_indices[pair][t]
+                    total_mark += pos.amount * float(precomp[pair][2][i])  # close_arr
+            balance_rows.append((ts, round(total_mark, 2)))
 
     # final snapshot
     if balance_rows:
-        last_price = float(close_arr[min(len(close_arr) - 1, i)])
-        final_mark = balance + (position.amount * last_price if position else 0)
+        final_mark = balance
+        for pair in pairs:
+            pos = states[pair]["position"]
+            if pos is not None:
+                final_mark += pos.amount * float(precomp[pair][2][-1])
         balance_rows.append((balance_rows[-1][0], round(final_mark, 2)))
 
     for ts, pair_, side, price_, amt, val, fee, pnl, notes in trade_rows:
@@ -443,7 +475,7 @@ def main():
     print(f"Live spot started: {live_start_ts}")
 
     # cutoff = ~now (latest completed candle, ~4 min ago)
-    now_utc  = datetime.datetime.now(datetime.timezone.utc)
+    now_utc   = datetime.datetime.now(datetime.timezone.utc)
     cutoff_dt = now_utc - datetime.timedelta(minutes=4)
     print(f"Backfill cutoff:   {cutoff_dt.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     cutoff_ts = cutoff_dt.isoformat()
@@ -463,22 +495,28 @@ def main():
 
     for s in spot_shadows:
         db_mode  = s._db_mode
-        pairs    = s.pairs if s.pairs else config.SPOT_TRADING_PAIRS
+        pairs    = list(s.pairs if s.pairs else config.SPOT_TRADING_PAIRS)
         interval = getattr(s, "interval", config.SPOT_INTERVAL)
         params   = _spot_params(s)
-        balance  = params["balance"]
 
         print(f"SPOT {s.name:<20} {live_start_ts} → {cutoff_ts[:19]}")
 
+        dfs = {}
         for pair in pairs:
             pair_df = get_df(pair, interval, limit=50000)
             if pair_df.empty:
                 print(f"  {pair}: no candles — skip")
-                continue
-            balance = simulate_spot_pair(
-                pair, pair_df, start_dt, cutoff_dt, params, balance, conn, db_mode
-            )
+            else:
+                dfs[pair] = pair_df
 
+        pairs_with_data = [p for p in pairs if p in dfs]
+        if not pairs_with_data:
+            print("  no candle data — skip")
+            continue
+
+        balance = simulate_spot_shadow(
+            pairs_with_data, dfs, start_dt, cutoff_dt, params, params["balance"], conn, db_mode
+        )
         conn.commit()
         print(f"  → €{balance:.2f} final cash")
 
@@ -489,7 +527,7 @@ def main():
 
     for s in fut_shadows:
         db_mode = s._db_mode
-        symbols = s.symbols if s.symbols else config.FUTURES_TRADING_PAIRS
+        symbols = list(s.symbols if s.symbols else config.FUTURES_TRADING_PAIRS)
         params  = _fut_params(s)
         balance = params["balance"]
 

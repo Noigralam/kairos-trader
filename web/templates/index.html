@@ -1091,6 +1091,23 @@
     await refreshSignals();
   }
 
+  async function controlSyncPosition(pair) {
+    const res = await fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sync_position', pair }),
+    });
+    const data = await res.json();
+    const s = data.sync || {};
+    if (s.error) {
+      alert(`Sync failed: ${s.error}`);
+    } else {
+      alert(`Synced ${s.pair}: ${s.old.toFixed(6)} → ${s.new.toFixed(6)} ${s.asset} (${s.delta >= 0 ? '+' : ''}${s.delta.toFixed(6)})`);
+    }
+    await refresh();
+    await refreshSignals();
+  }
+
   function logEntryClass(msg) {
     if (msg.includes('[BUY]') || msg.includes('[FUTURES BUY]') || msg.includes('[FUTURES DCA]')) return 'buy';
     if (msg.includes('[SELL]') || msg.includes('[STOP-LOSS]') || msg.includes('[FUTURES SELL]') || msg.includes('[FUTURES LIQUIDATION]')) return 'sell';
@@ -1108,6 +1125,7 @@
 
   const _prev = {};
   let _positions = {};
+  let _spotMode = '';
 
   function arrow(cur, prev, colored = true) {
     if (prev === undefined || cur === prev) return '';
@@ -1208,7 +1226,10 @@
             </div>
             <div class="pos-row" style="margin-top:8px">
               <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
-              <button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button>
+              <div style="display:flex;gap:6px">
+                ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${pair} position amount from Binance?')) controlSyncPosition('${pair}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
+                <button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button>
+              </div>
             </div>
           </div>`;
         }
@@ -1345,6 +1366,7 @@
       hPnlEl.style.color  = hPnl >= 0 ? 'var(--green)' : 'var(--red)';
       if (s.live_since) document.getElementById('hdr-spot-since').textContent = 'Running ' + _fmtDuration(s.live_since);
       _positions = s.positions;
+      _spotMode  = s.mode;
       loadSpotTrades();
 
       // Tax
