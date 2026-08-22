@@ -1692,14 +1692,11 @@
         const map = Object.fromEntries(data[name].map(p => [p.t, p[field]]));
         let last = null;
         const values = allTimes.map(t => { if (map[t] !== undefined) last = map[t]; return last; });
-        // normalize so first visible point = 0 (window-relative return)
-        const baseline = values.find(v => v !== null) ?? 0;
-        const normed = values.map(v => v === null ? null : v - baseline);
         const color = _shColorMap[name] || _PNL_COLORS[i % _PNL_COLORS.length];
         const isActive = name === _activeShadow;
         return {
           label:       name,
-          data:        normed,
+          data:        values,
           borderColor: color,
           borderWidth: isActive ? 2 : 1,
           pointRadius: 0,

@@ -275,14 +275,22 @@ def simulate_spot_shadow(pairs, dfs, start_dt, cutoff_dt, params, balance_in, co
     balance      = balance_in
     balance_rows = []
     trade_rows   = []
+    first_recording_written = False
 
     for tick_num, t in enumerate(all_times):
         if t >= cutoff_dt:
             break
 
-        recording = (t >= start_dt)
+        if t < start_dt:
+            continue   # RSI/EMA are precomputed — no pre-start trading needed
+
         ts        = _ts_str(t)
         had_trade = False
+
+        # Write the clean starting balance once, at the very first recorded tick
+        if not first_recording_written:
+            balance_rows.append((ts, round(balance_in, 2)))
+            first_recording_written = True
 
         for pair in pairs:
             if t not in pair_indices[pair]:
@@ -290,13 +298,13 @@ def simulate_spot_shadow(pairs, dfs, start_dt, cutoff_dt, params, balance_in, co
             i  = pair_indices[pair][t]
             st = states[pair]
             balance, traded = _process_spot_candle(
-                pair, i, precomp[pair], st, balance, p, recording, ts, trade_rows
+                pair, i, precomp[pair], st, balance, p, True, ts, trade_rows
             )
             if traded:
                 had_trade = True
 
         # ONE combined mark per candle tick
-        if recording and (had_trade or tick_num % 4 == 0):
+        if had_trade or tick_num % 4 == 0:
             total_mark = balance
             for pair in pairs:
                 pos = states[pair]["position"]
@@ -344,14 +352,21 @@ def simulate_futures_pair(symbol, df, start_dt, cutoff_dt, params, balance_in, c
 
     balance_rows = []
     trade_rows   = []
+    first_recording_written = False
 
     for i in range(WARMUP, len(close_arr)):
         t = _candle_dt(df, i)
         if t >= cutoff_dt:
             break
+        if t < start_dt:
+            continue   # RSI/EMA are precomputed — no pre-start trading needed
 
-        recording = (t >= start_dt)
         ts    = _ts_str(t)
+
+        if not first_recording_written:
+            balance_rows.append((ts, round(balance_in, 2)))
+            first_recording_written = True
+
         price = float(close_arr[i])
         rsi   = float(rsi_arr[i])
         ema   = float(ema_arr[i])
@@ -375,9 +390,8 @@ def simulate_futures_pair(symbol, df, start_dt, cutoff_dt, params, balance_in, c
                 entry_fee = position.entry_price * position.amount * FUTURES_FEE
                 pnl       = fut_calc_pnl(position, ep, entry_fee=entry_fee, exit_fee=exit_fee)
                 balance  += max(position.margin + pnl, 0)
-                if recording:
-                    trade_rows.append((ts, symbol, "SELL", ep, position.amount, notional, exit_fee, pnl, reason))
-                    balance_rows.append((ts, round(balance, 2)))
+                trade_rows.append((ts, symbol, "SELL", ep, position.amount, notional, exit_fee, pnl, reason))
+                balance_rows.append((ts, round(balance, 2)))
                 position = None
                 continue
 
@@ -392,10 +406,9 @@ def simulate_futures_pair(symbol, df, start_dt, cutoff_dt, params, balance_in, c
                         fee       = notional * FUTURES_FEE
                         fut_apply_dca(position, price, margin)
                         balance  -= margin + fee
-                        if recording:
-                            trade_rows.append((ts, symbol, "BUY", price, amount, notional, fee, None, "dca"))
-                            mark = balance + position.unrealized_pnl(price)
-                            balance_rows.append((ts, round(mark, 2)))
+                        trade_rows.append((ts, symbol, "BUY", price, amount, notional, fee, None, "dca"))
+                        mark = balance + position.unrealized_pnl(price)
+                        balance_rows.append((ts, round(mark, 2)))
                         continue
 
         else:
@@ -425,14 +438,13 @@ def simulate_futures_pair(symbol, df, start_dt, cutoff_dt, params, balance_in, c
                         opened_at=t.timestamp(),
                     )
                     balance -= margin + fee
-                    if recording:
-                        trade_rows.append((ts, symbol, "BUY", price, amount, notional, fee, None, f"lev={leverage}x"))
-                        mark = balance + position.unrealized_pnl(price)
-                        balance_rows.append((ts, round(mark, 2)))
+                    trade_rows.append((ts, symbol, "BUY", price, amount, notional, fee, None, f"lev={leverage}x"))
+                    mark = balance + position.unrealized_pnl(price)
+                    balance_rows.append((ts, round(mark, 2)))
                     continue
 
         # periodic mark snapshot
-        if recording and i % 4 == 0:
+        if i % 4 == 0:
             open_pnl = position.unrealized_pnl(price) if position else 0
             mark = balance + open_pnl
             balance_rows.append((ts, round(mark, 2)))
