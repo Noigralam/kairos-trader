@@ -32,9 +32,9 @@ data/spot_live_since.txt
 data/spot_state_shadow_*.json
 data/futures_state_simulation.json
 data/futures_state_live.json
+data/futures_state_shadow_*.json
 data/candles.db
 data/kairos.db
-SHADOWS.md
 
 # IDE
 .vscode/

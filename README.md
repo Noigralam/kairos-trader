@@ -1,29 +1,32 @@
 # Kairos
 
 RSI + EMA200 mean-reversion bot for Binance. Runs in simulation or live mode with two independent engines:
-- **Spot** — EUR pairs (ETHEUR, SOLEUR, ADAEUR), 15m candles
+- **Spot** — EUR pairs (SOLEUR, ETHEUR, …), 15m candles
 - **Futures** — USDT-M perpetuals (ETHUSDT, SOLUSDT), 15m candles, configurable leverage
 
-Includes a web dashboard, Discord integration, and backtest tools for both engines.
+Includes a web dashboard, Discord integration, shadow simulators, and backtest/sweep tools for both engines.
 
 ## Strategy
 
 ### Spot
-- **Buy** when RSI drops below the oversold threshold (default 30) and price is above EMA200 + gap filter
+- **Buy** when RSI drops below the oversold threshold and price is above EMA200 × (1 + ema_gap)
 - **Sell signal** when RSI recovers above the overbought threshold — blocked if profit is below `SPOT_MIN_EXIT_PROFIT_PCT`
-- **Trailing stop** with a profit floor — the stop rises as price climbs, only fires once above the floor
-- **Take-profit** at +5% acts as a spike catcher
-- **DCA** averages down in tranches (up to `SPOT_DCA_MAX`) as price drops further from entry
-- Fast-check loop runs every 30s for stop/TP checks between candles
-- Per-pair RSI and overbought thresholds (e.g. `SPOT_RSI_PERIOD_ETHEUR=7`)
+- **Trailing stop** with a profit floor — rises as price climbs, only fires once above the floor
+- **Take-profit** at a configurable target acts as a spike catcher
+- **DCA** averages down in tranches as price drops further from entry
+- **Partial close** optionally sells a fraction at take-profit and trails the remainder with a tighter stop
+- **Time stop** closes stalled positions after N days to free capital
+- **Cooldown / re-entry gate** optionally blocks re-entry for N candles or until price drops X% after a stop
+- Fast stop-check loop runs every 30s between candles
+- Per-pair RSI period, overbought threshold, and other overrides supported
 
 ### Futures
 - Same RSI + EMA200 signal as spot, on 15m candles
 - Isolated-margin LONG only with configurable leverage (default 2×)
-- Exits via **take-profit** or **trailing stop** (with profit floor) — RSI overbought signal is ignored, trailing stop handles exits
-- DCA effectively disabled by default (`FUTURES_DCA_DROP_PCT=0.99`)
-- Funding cost applied on open longs at each 8h settlement
+- Exits via **take-profit** or **trailing stop** (RSI signal is not used for exits)
+- Funding cost applied on open longs at each 8h settlement; optional funding rate gate skips entries when funding is expensive
 - Fast-check loop runs every 30s for stop/TP/liquidation/funding between candles
+- DCA effectively disabled by default (`FUTURES_DCA_DROP_PCT=0.99`)
 
 ## Requirements
 
@@ -35,10 +38,11 @@ Includes a web dashboard, Discord integration, and backtest tools for both engin
 ### 1. Install dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
+
+You never need to activate the venv — all commands use `.venv/bin/python` directly.
 
 ### 2. Configure
 
@@ -46,20 +50,29 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` — every setting is documented inline. At minimum:
-- Set `SPOT_MODE=simulation` (default) to paper trade without API keys
-- Set `SPOT_TRADING_PAIRS` and `FUTURES_TRADING_PAIRS` to the pairs you want
-- Set `FUTURES_ENABLED=false` if you only want to run spot
+Edit `.env`. The file is fully annotated. Minimum required before first run:
 
-> **Note:** The bot reads `.env` only on startup. Restart after any changes.
+- **`SPOT_TRADING_PAIRS`** — which EUR pairs to trade (e.g. `SOLEUR,ETHEUR`)
+- **`SPOT_MODE`** — leave as `simulation` to paper trade first (no API keys needed)
+- **`FUTURES_ENABLED`** — set to `false` if you only want spot
 
-### 3. Verify simulation works
+Everything else has sensible defaults. You can tune parameters later.
+
+> The bot reads `.env` only on startup — restart after any change.
+
+### 3. Start in simulation
 
 ```bash
 ./start.sh
 ```
 
-Open `http://localhost:8888` and confirm the dashboard loads, the status badge shows **running**, and tick logs appear every 15 minutes. Check `data/kairos.log` if anything looks wrong:
+The script prints the dashboard URL (your machine's LAN IP), e.g.:
+
+```
+Dashboard: http://192.168.1.x:8888
+```
+
+Open it and confirm the status badge shows **running**. The first tick happens within 15 minutes when the next candle closes. If something looks wrong:
 
 ```bash
 tail -f data/kairos.log
@@ -67,7 +80,7 @@ tail -f data/kairos.log
 
 ### 4. Go live (optional)
 
-#### Binance API keys
+#### Get Binance API keys
 
 1. Log in to Binance → Profile → API Management → Create API
 2. Choose **System generated**
@@ -77,25 +90,17 @@ tail -f data/kairos.log
    - ✅ Enable Futures (only if using futures live mode)
    - ❌ Everything else (no withdrawals, no transfers)
 4. Restrict access to your server's IP for extra safety
-5. Add the key and secret to `.env`:
-   ```
-   BINANCE_API_KEY=your_key
-   BINANCE_SECRET_KEY=your_secret
-   ```
+5. Add both keys to `.env` under `BINANCE_API_KEY` and `BINANCE_SECRET_KEY`
 
 #### Switch to live
 
-In `.env`, set:
-```
-SPOT_MODE=live
-```
+In `.env` set `SPOT_MODE=live`, then restart:
 
-Then restart:
 ```bash
 ./stop.sh && ./start.sh
 ```
 
-On startup in live mode the bot fetches your real EUR balance from Binance and logs it. Confirm this looks correct in `data/kairos.log` before leaving it running.
+On startup in live mode the bot fetches your real EUR balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running.
 
 ## Running
 
@@ -105,16 +110,13 @@ On startup in live mode the bot fetches your real EUR balance from Binance and l
 tail -f data/kairos.log
 ```
 
-Dashboard: `http://localhost:8888`
+`start.sh` prints the dashboard URL on startup. `watchdog.sh` can be used to auto-restart on crash.
 
-## Modes
+Two modes (set via `SPOT_MODE` / `FUTURES_MODE` in `.env`):
+- `simulation` — paper trades, virtual balance, no API keys needed
+- `live` — places real orders on Binance
 
-Set `SPOT_MODE` / `FUTURES_MODE` in `.env`:
-
-- `simulation` — paper trades, tracks virtual balance, no API keys needed
-- `live` — places real orders, reads balance from exchange
-
-Spot and futures are completely independent: separate balances, separate state files, separate trade logs. Switching one mode never affects the other.
+Spot and futures are completely independent: separate balances, state files, and trade logs.
 
 ## Configuration (`.env`)
 
@@ -124,82 +126,79 @@ See `.env.example` for the full annotated list. Key settings:
 
 | Variable | Default | Description |
 |---|---|---|
-| `SPOT_INVESTED` | `0` | Total EUR deposited; dashboard "from" reference (0 = first recorded balance) |
 | `SPOT_MODE` | `simulation` | `simulation` or `live` |
-| `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs; order determines balance priority — first pair gets first dibs on DCA funds when multiple pairs fire simultaneously |
+| `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs; first pair gets priority for DCA funds when multiple fire simultaneously |
+| `SPOT_INVESTED` | `0` | Total EUR deposited; dashboard "from X€" reference (0 = use first recorded balance) |
 | `SPOT_SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (EUR) |
 | `SPOT_FEE` | `0.001` | Binance maker/taker fee rate (0.1%) |
 | `SPOT_INTERVAL` | `15m` | Candle interval |
-| `SPOT_POSITION_SIZE_PCT` | `0.75` | Fraction of balance per trade |
+| `SPOT_POSITION_SIZE_PCT` | `0.75` | Fraction of balance per new position |
 | `SPOT_DCA_MAX` | `3` | Max DCA tranches per position |
-| `SPOT_DCA_DROP_PCT` | `0.01` | Drop from entry to trigger first DCA |
+| `SPOT_DCA_DROP_PCT` | `0.01` | Price drop from entry to trigger first DCA |
 | `SPOT_DCA_STEP_PCT` | `0.01` | Additional drop per subsequent tranche |
-| `SPOT_DCA_SIZE_PCT` | `0.75` | Fraction of balance per DCA tranche |
-| `SPOT_TAKE_PROFIT_PCT` | `0.05` | Take-profit target |
-| `SPOT_TRAILING_STOP_PCT` | `0.05` | Trailing stop distance from peak |
-| `SPOT_PROFIT_FLOOR_PCT` | `0.03` | Min profit before trailing stop can fire |
-| `SPOT_MIN_EXIT_PROFIT_PCT` | `0.02` | Min profit before a signal sell can fire |
-| `SPOT_RSI_PERIOD` | `14` | RSI lookback period |
+| `SPOT_DCA_SIZE_PCT` | `0.75` | Fraction of remaining balance per DCA tranche |
+| `SPOT_TAKE_PROFIT_PCT` | `0.05` | Take-profit target above entry |
+| `SPOT_TRAILING_STOP_PCT` | `0.025` | Trailing stop drop from peak |
+| `SPOT_PROFIT_FLOOR_PCT` | `0.015` | Min profit before trailing stop can fire |
+| `SPOT_MIN_EXIT_PROFIT_PCT` | `0.02` | Min profit before RSI signal sell can fire |
+| `SPOT_RSI_PERIOD` | `14` | RSI lookback (global default; per-pair overrides common) |
 | `SPOT_RSI_OVERSOLD` | `30` | Buy threshold |
 | `SPOT_RSI_OVERBOUGHT` | `75` | Sell threshold |
-| `SPOT_EMA_GAP_PCT` | `0.02` | Min % above EMA200 to allow a buy |
+| `SPOT_EMA_GAP_PCT` | `0` | Min % above EMA200 to allow a buy (0 = no gap filter) |
+| `SPOT_DAILY_EMA_FILTER` | `false` | Also require price > daily EMA200 |
 | `SPOT_TIME_STOP_DAYS` | `0` | Close stalled positions after N days (0 = off) |
-| `SPOT_MAX_DRAWDOWN_PCT` | `0` | Pause buys if portfolio drops >X% from peak (0 = off) |
+| `SPOT_MAX_DRAWDOWN_PCT` | `0.20` | Pause buys if portfolio drops >X% from peak |
 | `SPOT_STOP_CHECK_INTERVAL` | `30` | Between-candle stop check frequency (seconds) |
-| `SPOT_STOP_COOLDOWN_CANDLES` | `0` | Block re-entry for N candles after a trailing stop fires (0 = off) |
-| `SPOT_VOLUME_FILTER_PERIOD` | `0` | Require current candle volume > N-bar rolling mean (0 = off) |
-| `SPOT_VOLUME_FILTER_MULT` | `1.5` | Volume must exceed this multiple of the rolling mean |
-| `SPOT_PARTIAL_CLOSE_PCT` | `0` | Sell this fraction of the position at take-profit, hold the rest (0 = off) |
-| `SPOT_PARTIAL_CLOSE_TRAIL_PCT` | `0.02` | Trailing stop on the remainder after a partial close |
+| `SPOT_STOP_COOLDOWN_CANDLES` | `0` | Block re-entry for N candles after a trailing stop fires |
+| `SPOT_REENTRY_DROP_PCT` | `0` | After a stop, require price to drop X% before re-entry (0 = off) |
+| `SPOT_PARTIAL_CLOSE_PCT` | `0` | Sell this fraction at take-profit, trail the rest (0 = off) |
+| `SPOT_PARTIAL_CLOSE_TRAIL_PCT` | `0.02` | Trailing stop on the remainder after partial close |
+| `SPOT_VOLUME_FILTER_PERIOD` | `0` | Require volume > N-bar rolling mean (0 = off) |
+| `SPOT_VOLUME_FILTER_MULT` | `1.5` | Volume multiple required |
 
-Per-pair overrides are supported for the following settings — append the pair name to the variable:
+**Per-pair overrides** — append the pair name (e.g. `_SOLEUR`) to any of these:
 
-| Variable | Example |
-|---|---|
-| `SPOT_RSI_PERIOD` | `SPOT_RSI_PERIOD_SOLEUR=7` |
-| `SPOT_RSI_OVERSOLD` | `SPOT_RSI_OVERSOLD_ADAEUR=33` |
-| `SPOT_RSI_OVERBOUGHT` | `SPOT_RSI_OVERBOUGHT_SOLEUR=80` |
-| `SPOT_EMA_GAP_PCT` | `SPOT_EMA_GAP_PCT_ADAEUR=0` |
-| `SPOT_MIN_EXIT_PROFIT_PCT` | `SPOT_MIN_EXIT_PROFIT_PCT_SOLEUR=0.03` |
-| `SPOT_TAKE_PROFIT_PCT` | `SPOT_TAKE_PROFIT_PCT_SOLEUR=0.05` |
-| `SPOT_TRAILING_STOP_PCT` | `SPOT_TRAILING_STOP_PCT_SOLEUR=0.05` |
-| `SPOT_PROFIT_FLOOR_PCT` | `SPOT_PROFIT_FLOOR_PCT_SOLEUR=0.03` |
-| `SPOT_DCA_MAX` | `SPOT_DCA_MAX_ETHEUR=2` |
-| `SPOT_DCA_DROP_PCT` | `SPOT_DCA_DROP_PCT_SOLEUR=0.02` |
-| `SPOT_TIME_STOP_DAYS` | `SPOT_TIME_STOP_DAYS_ETHEUR=14` |
-| `SPOT_STOP_COOLDOWN_CANDLES` | `SPOT_STOP_COOLDOWN_CANDLES_SOLEUR=3` |
-| `SPOT_VOLUME_FILTER_PERIOD` | `SPOT_VOLUME_FILTER_PERIOD_ETHEUR=20` |
-| `SPOT_VOLUME_FILTER_MULT` | `SPOT_VOLUME_FILTER_MULT_ETHEUR=2.0` |
-| `SPOT_PARTIAL_CLOSE_PCT` | `SPOT_PARTIAL_CLOSE_PCT_SOLEUR=0.5` |
-| `SPOT_PARTIAL_CLOSE_TRAIL_PCT` | `SPOT_PARTIAL_CLOSE_TRAIL_PCT_SOLEUR=0.03` |
+`SPOT_RSI_PERIOD`, `SPOT_RSI_OVERSOLD`, `SPOT_RSI_OVERBOUGHT`, `SPOT_EMA_GAP_PCT`, `SPOT_MIN_EXIT_PROFIT_PCT`, `SPOT_TAKE_PROFIT_PCT`, `SPOT_TRAILING_STOP_PCT`, `SPOT_PROFIT_FLOOR_PCT`, `SPOT_DCA_MAX`, `SPOT_DCA_DROP_PCT`, `SPOT_DCA_STEP_PCT`, `SPOT_TIME_STOP_DAYS`, `SPOT_STOP_COOLDOWN_CANDLES`, `SPOT_REENTRY_DROP_PCT`, `SPOT_VOLUME_FILTER_PERIOD`, `SPOT_VOLUME_FILTER_MULT`, `SPOT_PARTIAL_CLOSE_PCT`, `SPOT_PARTIAL_CLOSE_TRAIL_PCT`
 
-When `SPOT_DCA_MAX` is 0 for a pair, the bot goes all-in on entry (no capital reserved for tranches that will never come).
+Current per-pair overrides in use:
+```
+SPOT_RSI_PERIOD_SOLEUR=7
+SPOT_RSI_OVERBOUGHT_SOLEUR=80
+SPOT_MIN_EXIT_PROFIT_PCT_SOLEUR=0.01
+SPOT_RSI_PERIOD_ETHEUR=7
+SPOT_RSI_OVERBOUGHT_ETHEUR=65
+SPOT_RSI_PERIOD_ADAEUR=5
+SPOT_RSI_OVERSOLD_ADAEUR=33
+```
 
-The last DCA tranche always uses 100% of the remaining balance regardless of `SPOT_DCA_SIZE_PCT`, so no capital sits idle until the position closes.
+When `SPOT_DCA_MAX` is 0 for a pair, the bot goes all-in on entry. The last DCA tranche always uses 100% of remaining balance so no capital sits idle.
 
 ### Shadow simulation profiles
 
-Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance and state file, and can trade a different set of pairs or candle interval than the live bot.
+Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance, state file, and parameter set.
 
-Enable profiles with `SPOT_SHADOW_PROFILES=ACTIVE,HYBRID,ETH` (comma-separated names). Each profile supports the following overrides (prefix `SPOT_SHADOW_<NAME>_`):
+Enable with `SPOT_SHADOW_PROFILES=PROFILE1,PROFILE2,...`. Each profile supports the following overrides (prefix `SPOT_SHADOW_<NAME>_`):
 
 | Suffix | Description |
 |---|---|
-| `PAIRS` | Comma-separated pairs to trade (defaults to `SPOT_TRADING_PAIRS` if omitted); order determines balance priority — first pair gets first dibs on DCA funds when multiple pairs fire simultaneously |
-| `INTERVAL` | Candle interval (defaults to `SPOT_INTERVAL` if omitted) |
+| `PAIRS` | Comma-separated pairs to trade |
+| `INTERVAL` | Candle interval (defaults to `SPOT_INTERVAL`) |
 | `BALANCE` | Starting virtual balance (EUR) |
-| `TIME_STOP_DAYS` | Close stalled positions after N days (0 = off) |
-| `RSI_OVERSOLD` / `RSI_OVERBOUGHT` / `RSI_PERIOD` | RSI parameters |
-| `TRAILING_STOP_PCT` / `PROFIT_FLOOR_PCT` / `TAKE_PROFIT_PCT` | Exit parameters |
-| `MIN_EXIT_PROFIT_PCT` | Min profit before a signal sell can fire |
-| `EMA_GAP_PCT` | Min % above EMA200 to allow a buy |
+| `RSI_PERIOD` / `RSI_OVERSOLD` / `RSI_OVERBOUGHT` | RSI parameters |
+| `EMA_GAP_PCT` | EMA gap filter |
+| `TAKE_PROFIT_PCT` | Take-profit target |
+| `TRAILING_STOP_PCT` / `PROFIT_FLOOR_PCT` | Trailing stop parameters |
+| `MIN_EXIT_PROFIT_PCT` | Min profit before signal sell fires |
 | `DCA_MAX` / `DCA_DROP_PCT` / `DCA_STEP_PCT` / `DCA_SIZE_PCT` | DCA parameters |
 | `POSITION_SIZE_PCT` | Fraction of balance per trade |
-| `STOP_COOLDOWN_CANDLES` | Block re-entry for N candles after trailing stop (0 = off) |
-| `VOLUME_FILTER_PERIOD` / `VOLUME_FILTER_MULT` | Volume filter parameters |
-| `PARTIAL_CLOSE_PCT` / `PARTIAL_CLOSE_TRAIL_PCT` | Partial close fraction and trailing stop on remainder |
+| `TIME_STOP_DAYS` | Time stop (0 = off) |
+| `STOP_COOLDOWN_CANDLES` | Re-entry cooldown after trailing stop |
+| `REENTRY_DROP_PCT` | Re-entry price gate after a stop |
+| `PARTIAL_CLOSE_PCT` / `PARTIAL_CLOSE_TRAIL_PCT` | Partial close parameters |
+| `VOLUME_FILTER_PERIOD` / `VOLUME_FILTER_MULT` | Volume filter |
+| `TYPE=grid` | Grid strategy instead of RSI mean-reversion |
 
-Example: `SPOT_SHADOW_ACTIVE_PAIRS=ETHEUR,SOLEUR`, `SPOT_SHADOW_ACTIVE_DCA_MAX=0`.
+See `SHADOWS.md` for the full list of active profiles and their hypotheses.
 
 ### Futures
 
@@ -210,23 +209,24 @@ Example: `SPOT_SHADOW_ACTIVE_PAIRS=ETHEUR,SOLEUR`, `SPOT_SHADOW_ACTIVE_DCA_MAX=0
 | `FUTURES_TRADING_PAIRS` | `ETHUSDT,SOLUSDT` | USDT-M perpetual pairs |
 | `FUTURES_SIMULATION_BALANCE` | `200.0` | Starting balance (USDT) |
 | `FUTURES_LEVERAGE` | `2` | Leverage multiplier |
-| `FUTURES_MARGIN_TYPE` | `ISOLATED` | `ISOLATED` (loss capped per position) or `CROSSED` |
-| `FUTURES_FEE` | `0.0005` | Taker fee rate (0.05%); funding adds on top |
-| `FUTURES_POSITION_SIZE_PCT` | `0.50` | Fraction of balance posted as margin per trade |
-| `FUTURES_DCA_DROP_PCT` | `0.99` | Drop from entry to trigger DCA (0.99 = disabled) |
-| `FUTURES_DCA_SIZE_PCT` | `0.75` | Fraction of balance for DCA |
+| `FUTURES_MARGIN_TYPE` | `ISOLATED` | `ISOLATED` or `CROSSED` |
+| `FUTURES_FEE` | `0.0005` | Taker fee rate (0.05%) |
+| `FUTURES_POSITION_SIZE_PCT` | `1.0` | Fraction of balance posted as margin per position |
+| `FUTURES_DCA_DROP_PCT` | `0.99` | Drop to trigger DCA (0.99 = effectively disabled) |
+| `FUTURES_DCA_SIZE_PCT` | `0.75` | Fraction of balance for DCA tranche |
 | `FUTURES_TAKE_PROFIT_PCT` | `0.05` | Take-profit target (on notional) |
-| `FUTURES_TRAILING_STOP_PCT` | `0.05` | Trailing stop distance from peak |
-| `FUTURES_PROFIT_FLOOR_PCT` | `0.01` | Min profit before trailing stop can fire |
-| `FUTURES_MIN_EXIT_PROFIT_PCT` | `0.02` | Min profit before signal exit fires |
-| `FUTURES_RSI_PERIOD` | `7` | RSI lookback period |
-| `FUTURES_RSI_OVERSOLD` | `25` | Buy threshold (RSI<25 outperforms RSI<35 over 2yr backtest) |
-| `FUTURES_RSI_OVERBOUGHT` | `75` | Logged for reference; exits handled by trailing stop |
-| `FUTURES_EMA_GAP_PCT` | `0.02` | Min % above EMA200 to allow a long entry |
-| `FUTURES_MAX_DRAWDOWN_PCT` | `0` | Pause longs if portfolio drops >X% from peak (0 = off) |
+| `FUTURES_TRAILING_STOP_PCT` | `0.05` | Trailing stop from peak |
+| `FUTURES_PROFIT_FLOOR_PCT` | `0.01` | Min profit before trailing stop fires |
+| `FUTURES_RSI_PERIOD` | `7` | RSI lookback |
+| `FUTURES_RSI_OVERSOLD` | `25` | Buy threshold |
+| `FUTURES_EMA_GAP_PCT` | `0.02` | Min % above EMA200 to allow entry |
+| `FUTURES_MAX_FUNDING_RATE` | `0.0005` | Skip entry when 8h funding rate exceeds this (0 = disabled) |
+| `FUTURES_MAX_DRAWDOWN_PCT` | `0` | Pause longs if portfolio drops >X% from peak |
 | `FUTURES_STOP_CHECK_INTERVAL` | `30` | Between-candle risk check frequency (seconds) |
 
-Per-pair overrides: `FUTURES_RSI_PERIOD_ETHUSDT=7`, etc.
+Per-pair overrides: append the symbol, e.g. `FUTURES_RSI_PERIOD_ETHUSDT=7`.
+
+Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefixes.
 
 ### Credentials & dashboard
 
@@ -235,31 +235,24 @@ Per-pair overrides: `FUTURES_RSI_PERIOD_ETHUSDT=7`, etc.
 | `BINANCE_API_KEY` / `BINANCE_SECRET_KEY` | Required for live mode |
 | `DISCORD_WEBHOOK_URL` | Trade alerts and tick embeds |
 | `DISCORD_BOT_TOKEN` | Slash command bot (optional) |
-| `DISCORD_GUILD_ID` | Guild ID for instant slash command sync (optional) |
+| `DISCORD_GUILD_ID` | Guild ID for instant slash command registration |
 | `WEB_HOST` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
 | `WEB_PORT` | Dashboard port (default 8888) |
 
 ## Discord
 
-When `DISCORD_WEBHOOK_URL` is set, the bot posts tick embeds, trade alerts, extreme condition alerts (RSI < 20 / > 85, EMA200 crossovers), and a daily summary.
+When `DISCORD_WEBHOOK_URL` is set the bot posts tick embeds, trade alerts, extreme RSI/EMA alerts, and a daily summary.
 
-### Adding the bot to your server
-
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → your application → OAuth2 → URL Generator
-2. Scopes: `bot` + `applications.commands`
-3. Bot permissions: `Send Messages`, `Read Message History`, `Manage Messages`
-4. Open the generated URL and invite the bot to your server
-
-When `DISCORD_BOT_TOKEN` is set, the following slash commands are available:
+Slash commands (requires `DISCORD_BOT_TOKEN`):
 
 | Command | Description |
 |---|---|
-| `/crp_status` | Show status, balance and open positions |
-| `/crp_pause` | Pause trading (no new trades) |
+| `/crp_status` | Status, balance, and open positions |
+| `/crp_pause` | Pause trading (no new entries) |
 | `/crp_resume` | Resume after a pause |
 | `/crp_buy` | Manually open a position |
 | `/crp_close` | Manually close an open position |
-| `/crp_summary` | Post a performance summary to the channel |
+| `/crp_summary` | Post a performance summary |
 | `/crp_config` | Show current configuration |
 | `/crp_clear` | Delete all messages in the channel |
 
@@ -268,80 +261,94 @@ When `DISCORD_BOT_TOKEN` is set, the following slash commands are available:
 ### Spot
 
 ```bash
-python backtest.py                           # pair comparison, current settings
-python backtest.py 90                        # custom day window
-python backtest.py shadows                   # all shadow profiles ranked by return (365d + 180d)
-python backtest.py shadows 365 180 90        # custom day windows
+.venv/bin/python backtest.py                        # current settings, default window
+.venv/bin/python backtest.py 90                     # custom day window
+.venv/bin/python backtest.py shadows                # all shadow profiles ranked (365d + 180d)
+.venv/bin/python backtest.py shadows 365 180 90     # custom windows
 
-python backtest.py topup 200 25 730          # monthly top-up: start=€200, +€25/month, 730 days
+.venv/bin/python backtest.py topup 200 25 730       # monthly top-up simulation
 
-python backtest.py sweep buyrsi              # buy RSI threshold
-python backtest.py sweep trail               # trailing stop %
-python backtest.py sweep floor               # profit floor %
-python backtest.py sweep exit                # min-exit profit %
-python backtest.py sweep dca                 # DCA drop % + size %
-python backtest.py sweep all                 # all sweeps
+.venv/bin/python backtest.py sweep buyrsi           # buy RSI threshold
+.venv/bin/python backtest.py sweep trail            # trailing stop %
+.venv/bin/python backtest.py sweep floor            # profit floor %
+.venv/bin/python backtest.py sweep exit             # min-exit profit %
+.venv/bin/python backtest.py sweep dca              # DCA settings
+.venv/bin/python backtest.py sweep cooldown         # re-entry cooldown
+.venv/bin/python backtest.py sweep all              # all sweeps
 
-python backtest.py sweep trail 730 365 180   # custom day windows
+.venv/bin/python xrp_sweep.py                       # XRP/BNB-specific sweeps
+.venv/bin/python dot_sweep.py                       # DOT-specific sweeps
 ```
 
-Add `--cached` to any command to skip candle syncing and use only the local `candles.db` cache — faster runs and reproducible results:
+Add `--cached` to skip candle syncing and use only the local cache (faster, reproducible):
 
 ```bash
-python backtest.py shadows --cached
-python backtest.py sweep trail --cached 365
+.venv/bin/python backtest.py shadows --cached
+.venv/bin/python backtest.py sweep trail --cached 365
 ```
 
 ### Futures
 
 ```bash
-python backtest_futures.py                   # baseline, current config
-python backtest_futures.py 90                # custom day window
+.venv/bin/python backtest_futures.py                # baseline, current config
+.venv/bin/python backtest_futures.py 90             # custom window
 
-python backtest_futures.py sweep rsi         # RSI buy/sell thresholds
-python backtest_futures.py sweep trail       # trailing stop %
-python backtest_futures.py sweep floor       # profit floor %
-python backtest_futures.py sweep tp          # take-profit %
-python backtest_futures.py sweep pos         # position size %
-python backtest_futures.py sweep dca         # DCA settings
-python backtest_futures.py sweep lev         # leverage
-python backtest_futures.py sweep all         # all sweeps
-
-python backtest_futures.py sweep all 730 365 180
+.venv/bin/python backtest_futures.py sweep rsi      # RSI thresholds
+.venv/bin/python backtest_futures.py sweep trail    # trailing stop %
+.venv/bin/python backtest_futures.py sweep floor    # profit floor %
+.venv/bin/python backtest_futures.py sweep tp       # take-profit %
+.venv/bin/python backtest_futures.py sweep pos      # position size %
+.venv/bin/python backtest_futures.py sweep dca      # DCA settings
+.venv/bin/python backtest_futures.py sweep lev      # leverage
+.venv/bin/python backtest_futures.py sweep all      # all sweeps
 ```
 
 The futures backtest models isolated margin, 0.05% taker fee, 0.01%/8h funding on open longs, and liquidation at `entry × (1 − 1/lev + 0.5%)`.
+
+## Shadow backfill
+
+To rebuild the full historical record for all shadow profiles (from live spot start date to now) without stopping the bot:
+
+```bash
+.venv/bin/python shadow_backfill.py
+```
+
+The DB runs in WAL mode so the backfill queues writes behind live bot activity — no stop required.
 
 ## Project layout
 
 ```
 bot/
-  config.py                     — all settings from .env, per-pair helpers (spot + futures)
-  spot_engine.py                — spot trading loop: candle alignment, signal execution, stop-check thread
-  spot_simulator.py             — spot position management (simulation + live)
-  spot_exchange.py              — Binance spot API wrapper
-  spot_risk.py                  — spot Position dataclass, trailing stop, DCA, PnL
-  strategy.py                   — RSI + EMA200 signal (shared by spot + futures)
-  candles.py                    — local SQLite candle cache, incremental sync (shared by spot + futures)
-  notifier.py                   — Discord webhooks, tick embeds, alerts, log buffering
-  discord_bot.py                — discord.py slash command bot
-  db.py                         — trade log, balance history, tax summary (SQLite)
-  futures_engine.py             — futures loop: 15m signal thread + 60s risk/funding thread
-  futures_simulator.py          — futures position management (simulation + live)
-  futures_exchange.py           — Binance futures API wrapper
-  futures_risk.py               — FuturesPosition dataclass, liquidation price, PnL
+  config.py             — all settings from .env, per-pair helpers (spot + futures)
+  spot_engine.py        — spot trading loop: candle alignment, signal execution, stop-check thread
+  spot_simulator.py     — spot shadow simulators + SpotShadowSimulator class
+  spot_exchange.py      — Binance spot API wrapper
+  spot_risk.py          — Position dataclass, trailing stop, DCA, PnL
+  strategy.py           — RSI + EMA200 signal (shared by spot + futures)
+  candles.py            — local SQLite candle cache, incremental sync (spot + futures)
+  notifier.py           — Discord webhooks, tick embeds, alerts, log buffering
+  discord_bot.py        — discord.py slash command bot
+  db.py                 — trade log, balance history, candles (SQLite, WAL mode)
+  futures_engine.py     — futures loop: 15m signal thread + 30s risk/funding thread
+  futures_simulator.py  — futures shadow simulators + FuturesShadowSimulator class
+  futures_exchange.py   — Binance futures API wrapper
+  futures_risk.py       — FuturesPosition dataclass, liquidation price, PnL
 web/
-  app.py                        — Flask dashboard API (spot + futures endpoints)
+  app.py                — Flask dashboard + REST API (spot + futures endpoints)
   templates/
-    index.html                  — single-page dashboard (Spot / Futures tabs)
+    index.html          — single-page dashboard (Spot / Futures tabs)
 data/
-  trades.db                     — trade history and candle cache (all modes)
-  spot_state_simulation.json    — spot simulation state
-  spot_state_live.json          — spot live state
-  futures_state_simulation.json — futures simulation state
-  futures_state_live.json       — futures live state
-  spot_live_since.txt           — timestamp of first spot live mode start
-backtest.py                     — spot backtest and parameter sweep tool
-backtest_futures.py             — futures backtest and parameter sweep tool
-start.sh / stop.sh
+  trades.db             — trade history, balance history, candle cache (WAL)
+  spot_state_*.json     — spot engine state per mode
+  futures_state_*.json  — futures engine state per mode
+  spot_state_shadow_*.json    — per-shadow spot state
+  futures_state_shadow_*.json — per-shadow futures state
+backtest.py             — spot backtest + parameter sweep tool
+backtest_futures.py     — futures backtest + parameter sweep tool
+xrp_sweep.py            — XRP/BNB parameter sweep
+dot_sweep.py            — DOT parameter sweep
+shadow_backfill.py      — rebuild full shadow history from live start date
+main.py                 — entry point: starts spot engine, futures engine, web dashboard
+start.sh / stop.sh      — process management
+watchdog.sh             — auto-restart on crash
 ```

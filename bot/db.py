@@ -11,6 +11,8 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "trad
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")   # allows concurrent reads during writes
+    conn.execute("PRAGMA synchronous=NORMAL") # safe with WAL, faster than FULL
     c = conn.cursor()
     c.execute("""
         CREATE TABLE IF NOT EXISTS balance_history (

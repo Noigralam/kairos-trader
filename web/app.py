@@ -1578,6 +1578,7 @@ def api_futures_status():
         "leverage":      config.FUTURES_LEVERAGE,
         "last_tick":     f_last_tick(),
         "uptime":        f_get_uptime(),
+        "started_at":    db.get_balance_history(f"futures_{config.FUTURES_MODE}", 0)[:1][0][0] if db.get_balance_history(f"futures_{config.FUTURES_MODE}", 0) else None,
         "balance":           round(state.balance, 2),
         "starting_balance":  db.get_starting_balance(f"futures_{config.FUTURES_MODE}"),
         "total_trades":      state.total_trades,

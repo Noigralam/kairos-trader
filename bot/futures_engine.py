@@ -6,6 +6,7 @@ import zoneinfo
 
 from . import config
 from .futures_exchange import get_klines, get_mark_price, get_funding_rate, get_next_funding_time
+from .candles import sync as _sync_candles
 from .strategy import compute_signal, Signal
 from .futures_simulator import (
     init as sim_init, get_state, open_long, dca_long, close_long,
@@ -111,6 +112,7 @@ def _loop():
                 try:
                     prices[sym] = get_mark_price(sym)
                     dfs[sym]    = get_klines(sym, interval=_FUTURES_INTERVAL, limit=250)
+                    _sync_candles(sym, _FUTURES_INTERVAL)
                 except Exception as e:
                     log.warning(f"[FUTURES TICK] {sym} data fetch failed: {e}")
 

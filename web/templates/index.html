@@ -72,8 +72,19 @@
     .stat-card .value.negative { color: var(--red); }
 
     .controls {
-      display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+      display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;
     }
+    details.bot-controls {
+      margin-bottom: 16px;
+    }
+    details.bot-controls summary {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 12px; color: var(--muted); cursor: pointer;
+      list-style: none; user-select: none;
+    }
+    details.bot-controls summary::-webkit-details-marker { display: none; }
+    details.bot-controls summary::after { content: ' ▾'; font-size: 10px; }
+    details.bot-controls[open] summary::after { content: ' ▴'; }
     button {
       padding: 8px 20px; border-radius: 6px; border: 1px solid var(--border);
       cursor: pointer; font-size: 13px; font-weight: 500; transition: opacity .15s;
@@ -337,6 +348,7 @@
       <span id="hdr-spot-port"   style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-spot-pnl"    style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-spot-trades" style="font-size:12px;color:var(--muted);">—</span>
+      <span id="hdr-spot-since"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
     </div>
     <!-- Futures live block (only shown when futures mode=live) -->
     <div id="f-header-block" style="display:none;flex-direction:column;align-items:flex-end;gap:2px;">
@@ -345,6 +357,7 @@
       <span id="hdr-fut-port"   style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-fut-pnl"    style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-fut-trades" style="font-size:12px;color:var(--muted);">—</span>
+      <span id="hdr-fut-since"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
     </div>
     <!-- Shadow carousel (one block per profile, looping) -->
     <div id="sh-carousel" style="display:none">
@@ -391,12 +404,15 @@
       </div>
     </div>
 
-    <div class="controls">
-      <button class="primary" onclick="control('start')">▶ Start</button>
-      <button class="warning" onclick="control('pause')">⏸ Pause</button>
-      <button onclick="control('resume')">↺ Resume</button>
-      <button class="danger" onclick="control('stop')">■ Stop</button>
-    </div>
+    <details class="bot-controls">
+      <summary>Controls</summary>
+      <div class="controls">
+        <button class="primary" onclick="control('start')">▶ Start</button>
+        <button class="warning" onclick="control('pause')">⏸ Pause</button>
+        <button onclick="control('resume')">↺ Resume</button>
+        <button class="danger" onclick="control('stop')">■ Stop</button>
+      </div>
+    </details>
     <div id="live-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:-6px;"></div>
 
     <section>
@@ -534,12 +550,15 @@
       <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
     </div>
 
-    <div class="controls">
-      <button class="primary" onclick="futuresControl('start')">▶ Start</button>
-      <button class="warning" onclick="futuresControl('pause')">⏸ Pause</button>
-      <button onclick="futuresControl('resume')">↺ Resume</button>
-      <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
-    </div>
+    <details class="bot-controls">
+      <summary>Controls</summary>
+      <div class="controls">
+        <button class="primary" onclick="futuresControl('start')">▶ Start</button>
+        <button class="warning" onclick="futuresControl('pause')">⏸ Pause</button>
+        <button onclick="futuresControl('resume')">↺ Resume</button>
+        <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
+      </div>
+    </details>
 
     <section>
       <h2>Performance</h2>
@@ -706,7 +725,7 @@
 
     <!-- profile selector — visible when >1 shadow -->
     <div id="sh-selector-wrap" style="display:none;margin-bottom:16px">
-      <div class="btn-group" id="sh-selector"></div>
+      <div class="btn-group" id="sh-selector" style="flex-wrap:wrap"></div>
     </div>
 
     <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
@@ -864,7 +883,7 @@
 
     <!-- profile selector -->
     <div id="fsh-selector-wrap" style="display:none;margin-bottom:16px">
-      <div class="btn-group" id="fsh-selector"></div>
+      <div class="btn-group" id="fsh-selector" style="flex-wrap:wrap"></div>
     </div>
 
     <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
@@ -998,6 +1017,16 @@
     if (h < 24) return `${h.toFixed(1)}h`;
     const days = Math.floor(h / 24), rem = Math.round(h % 24);
     return rem > 0 ? `${days}d ${rem}h` : `${days}d`;
+  }
+  function _fmtDuration(isoTs) {
+    if (!isoTs) return '';
+    const ms   = Date.now() - new Date(isoTs).getTime();
+    const days = Math.floor(ms / 86400000);
+    const hrs  = Math.floor((ms % 86400000) / 3600000);
+    if (days >= 365) { const y = Math.floor(days / 365), d = days % 365; return d > 0 ? `${y}y ${d}d` : `${y}y`; }
+    if (days >= 30)  { const m = Math.floor(days / 30),  d = days % 30;  return d > 0 ? `${m}mo ${d}d` : `${m}mo`; }
+    if (days >= 1)   return hrs > 0 ? `${days}d ${hrs}h` : `${days}d`;
+    return `${hrs}h`;
   }
 
   // ── tab switching ─────────────────────────────────────────────────────────
@@ -1314,6 +1343,7 @@
       const hPnlEl = document.getElementById('hdr-spot-pnl');
       hPnlEl.textContent  = `${hPnl >= 0 ? '+' : ''}€${fmt(Math.abs(hPnl))} PnL`;
       hPnlEl.style.color  = hPnl >= 0 ? 'var(--green)' : 'var(--red)';
+      if (s.live_since) document.getElementById('hdr-spot-since').textContent = 'Running ' + _fmtDuration(s.live_since);
       _positions = s.positions;
       loadSpotTrades();
 
@@ -1388,6 +1418,7 @@
   let _shRsiChart     = null;
   let _shBalanceChart = null;
   let _shPnlChart     = null;
+  let _shColorMap     = {};  // name → color, built at init from _shNames order
 
   const _PNL_COLORS = [
     '#58a6ff','#3fb950','#d29922','#f85149','#bc8cff',
@@ -1399,11 +1430,12 @@
     const res = await fetch('/api/shadows');
     _shNames = (await res.json()).map(s => s.name);
     if (!_shNames.length) return;
+    _shNames.forEach((n, i) => { _shColorMap[n] = _PNL_COLORS[i % _PNL_COLORS.length]; });
     document.getElementById('spot-shadow-tab-btn').style.display = '';
     _activeShadow = _shNames[0];
     const sel = document.getElementById('sh-selector');
     sel.innerHTML = _shNames.map(n =>
-      `<button onclick="switchShadow('${n}')" data-shadow="${n}">${n}</button>`
+      `<button onclick="switchShadow('${n}')" data-shadow="${n}" data-color="${_shColorMap[n]}">${n}</button>`
     ).join('');
     if (_shNames.length > 1)
       document.getElementById('sh-selector-wrap').style.display = '';
@@ -1418,6 +1450,7 @@
         <span id="sh-hdr-port-${n}${suffix}"   style="font-size:12px;color:var(--muted);">—</span>
         <span id="sh-hdr-pnl-${n}${suffix}"    style="font-size:12px;color:var(--muted);">—</span>
         <span id="sh-hdr-trades-${n}${suffix}" style="font-size:12px;color:var(--muted);">—</span>
+        <span id="sh-hdr-since-${n}${suffix}"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
       </div>`;
     track.innerHTML = _shNames.map(n => makeBlock(n, '')).join('')
                     + _shNames.map(n => makeBlock(n, '-copy')).join('');
@@ -1479,9 +1512,10 @@
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
         <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#bc8cff;">${n}</span>
         <span style="font-size:10px;font-weight:600;color:var(--muted);">f-sim</span>
-        <span id="fsh-hdr-port-${n}${sfx}" style="font-size:12px;color:var(--muted);">—</span>
-        <span id="fsh-hdr-pnl-${n}${sfx}"  style="font-size:12px;color:var(--muted);">—</span>
-        <span id="fsh-hdr-tr-${n}${sfx}"   style="font-size:12px;color:var(--muted);">—</span>
+        <span id="fsh-hdr-port-${n}${sfx}"   style="font-size:12px;color:var(--muted);">—</span>
+        <span id="fsh-hdr-pnl-${n}${sfx}"    style="font-size:12px;color:var(--muted);">—</span>
+        <span id="fsh-hdr-tr-${n}${sfx}"     style="font-size:12px;color:var(--muted);">—</span>
+        <span id="fsh-hdr-since-${n}${sfx}"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
       </div>`;
     // Insert originals just before F-copy block (end of first half); copies at very end
     const fCopyPort = document.getElementById('hdr-fut-port-copy');
@@ -1501,14 +1535,16 @@
         const pct      = s.starting ? (port - s.starting) / s.starting * 100 : 0;
         const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
         for (const sfx of ['', '-copy']) {
-          const portEl = document.getElementById(`fsh-hdr-port-${name}${sfx}`);
-          const pnlEl  = document.getElementById(`fsh-hdr-pnl-${name}${sfx}`);
-          const trEl   = document.getElementById(`fsh-hdr-tr-${name}${sfx}`);
+          const portEl   = document.getElementById(`fsh-hdr-port-${name}${sfx}`);
+          const pnlEl    = document.getElementById(`fsh-hdr-pnl-${name}${sfx}`);
+          const trEl     = document.getElementById(`fsh-hdr-tr-${name}${sfx}`);
+          const sinceEl  = document.getElementById(`fsh-hdr-since-${name}${sfx}`);
           if (!portEl) continue;
           portEl.textContent = `$${Number(port).toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
           pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(2)} PnL`;
           pnlEl.style.color  = pnlColor;
           trEl.textContent   = `${s.total_trades} trades`;
+          if (sinceEl && s.started_at) sinceEl.textContent = 'Running ' + _fmtDuration(s.started_at);
         }
       } catch(e) {}
     }
@@ -1527,6 +1563,7 @@
         <span id="hdr-fut-port${sfx}"   style="font-size:12px;color:var(--muted);">—</span>
         <span id="hdr-fut-pnl${sfx}"    style="font-size:12px;color:var(--muted);">—</span>
         <span id="hdr-fut-trades${sfx}" style="font-size:12px;color:var(--muted);">—</span>
+        <span id="hdr-fut-since${sfx}"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
       </div>`;
     // prepend original; insert copy before first shadow-copy (at index _shNames.length)
     track.insertAdjacentHTML('afterbegin', makeF(''));
@@ -1544,14 +1581,16 @@
         const pct = s.starting_balance ? (s.portfolio_value - s.starting_balance) / s.starting_balance * 100 : 0;
         const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
         for (const sfx of ['', '-copy']) {
-          const portEl = document.getElementById(`sh-hdr-port-${name}${sfx}`);
-          const pnlEl  = document.getElementById(`sh-hdr-pnl-${name}${sfx}`);
-          const trEl   = document.getElementById(`sh-hdr-trades-${name}${sfx}`);
+          const portEl  = document.getElementById(`sh-hdr-port-${name}${sfx}`);
+          const pnlEl   = document.getElementById(`sh-hdr-pnl-${name}${sfx}`);
+          const trEl    = document.getElementById(`sh-hdr-trades-${name}${sfx}`);
+          const sinceEl = document.getElementById(`sh-hdr-since-${name}${sfx}`);
           if (!portEl) continue;
           portEl.textContent = `€${fmt(s.portfolio_value)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
           pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}€${fmt(Math.abs(pnl))} PnL`;
           pnlEl.style.color  = pnlColor;
           trEl.textContent   = `${s.total_trades} trades`;
+          if (sinceEl && s.started_at) sinceEl.textContent = 'Running ' + _fmtDuration(s.started_at);
         }
       } catch(e) {}
     }
@@ -1570,8 +1609,14 @@
   }
 
   function _markShSelector() {
-    document.querySelectorAll('#sh-selector button').forEach(b =>
-      b.classList.toggle('active', b.dataset.shadow === _activeShadow));
+    document.querySelectorAll('#sh-selector button').forEach(b => {
+      const active = b.dataset.shadow === _activeShadow;
+      const c = b.dataset.color || 'var(--blue)';
+      b.style.borderColor    = c;
+      b.style.color          = active ? '#0d1117' : c;
+      b.style.backgroundColor = active ? c : 'transparent';
+      b.classList.toggle('active', active);
+    });
   }
 
   async function refreshShadowTab() {
@@ -1625,11 +1670,14 @@
         const map = Object.fromEntries(data[name].map(p => [p.t, p[field]]));
         let last = null;
         const values = allTimes.map(t => { if (map[t] !== undefined) last = map[t]; return last; });
-        const color = _PNL_COLORS[i % _PNL_COLORS.length];
+        // normalize so first visible point = 0 (window-relative return)
+        const baseline = values.find(v => v !== null) ?? 0;
+        const normed = values.map(v => v === null ? null : v - baseline);
+        const color = _shColorMap[name] || _PNL_COLORS[i % _PNL_COLORS.length];
         const isActive = name === _activeShadow;
         return {
           label:       name,
-          data:        values,
+          data:        normed,
           borderColor: color,
           borderWidth: isActive ? 2 : 1,
           pointRadius: 0,
@@ -1905,6 +1953,11 @@
         document.getElementById('sh-stat-worst').textContent   = `${stat.worst >= 0 ? '+' : ''}${stat.worst.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
         document.getElementById('sh-stat-worst').style.color   = stat.worst >= 0 ? 'var(--green)' : 'var(--red)';
         document.getElementById('sh-stat-hold').textContent    = stat.avg_hold_h != null ? `${stat.avg_hold_h}h` : '—';
+      } else {
+        ['sh-stat-winrate','sh-stat-avgpnl','sh-stat-best','sh-stat-worst','sh-stat-hold'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.textContent = '—'; el.style.color = ''; }
+        });
       }
     } catch(e) {}
   }
@@ -2839,6 +2892,8 @@
         const fhPnlEl = document.getElementById(`hdr-fut-pnl${sfx}`);
         fhPnlEl.textContent = `${fhPnl >= 0 ? '+' : ''}$${fmtUsdt(Math.abs(fhPnl))} PnL`;
         fhPnlEl.style.color = fhPnl >= 0 ? 'var(--green)' : 'var(--red)';
+        const fhSinceEl = document.getElementById(`hdr-fut-since${sfx}`);
+        if (fhSinceEl && d.started_at) fhSinceEl.textContent = 'Running ' + _fmtDuration(d.started_at);
       }
 
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
@@ -3088,6 +3143,7 @@
 
   // ── Futures Shadow Tab ───────────────────────────────────────────────────────
   let _fshNames        = [];
+  let _fshColorMap     = {};
   let _activeFShadow   = null;
   let _fshRankingData  = [];
   let _fshRankingSort  = { col: 'return_pct', dir: -1 };
@@ -3122,11 +3178,12 @@
 
       if (!_fshInitDone) {
         _fshNames = rows.map(s => s.name);
+        _fshNames.forEach((n, i) => { _fshColorMap[n] = _PNL_COLORS[i % _PNL_COLORS.length]; });
         _activeFShadow = _fshNames[0];
 
         const sel = document.getElementById('fsh-selector');
         sel.innerHTML = _fshNames.map(n =>
-          `<button onclick="switchFShadow('${n}')" data-fsh="${n}">${n}</button>`
+          `<button onclick="switchFShadow('${n}')" data-fsh="${n}" data-color="${_fshColorMap[n]}">${n}</button>`
         ).join('');
         if (_fshNames.length > 1)
           document.getElementById('fsh-selector-wrap').style.display = '';
@@ -3142,8 +3199,14 @@
   }
 
   function _markFShSelector() {
-    document.querySelectorAll('#fsh-selector button').forEach(b =>
-      b.classList.toggle('active', b.dataset.fsh === _activeFShadow));
+    document.querySelectorAll('#fsh-selector button').forEach(b => {
+      const active = b.dataset.fsh === _activeFShadow;
+      const c = b.dataset.color || 'var(--blue)';
+      b.style.borderColor     = c;
+      b.style.color           = active ? '#0d1117' : c;
+      b.style.backgroundColor = active ? c : 'transparent';
+      b.classList.toggle('active', active);
+    });
   }
 
   function switchFShadow(name) {
@@ -3564,13 +3627,12 @@
       const seenTF = new Set(); const sortedPts = [];
       allPts.sort((a,b) => a.sk - b.sk).forEach(p => { if (!seenTF.has(p.t)) { seenTF.add(p.t); sortedPts.push(p); }});
       const labels = sortedPts.map(p => p.t);
-      const _CHART_COLORS = ['#79c0ff','#56d364','#e3b341','#ff7b72','#d2a8ff','#388bfd','#2ea043','#bb8009'];
       const datasets = names.map((n, i) => {
         const map = Object.fromEntries(raw[n].map(p => [p.t, _fshPnlMode === 'pct' ? p.pct : p.pnl]));
         return {
           label: n,
           data: labels.map(l => map[l] ?? null),
-          borderColor: _CHART_COLORS[i % _CHART_COLORS.length],
+          borderColor: _fshColorMap[n] || _PNL_COLORS[i % _PNL_COLORS.length],
           backgroundColor: 'transparent',
           borderWidth: 1.5,
           pointRadius: 0,
