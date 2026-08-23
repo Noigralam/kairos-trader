@@ -335,11 +335,12 @@ class _MainSpotShim:
         )
 
 
+
 class _MainFuturesShim:
-    """Wraps the main FuturesSimulator state so it can appear in the futures shadow table."""
-    name    = "MAIN"
+    """Wraps the main FuturesSimulator state so it can appear as the baseline in futures shadow ranking."""
+    name         = "MAIN"
     overrides: dict = {}
-    is_main = True
+    is_main      = True
 
     def __init__(self, state):
         self._state   = state
@@ -347,18 +348,21 @@ class _MainFuturesShim:
         self._db_mode = f"futures_{config.FUTURES_MODE}"
         self._starting = db.get_starting_balance(self._db_mode) or config.FUTURES_SIMULATION_BALANCE
 
+    def _o(self, key, default):
+        return default
+
     @property
-    def balance(self):       return self._state.balance
+    def balance(self):        return self._state.balance
     @property
-    def total_trades(self):  return self._state.total_trades
+    def total_trades(self):   return self._state.total_trades
     @property
-    def total_pnl(self):     return self._state.total_pnl
+    def total_pnl(self):      return self._state.total_pnl
     @property
-    def total_fees(self):    return self._state.total_fees
+    def total_fees(self):     return self._state.total_fees
     @property
-    def total_funding(self): return self._state.total_funding
+    def total_funding(self):  return self._state.total_funding
     @property
-    def positions(self):     return self._state.positions
+    def positions(self):      return self._state.positions
 
 
 @app.route("/api/shadows")
@@ -401,9 +405,13 @@ def api_shadows_ranking():
                 pass
         open_val  = sum(prices.get(p, pos.value_eur) * pos.amount for p, pos in s.positions.items())
         portfolio = s.balance + open_val
-        starting  = float(s.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE)) if not is_main else live_starting
+        starting  = live_starting if is_main else s.starting_balance
         ret       = round((portfolio / starting - 1) * 100, 2) if starting > 0 else 0
         stats     = db.get_trade_stats(s._db_mode)
+        if not is_main and live_return_pct is not None and hasattr(s, "set_live_baseline"):
+            s.set_live_baseline(live_return_pct)
+        baseline = getattr(s, "live_baseline_pct", None)
+        vs_live = round(ret - (live_return_pct - baseline), 2) if (not is_main and live_return_pct is not None and baseline is not None) else None
         return {
             "name":             s.name,
             "is_main":          is_main,
@@ -414,7 +422,7 @@ def api_shadows_ranking():
             "pnl":              round(s.total_pnl, 2),
             "trades":           s.total_trades,
             "win_rate":         stats.get("win_rate", 0) if stats else 0,
-            "vs_live":          round(ret - live_return_pct, 2) if (live_return_pct is not None and not is_main) else None,
+            "vs_live":          vs_live,
         }
 
     rows = []
@@ -449,8 +457,7 @@ def api_shadows_pnl_history():
     if config.SPOT_MODE == "simulation":
         out["MAIN"] = _series(config.SPOT_MODE, config.SPOT_SIMULATION_BALANCE)
     for s in get_shadows():
-        starting = float(s.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE))
-        out[s.name] = _series(s._db_mode, starting)
+        out[s.name] = _series(s._db_mode, s.starting_balance)
     return jsonify(out)
 
 
@@ -473,7 +480,7 @@ def api_shadow_status(name):
         except Exception:
             pass
     open_val = sum(prices.get(p, pos.value_eur) * pos.amount for p, pos in s.positions.items())
-    starting = float(s.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE))
+    starting = s.starting_balance
     fee      = config.SPOT_FEE
     positions_out = {}
     for pair, pos in s.positions.items():
@@ -1364,11 +1371,10 @@ def api_futures_shadows():
         return jsonify([])
     from bot.futures_simulator import get_futures_shadows, get_state as fget_state
     from bot.futures_exchange import get_mark_price as _gmp
-    rows = []
+    main_shim = _MainFuturesShim(fget_state())
     shims = list(get_futures_shadows())
-    if config.FUTURES_MODE == "simulation":
-        shims.insert(0, _MainFuturesShim(fget_state()))
-    for sh in shims:
+
+    def _portfolio(sh):
         prices = {}
         for sym in sh.symbols:
             try:
@@ -1376,28 +1382,42 @@ def api_futures_shadows():
             except Exception:
                 pass
         open_pnl = sum(p.unrealized_pnl(prices[s]) for s, p in sh.positions.items() if s in prices)
-        portfolio = sh.balance + open_pnl
+        return sh.balance + open_pnl
+
+    main_portfolio = _portfolio(main_shim)
+    main_ret = round((main_portfolio / main_shim._starting - 1) * 100, 2) if main_shim._starting > 0 else 0
+
+    rows = []
+    for sh in shims:
+        portfolio = _portfolio(sh)
         starting  = sh._starting
         ret       = round((portfolio / starting - 1) * 100, 2) if starting > 0 else 0
+        is_main   = getattr(sh, "is_main", False)
+        if not is_main and hasattr(sh, "set_main_baseline"):
+            sh.set_main_baseline(main_ret)
+        baseline  = getattr(sh, "main_baseline_pct", None)
+        vs_main   = round(ret - (main_ret - baseline), 2) if (not is_main and baseline is not None) else None
         rows.append({
             "name":       sh.name,
-            "is_main":    getattr(sh, "is_main", False),
+            "is_main":    is_main,
             "overrides":  sh.overrides,
             "symbols":    sh.symbols,
             "balance":    round(sh.balance, 2),
             "portfolio":  round(portfolio, 2),
             "starting":   starting,
             "return_pct": ret,
+            "vs_main":    vs_main,
             "pnl":        round(sh.total_pnl, 4),
             "funding":    round(sh.total_funding, 4),
             "trades":     sh.total_trades,
         })
+    rows.sort(key=lambda x: (not x["is_main"], -x["return_pct"]))
     return jsonify(rows)
 
 
 def _get_futures_shadow(name: str):
     from bot.futures_simulator import get_futures_shadows, get_state as fget_state
-    if name.upper() == "MAIN" and config.FUTURES_MODE == "simulation":
+    if name.upper() == "MAIN":
         return _MainFuturesShim(fget_state())
     return next((s for s in get_futures_shadows() if s.name.upper() == name.upper()), None)
 
@@ -1580,7 +1600,7 @@ def api_futures_status():
         "uptime":        f_get_uptime(),
         "started_at":    db.get_balance_history(f"futures_{config.FUTURES_MODE}", 0)[:1][0][0] if db.get_balance_history(f"futures_{config.FUTURES_MODE}", 0) else None,
         "balance":           round(state.balance, 2),
-        "starting_balance":  db.get_starting_balance(f"futures_{config.FUTURES_MODE}"),
+        "starting_balance":  db.get_starting_balance(f"futures_{config.FUTURES_MODE}") or config.FUTURES_SIMULATION_BALANCE,
         "total_trades":      state.total_trades,
         "total_pnl":         round(state.total_pnl, 4),
         "total_fees":        round(state.total_fees, 4),

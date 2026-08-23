@@ -518,6 +518,14 @@ def check_stops(prices: dict):
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
 
+def _live_spot_balance() -> float:
+    try:
+        with open(_LIVE_STATE_PATH) as f:
+            return float(json.load(f).get("balance", config.SPOT_SHADOW_DEFAULT_BALANCE))
+    except Exception:
+        return config.SPOT_SHADOW_DEFAULT_BALANCE
+
+
 class SpotShadowSimulator:
     """A lightweight simulation-only instance running a different strategy config.
     Receives the same candle ticks as the main engine but never touches the exchange.
@@ -530,13 +538,15 @@ class SpotShadowSimulator:
         self.pairs: list[str] | None = overrides.get("pairs", None)
         self.interval: str = overrides.get("interval", config.SPOT_INTERVAL)
         self._lock      = threading.Lock()
-        self.balance        = float(overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE))
+        self.starting_balance = float(overrides.get("spot_balance", _live_spot_balance()))
+        self.balance        = self.starting_balance
         self.positions: dict[str, Position] = {}
         self.total_trades   = 0
         self.total_pnl      = 0.0
         self.total_fees     = 0.0
         self.portfolio_peak = 0.0
         self.started_at: str | None = None
+        self.live_baseline_pct: float | None = None
         self._stop_cooldowns: dict[str, float] = {}
         self._reentry_drop_prices: dict[str, float] = {}
         self._load()
@@ -549,6 +559,11 @@ class SpotShadowSimulator:
 
     def _o(self, key: str, default):
         return self.overrides.get(key, default)
+
+    def set_live_baseline(self, pct: float):
+        if self.live_baseline_pct is None:
+            self.live_baseline_pct = pct
+            self._save()
 
     def _trailing_stop_level(self, pos: Position) -> float:
         fee = config.SPOT_FEE
@@ -571,6 +586,8 @@ class SpotShadowSimulator:
             "name": self.name,
             "started_at": self.started_at,
             "overrides": self.overrides,
+            "starting_balance":  self.starting_balance,
+            "live_baseline_pct": self.live_baseline_pct,
             "balance": self.balance,
             "total_trades": self.total_trades,
             "total_pnl": self.total_pnl,
@@ -600,8 +617,10 @@ class SpotShadowSimulator:
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
-            self.started_at     = data.get("started_at",     None)
-            self.balance        = data.get("balance", float(self.overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE)))
+            self.started_at        = data.get("started_at",        None)
+            self.starting_balance  = data.get("starting_balance",  self.starting_balance)
+            self.live_baseline_pct = data.get("live_baseline_pct", None)
+            self.balance           = data.get("balance",           self.starting_balance)
             self.total_trades   = data.get("total_trades",   0)
             self.total_pnl      = data.get("total_pnl",      0.0)
             self.total_fees     = data.get("total_fees",     0.0)
@@ -860,18 +879,19 @@ class GridShadowSimulator:
         self.interval: str = overrides.get("interval", config.SPOT_INTERVAL)
         self._lock      = threading.Lock()
 
-        starting = float(overrides.get("spot_balance", config.SPOT_SIMULATION_BALANCE))
-        self._starting_balance = starting
+        starting = float(overrides.get("spot_balance", _live_spot_balance()))
+        self.starting_balance = starting
         self.balance        = starting
         self.total_trades   = 0
         self.total_pnl      = 0.0
         self.total_fees     = 0.0
         self.portfolio_peak = 0.0
         self.started_at: str | None = None
+        self.live_baseline_pct: float | None = None
 
         self._spacing  = float(overrides.get("spot_grid_spacing", 0.015))
         self._n_levels = int(overrides.get("spot_grid_levels", 8))
-        self._slot_eur = starting / self._n_levels
+        self._slot_eur = self.starting_balance / self._n_levels
 
         # grid state: list of slot dicts (serialised to JSON)
         self._grid_center: float | None = None
@@ -890,6 +910,11 @@ class GridShadowSimulator:
         if key == "spot_dca_max":
             return self._n_levels
         return self.overrides.get(key, default)
+
+    def set_live_baseline(self, pct: float):
+        if self.live_baseline_pct is None:
+            self.live_baseline_pct = pct
+            self._save()
 
     def _trailing_stop_level(self, pos) -> float:
         return 0.0  # grid exits at fixed sell targets, no trailing stop
@@ -1040,15 +1065,17 @@ class GridShadowSimulator:
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         with open(self.state_path, "w") as f:
             json.dump({
-                "name":           self.name,
-                "started_at":     self.started_at,
-                "overrides":      self.overrides,
-                "balance":        self.balance,
-                "total_trades":   self.total_trades,
-                "total_pnl":      self.total_pnl,
-                "total_fees":     self.total_fees,
-                "portfolio_peak": self.portfolio_peak,
-                "grid_center":    self._grid_center,
+                "name":             self.name,
+                "started_at":       self.started_at,
+                "overrides":        self.overrides,
+                "starting_balance":  self.starting_balance,
+                "live_baseline_pct": self.live_baseline_pct,
+                "balance":          self.balance,
+                "total_trades":     self.total_trades,
+                "total_pnl":        self.total_pnl,
+                "total_fees":       self.total_fees,
+                "portfolio_peak":   self.portfolio_peak,
+                "grid_center":      self._grid_center,
                 "highest_price":  self._highest_price,
                 "slots":          self._slots,
             }, f, indent=2)
@@ -1059,8 +1086,10 @@ class GridShadowSimulator:
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
-            self.started_at     = data.get("started_at",     None)
-            self.balance        = data.get("balance",        self._starting_balance)
+            self.started_at        = data.get("started_at",        None)
+            self.starting_balance  = data.get("starting_balance",  self.starting_balance)
+            self.live_baseline_pct = data.get("live_baseline_pct", None)
+            self.balance           = data.get("balance",           self.starting_balance)
             self.total_trades   = data.get("total_trades",   0)
             self.total_pnl      = data.get("total_pnl",      0.0)
             self.total_fees     = data.get("total_fees",     0.0)

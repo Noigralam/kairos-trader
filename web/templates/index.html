@@ -350,9 +350,9 @@
       <span id="hdr-spot-trades" style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-spot-since"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
     </div>
-    <!-- Futures live block (only shown when futures mode=live) -->
+    <!-- Futures block (always shown when futures enabled) -->
     <div id="f-header-block" style="display:none;flex-direction:column;align-items:flex-end;gap:2px;">
-      <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--green);">Futures</span>
+      <span id="hdr-fut-label" style="font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:var(--green);">Futures</span>
       <span id="hdr-fut-mode"   style="font-size:10px;font-weight:600;color:var(--muted);">—</span>
       <span id="hdr-fut-port"   style="font-size:12px;color:var(--muted);">—</span>
       <span id="hdr-fut-pnl"    style="font-size:12px;color:var(--muted);">—</span>
@@ -847,6 +847,7 @@
               <th class="sortable" onclick="sortFShRanking('name')">Profile</th>
               <th class="sortable" onclick="sortFShRanking('symbols')">Symbols</th>
               <th class="sortable desc" onclick="sortFShRanking('return_pct')">Return</th>
+              <th class="sortable" onclick="sortFShRanking('vs_main')">vs Main Sim</th>
               <th class="sortable" onclick="sortFShRanking('pnl')">PnL $</th>
               <th class="sortable" onclick="sortFShRanking('funding')">Funding $</th>
               <th class="sortable" onclick="sortFShRanking('trades')">Trades</th>
@@ -854,7 +855,7 @@
             </tr>
           </thead>
           <tbody id="fsh-ranking-body">
-            <tr><td colspan="8" class="empty">Loading…</td></tr>
+            <tr><td colspan="9" class="empty">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -2046,7 +2047,7 @@
       const buyDs  = { label: 'Buy signal',  data: data.buys,         backgroundColor: '#3fb950cc', pointRadius: 5, pointStyle: 'triangle', showLine: false, type: 'scatter' };
       const sellDs = { label: 'Sell signal', data: data.sells,        backgroundColor: '#f85149cc', pointRadius: 5, pointStyle: 'triangle', showLine: false, type: 'scatter',
         pointRotation: 180 };
-      const bkDs   = { label: 'Blocked buy', data: data.blocked_buys, backgroundColor: '#f0883e66', pointRadius: 4, pointStyle: 'circle',   showLine: false, type: 'scatter' };
+      const bkDs   = { label: 'Blocked buy', data: data.blocked_buys, backgroundColor: '#f0883e66', pointRadius: 4, pointStyle: 'triangle', rotation: 180,  showLine: false, type: 'scatter' };
       const abDs   = { label: 'Actual buy',  data: data.actual_buys,  backgroundColor: '#3fb950',  pointRadius: 6, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
       const asDs   = { label: 'Actual sell', data: data.actual_sells, backgroundColor: '#f85149',  pointRadius: 6, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
       const adDs   = { label: 'Actual DCA',  data: data.actual_dcas,  backgroundColor: '#58a6ff',  pointRadius: 5, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
@@ -2090,7 +2091,7 @@
               { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
                 backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
               { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
-                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', rotation: 180, borderColor: '#3fb950', borderWidth: 1 },
               { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
                 backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
@@ -2314,7 +2315,7 @@
               { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
                 backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
               { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
-                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', rotation: 180, borderColor: '#3fb950', borderWidth: 1 },
               { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
                 backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
@@ -2860,14 +2861,14 @@
 
       _fLastStatus = d;
 
-      // Reveal futures tab buttons; put sim in carousel, live in header
+      // Reveal futures tab buttons; always show futures header block
       document.getElementById('futures-tab-btn').style.display = '';
       document.getElementById('futures-shadow-tab-btn').style.display = '';
-      if (d.mode === 'live') {
-        document.getElementById('f-header-block').style.display = 'flex';
-      } else {
-        document.getElementById('f-header-block').style.display = 'none';
-        _injectFuturesIntoCarousel();
+      document.getElementById('f-header-block').style.display = 'flex';
+      const fLabelEl = document.getElementById('hdr-fut-label');
+      if (fLabelEl) {
+        fLabelEl.textContent = d.mode === 'live' ? 'Futures' : 'Futures Sim';
+        fLabelEl.style.color = d.mode === 'live' ? 'var(--green)' : '#bc8cff';
       }
 
       // Update status dot colour
@@ -3050,7 +3051,7 @@
               { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
                 backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
               { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
-                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', rotation: 180, borderColor: '#3fb950', borderWidth: 1 },
               { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
                 backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
@@ -3251,7 +3252,7 @@
 
   function _renderFShRanking() {
     const tbody = document.getElementById('fsh-ranking-body');
-    if (!_fshRankingData.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No data</td></tr>'; return; }
+    if (!_fshRankingData.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">No data</td></tr>'; return; }
     const { col, dir } = _fshRankingSort;
     const sorted = [..._fshRankingData].sort((a, b) => {
       let av = col === 'symbols' ? (a.symbols || []).join(',') : a[col];
@@ -3274,6 +3275,9 @@
       else if (ov.futures_ema_gap != null)           tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
       if (ov.futures_rsi_oversold != null)           tags.push(`RSI<${ov.futures_rsi_oversold}`);
       if (ov.futures_rsi_period != null)             tags.push(`RSI(${ov.futures_rsi_period})`);
+      if (ov.futures_tp_pct != null)                 tags.push(`TP ${(ov.futures_tp_pct*100).toFixed(0)}%`);
+      if (ov.futures_trail_pct != null)              tags.push(`trail ${(ov.futures_trail_pct*100).toFixed(0)}%`);
+      if (ov.futures_dca_drop != null)               tags.push(`DCA @-${(ov.futures_dca_drop*100).toFixed(0)}%`);
       const note  = s.is_main ? 'baseline' : (tags.length ? tags.join(', ') : '—');
       const badge = s.is_main
         ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
@@ -3284,6 +3288,7 @@
         <td>${badge}<span style="${nameStyle}" onclick="switchFShadow('${s.name}')">${s.name}</span></td>
         <td style="color:var(--muted);font-size:12px">${(s.symbols || []).join(', ')}</td>
         <td class="${retCls}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
+        <td style="color:${s.vs_main === null ? 'var(--muted)' : s.vs_main > 0 ? 'var(--green)' : s.vs_main < 0 ? 'var(--red)' : 'var(--muted)'}">${s.vs_main === null ? '—' : (s.vs_main > 0 ? '+' : '') + s.vs_main.toFixed(2) + '%'}</td>
         <td class="${pnlCls}">${s.pnl >= 0 ? '+' : ''}$${Math.abs(s.pnl).toFixed(2)}</td>
         <td style="color:var(--muted)">${fundSign}$${Math.abs(s.funding).toFixed(2)}</td>
         <td>${s.trades}</td>
@@ -3457,7 +3462,7 @@
               { type: 'scatter', label: 'SELL',   data: data.sells.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
                 backgroundColor: '#f85149', pointRadius: 5, pointStyle: 'triangle', rotation: 180 },
               { type: 'scatter', label: 'Blocked (below EMA)', data: data.blocked_buys.map((v,i) => v !== null ? {x: data.labels[i], y: v} : null).filter(Boolean),
-                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', borderColor: '#3fb950', borderWidth: 1 },
+                backgroundColor: '#1a4d2e', pointRadius: 5, pointStyle: 'triangle', rotation: 180, borderColor: '#3fb950', borderWidth: 1 },
               { type: 'scatter', label: 'Executed BUY',  data: data.actual_buys,
                 backgroundColor: '#ff9500', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,

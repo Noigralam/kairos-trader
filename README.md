@@ -305,16 +305,6 @@ Add `--cached` to skip candle syncing and use only the local cache (faster, repr
 
 The futures backtest models isolated margin, 0.05% taker fee, 0.01%/8h funding on open longs, and liquidation at `entry × (1 − 1/lev + 0.5%)`.
 
-## Shadow backfill
-
-To rebuild the full historical record for all shadow profiles (from live spot start date to now) without stopping the bot:
-
-```bash
-.venv/bin/python shadow_backfill.py
-```
-
-The DB runs in WAL mode so the backfill queues writes behind live bot activity — no stop required.
-
 ## Project layout
 
 ```
@@ -347,7 +337,6 @@ backtest.py             — spot backtest + parameter sweep tool
 backtest_futures.py     — futures backtest + parameter sweep tool
 xrp_sweep.py            — XRP/BNB parameter sweep
 dot_sweep.py            — DOT parameter sweep
-shadow_backfill.py      — rebuild full shadow history from live start date
 main.py                 — entry point: starts spot engine, futures engine, web dashboard
 start.sh / stop.sh      — process management
 watchdog.sh             — auto-restart on crash

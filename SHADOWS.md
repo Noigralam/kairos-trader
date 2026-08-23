@@ -1,6 +1,6 @@
 # Shadow Simulation Profiles
 
-All profiles are backfilled to **2026-05-27** (live spot start date) for a 1:1 comparison with live.
+All profiles run in real-time alongside the live bot from their creation date forward.
 
 The live bot currently trades **SOLEUR only** with: RSI(7), buy<30, sell>80, trail=2.5%, floor=1.5%, min\_exit=1%, TP=5%, DCA×3 (1%/1%/75%), EMA gap=0.
 
@@ -252,3 +252,48 @@ All futures shadows use **ETHUSDT** or **SOLUSDT** at 2× leverage unless stated
 **Hypothesis:** Remove the EMA trend filter — enters in downtrends too; shows the cost of the filter vs raw RSI performance.
 
 > EMA_GAP→**0** (trend guard disabled)
+
+---
+
+### LEV3X_ETH / LEV3X_SOL
+
+**Symbols:** ETHUSDT / SOLUSDT  
+**Hypothesis:** 3× leverage on the same signal — direct gain amplifier if signal quality holds. Liquidation on isolated margin is still far enough away at 3× with a 5% TP.
+
+> LEVERAGE=**3**
+
+---
+
+### HIGH_TP
+
+**Symbols:** ETHUSDT + SOLUSDT  
+**Hypothesis:** TP=10%, trail=8%, floor=3% — fewer trades but captures bigger moves. Tests whether riding runs longer beats the current 5% quick-exit cadence.
+
+> TP **10%** · Trail **8%** · Floor **3%**
+
+---
+
+### DCA_SOL
+
+**Symbols:** SOLUSDT  
+**Hypothesis:** Enable DCA at 3% drop from entry, deploying 50% of remaining balance. SOL's volatility makes DCA averaging meaningful — lower entry, better sell price.
+
+> DCA_DROP=**3%** · DCA_SIZE=**50%**
+
+---
+
+### RSI30_SOL
+
+**Symbols:** SOLUSDT  
+**Hypothesis:** RSI<30 instead of <25 — more entry signals. Tests whether extra entries are profitable or noise compared to the stricter threshold.
+
+> RSI_OVERSOLD=**30**
+
+---
+
+### BOTH
+
+**Symbols:** ETHUSDT + SOLUSDT  
+**Hypothesis:** Run both symbols sharing one balance, mirroring what the live futures engine actually does. Per-symbol shadows don't capture the diversification effect.
+
+> All live defaults, both symbols in one pool

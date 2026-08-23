@@ -15,6 +15,8 @@ class FuturesPosition:
     dca_done:          bool  = False
     funding_paid:      float = 0.0   # cumulative funding cost in USDT (positive = paid out)
     opened_at:         float = 0.0   # unix timestamp
+    trail_pct:         float = 0.0   # 0 = use config default
+    floor_pct:         float = 0.0   # 0 = use config default
 
     @property
     def notional(self) -> float:
@@ -24,14 +26,14 @@ class FuturesPosition:
         return self.highest_price if self.highest_price > 0 else self.entry_price
 
     def trailing_stop_level(self) -> float:
-        # floor: minimum exit price that covers both entry+exit fees and the profit floor.
-        # Dividing by (1-fee) converts net-needed to gross exit price (sell fee is a deduction, not addition).
-        fee_plus_floor = self.entry_price * (1 + config.FUTURES_FEE + config.FUTURES_PROFIT_FLOOR_PCT) / (1 - config.FUTURES_FEE)
+        trail = self.trail_pct if self.trail_pct > 0 else config.FUTURES_TRAILING_STOP_PCT
+        floor = self.floor_pct if self.floor_pct > 0 else config.FUTURES_PROFIT_FLOOR_PCT
+        fee_plus_floor = self.entry_price * (1 + config.FUTURES_FEE + floor) / (1 - config.FUTURES_FEE)
         if self.side == "LONG":
-            return max(fee_plus_floor, self.peak() * (1 - config.FUTURES_TRAILING_STOP_PCT))
-        else:  # SHORT: symmetric ceiling below entry
-            ceiling = self.entry_price * (1 - config.FUTURES_FEE - config.FUTURES_PROFIT_FLOOR_PCT) / (1 + config.FUTURES_FEE)
-            return min(ceiling, self.peak() * (1 + config.FUTURES_TRAILING_STOP_PCT))
+            return max(fee_plus_floor, self.peak() * (1 - trail))
+        else:
+            ceiling = self.entry_price * (1 - config.FUTURES_FEE - floor) / (1 + config.FUTURES_FEE)
+            return min(ceiling, self.peak() * (1 + trail))
 
     def liquidation_price(self) -> float:
         """

@@ -21,6 +21,7 @@ SPOT_INVESTED            = float(os.getenv("SPOT_INVESTED", "0"))               
 SPOT_MODE                = os.getenv("SPOT_MODE", "simulation")                   # simulation | live
 SPOT_TRADING_PAIRS       = [p.strip() for p in os.getenv("SPOT_TRADING_PAIRS", "ETHEUR,SOLEUR").split(",") if p.strip()]
 SPOT_SIMULATION_BALANCE  = float(os.getenv("SPOT_SIMULATION_BALANCE", "200.0"))  # virtual EUR balance for simulation
+SPOT_SHADOW_DEFAULT_BALANCE = float(os.getenv("SPOT_SHADOW_DEFAULT_BALANCE", "200.0"))  # starting balance for new shadows when no live state exists
 SPOT_FEE                 = float(os.getenv("SPOT_FEE", "0.001"))                  # 0.1% Binance maker/taker rate
 SPOT_INTERVAL            = os.getenv("SPOT_INTERVAL", "1h")                       # candle interval for signal computation
 SPOT_POSITION_SIZE_PCT   = float(os.getenv("SPOT_POSITION_SIZE_PCT", "0.25"))     # fraction of balance spent per new position
@@ -101,6 +102,7 @@ FUTURES_ENABLED             = os.getenv("FUTURES_ENABLED", "false").lower() == "
 FUTURES_MODE                = os.getenv("FUTURES_MODE", "simulation")                   # simulation | live
 FUTURES_TRADING_PAIRS       = [p.strip() for p in os.getenv("FUTURES_TRADING_PAIRS", "ETHUSDT,SOLUSDT").split(",") if p.strip()]
 FUTURES_SIMULATION_BALANCE  = float(os.getenv("FUTURES_SIMULATION_BALANCE", "200.0"))  # virtual USDT balance for simulation
+FUTURES_SHADOW_DEFAULT_BALANCE = float(os.getenv("FUTURES_SHADOW_DEFAULT_BALANCE", "200.0"))  # starting balance for new shadows when no live futures state exists
 FUTURES_LEVERAGE            = int(os.getenv("FUTURES_LEVERAGE", "2"))                   # notional = margin × leverage
 FUTURES_MARGIN_TYPE         = os.getenv("FUTURES_MARGIN_TYPE", "ISOLATED")              # ISOLATED | CROSSED
 FUTURES_FEE                 = float(os.getenv("FUTURES_FEE", "0.0005"))                 # 0.05% taker; funding adds on top for open longs
@@ -209,6 +211,12 @@ def get_futures_shadow_overrides(name: str) -> dict:
         "LEVERAGE":          ("futures_leverage",         int),
         "POSITION_SIZE_PCT": ("futures_pos_pct",          float),
         "MAX_FUNDING_RATE":  ("futures_max_funding_rate", float),
+        # ── Exit / risk ───────────────────────────────────────────
+        "TAKE_PROFIT_PCT":   ("futures_tp_pct",           float),
+        "TRAILING_STOP_PCT": ("futures_trail_pct",        float),
+        "PROFIT_FLOOR_PCT":  ("futures_floor_pct",        float),
+        "DCA_DROP_PCT":      ("futures_dca_drop",         float),
+        "DCA_SIZE_PCT":      ("futures_dca_pct",          float),
         # ── Entry signal ──────────────────────────────────────────
         "RSI_OVERSOLD":      ("futures_rsi_oversold",     int),
         "RSI_OVERBOUGHT":    ("futures_rsi_overbought",   int),

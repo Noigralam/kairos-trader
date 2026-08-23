@@ -354,6 +354,14 @@ def check_stops(prices: dict):
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
 
+def _live_futures_balance() -> float:
+    try:
+        with open(_LIVE_STATE_PATH) as f:
+            return float(json.load(f).get("balance", config.FUTURES_SHADOW_DEFAULT_BALANCE))
+    except Exception:
+        return config.FUTURES_SHADOW_DEFAULT_BALANCE
+
+
 class FuturesShadowSimulator:
     """Lightweight futures simulation with configurable overrides.
     Receives the same candle ticks as the main engine; never touches the exchange."""
@@ -365,7 +373,7 @@ class FuturesShadowSimulator:
         self.symbols: list[str] = overrides.get("symbols", list(config.FUTURES_TRADING_PAIRS))
         self._lock      = threading.Lock()
 
-        starting = float(overrides.get("futures_balance", config.FUTURES_SIMULATION_BALANCE))
+        starting = float(overrides.get("futures_balance", _live_futures_balance()))
         self._starting      = starting
         self.balance        = starting
         self.positions: dict[str, FuturesPosition] = {}
@@ -375,6 +383,7 @@ class FuturesShadowSimulator:
         self.total_funding  = 0.0
         self.portfolio_peak = 0.0
         self.started_at: str | None = None
+        self.main_baseline_pct: float | None = None
         self._load()
         if self.started_at is None:
             import datetime, zoneinfo
@@ -383,6 +392,11 @@ class FuturesShadowSimulator:
 
     def _o(self, key, default):
         return self.overrides.get(key, default)
+
+    def set_main_baseline(self, pct: float):
+        if self.main_baseline_pct is None:
+            self.main_baseline_pct = pct
+            self._save()
 
     @property
     def _db_mode(self) -> str:
@@ -401,13 +415,18 @@ class FuturesShadowSimulator:
         if amount <= 0 or margin < 1:
             return
         fee      = notional * FEE
+        tp_pct    = self._o("futures_tp_pct",    config.FUTURES_TAKE_PROFIT_PCT)
+        trail_pct = self._o("futures_trail_pct", 0.0)
+        floor_pct = self._o("futures_floor_pct", 0.0)
         pos = FuturesPosition(
             symbol=symbol, side="LONG",
             entry_price=price, amount=amount, margin=margin,
             leverage=leverage,
-            take_profit_price=price * (1 + config.FUTURES_TAKE_PROFIT_PCT),
+            take_profit_price=price * (1 + tp_pct),
             highest_price=price,
             opened_at=_time.time(),
+            trail_pct=trail_pct,
+            floor_pct=floor_pct,
         )
         self.positions[symbol]  = pos
         self.balance           -= margin + fee
@@ -419,7 +438,7 @@ class FuturesShadowSimulator:
         pos = self.positions.get(symbol)
         if pos is None or pos.dca_done:
             return
-        margin   = min(self.balance * config.FUTURES_DCA_SIZE_PCT, self.balance)
+        margin   = min(self.balance * self._o("futures_dca_pct", config.FUTURES_DCA_SIZE_PCT), self.balance)
         if margin < 1:
             return
         leverage = self._o("futures_leverage", config.FUTURES_LEVERAGE)
@@ -464,7 +483,7 @@ class FuturesShadowSimulator:
                     self._close(symbol, price, "trailing_stop")
                 else:
                     drop = (pos.entry_price - price) / pos.entry_price
-                    if not pos.dca_done and drop >= config.FUTURES_DCA_DROP_PCT:
+                    if not pos.dca_done and drop >= self._o("futures_dca_drop", config.FUTURES_DCA_DROP_PCT):
                         self._dca(symbol, price)
             else:
                 result = compute_signal(
@@ -526,10 +545,12 @@ class FuturesShadowSimulator:
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
         with open(self.state_path, "w") as f:
             json.dump({
-                "name":           self.name,
-                "started_at":     self.started_at,
-                "overrides":      self.overrides,
-                "balance":        self.balance,
+                "name":             self.name,
+                "started_at":       self.started_at,
+                "overrides":        self.overrides,
+                "starting_balance":   self._starting,
+                "main_baseline_pct": self.main_baseline_pct,
+                "balance":          self.balance,
                 "total_trades":   self.total_trades,
                 "total_pnl":      self.total_pnl,
                 "total_fees":     self.total_fees,
@@ -548,6 +569,8 @@ class FuturesShadowSimulator:
                         "dca_done":          p.dca_done,
                         "funding_paid":      p.funding_paid,
                         "opened_at":         p.opened_at,
+                        "trail_pct":         p.trail_pct,
+                        "floor_pct":         p.floor_pct,
                     }
                     for sym, p in self.positions.items()
                 },
@@ -559,8 +582,10 @@ class FuturesShadowSimulator:
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
-            self.started_at     = data.get("started_at",     None)
-            self.balance        = data.get("balance",        self._starting)
+            self.started_at        = data.get("started_at",        None)
+            self._starting         = data.get("starting_balance",  self._starting)
+            self.main_baseline_pct = data.get("main_baseline_pct", None)
+            self.balance           = data.get("balance",           self._starting)
             self.total_trades   = data.get("total_trades",   0)
             self.total_pnl      = data.get("total_pnl",      0.0)
             self.total_fees     = data.get("total_fees",     0.0)
@@ -568,6 +593,8 @@ class FuturesShadowSimulator:
             self.portfolio_peak = data.get("portfolio_peak", 0.0)
             self.positions = {}
             for sym, d in data.get("positions", {}).items():
+                d.setdefault("trail_pct", 0.0)
+                d.setdefault("floor_pct", 0.0)
                 self.positions[sym] = FuturesPosition(**d)
         except Exception:
             pass
