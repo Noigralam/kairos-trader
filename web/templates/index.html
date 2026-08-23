@@ -1540,11 +1540,10 @@
         <span id="fsh-hdr-tr-${n}${sfx}"     style="font-size:12px;color:var(--muted);">—</span>
         <span id="fsh-hdr-since-${n}${sfx}"  style="font-size:11px;color:var(--muted);opacity:0.6;">—</span>
       </div>`;
-    // Insert originals just before F-copy block (end of first half); copies at very end
-    const fCopyPort = document.getElementById('hdr-fut-port-copy');
-    const fCopyBlock = fCopyPort ? fCopyPort.parentElement : null;
-    if (fCopyBlock) fCopyBlock.insertAdjacentHTML('beforebegin', names.map(n => makeFSh(n, '')).join(''));
-    else            track.insertAdjacentHTML('beforeend',         names.map(n => makeFSh(n, '')).join(''));
+    // Insert originals at end of first half (after spot originals, before spot copies); copies at very end
+    const midpoint = track.children[_shNames.length];
+    if (midpoint) midpoint.insertAdjacentHTML('beforebegin', names.map(n => makeFSh(n, '')).join(''));
+    else          track.insertAdjacentHTML('beforeend',      names.map(n => makeFSh(n, '')).join(''));
     track.insertAdjacentHTML('beforeend', names.map(n => makeFSh(n, '-copy')).join(''));
   }
 
@@ -2867,8 +2866,8 @@
       document.getElementById('f-header-block').style.display = 'flex';
       const fLabelEl = document.getElementById('hdr-fut-label');
       if (fLabelEl) {
-        fLabelEl.textContent = d.mode === 'live' ? 'Futures' : 'Futures Sim';
-        fLabelEl.style.color = d.mode === 'live' ? 'var(--green)' : '#bc8cff';
+        fLabelEl.textContent = 'Futures';
+        fLabelEl.style.color = 'var(--green)';
       }
 
       // Update status dot colour
