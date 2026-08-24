@@ -244,3 +244,10 @@ def get_futures_shadow_overrides(name: str) -> dict:
 # ---------------------------------------------------------------------------
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")  # 0.0.0.0 to expose on LAN
 WEB_PORT = int(os.getenv("WEB_PORT", "8888"))
+
+# ---------------------------------------------------------------------------
+# Tax
+# ---------------------------------------------------------------------------
+TAX_RATE_LOW       = float(os.getenv("TAX_RATE_LOW",  "0.30"))   # rate on gains up to TAX_BRACKET
+TAX_BRACKET        = float(os.getenv("TAX_BRACKET",   "30000"))   # EUR threshold between low and high rate
+TAX_RATE_HIGH      = float(os.getenv("TAX_RATE_HIGH", "0.34"))   # rate on gains above TAX_BRACKET

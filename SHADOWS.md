@@ -181,6 +181,15 @@ The live bot currently trades **SOLEUR only** with: RSI(7), buy<30, sell>80, tra
 
 ---
 
+### NEAR2
+
+**Pairs:** NEAREUR | **Balance:** €200  
+**Hypothesis:** Tuned NEAR params from backtest sweep — RSI(7) with 2% floor and 3% TP outperformed global defaults significantly (+€272 vs +€55 over 730d). Tests whether the optimised setup holds up in live conditions.
+
+> RSI(7) · buy<30 · sell>75 · Trail **2.5%** · Floor **2%** · Min exit **1%** · TP **3%** · DCA×**3**
+
+---
+
 ### XRP
 
 **Pairs:** XRPEUR | **Balance:** €200  

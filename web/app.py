@@ -94,11 +94,17 @@ def api_trades_csv():
                     headers={"Content-Disposition": "attachment; filename=spot_trades.csv"})
 
 
+def _fi_tax(net_pnl: float) -> float:
+    if net_pnl <= 0:
+        return 0.0
+    return min(net_pnl, config.TAX_BRACKET) * config.TAX_RATE_LOW + max(0, net_pnl - config.TAX_BRACKET) * config.TAX_RATE_HIGH
+
+
 @app.route("/api/tax")
 def api_tax():
     rows = db.get_tax_summary()
     return jsonify([
-        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3]}
+        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3], "tax": round(_fi_tax(r[3]), 2)}
         for r in rows
     ])
 
@@ -107,7 +113,7 @@ def api_tax():
 def api_futures_tax():
     rows = db.get_tax_summary(mode="futures_live")
     return jsonify([
-        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3]}
+        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3], "tax": round(_fi_tax(r[3]), 2)}
         for r in rows
     ])
 

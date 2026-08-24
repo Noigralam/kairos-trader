@@ -512,10 +512,10 @@
       <div class="tbl-wrap">
         <table>
           <thead>
-            <tr><th>Year</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net P&L (EUR)</th></tr>
+            <tr><th>Year</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net P&L (EUR)</th><th>Tax due (EUR)</th></tr>
           </thead>
           <tbody id="tax-body">
-            <tr><td colspan="4" class="empty">No data</td></tr>
+            <tr><td colspan="5" class="empty">No data</td></tr>
           </tbody>
         </table>
       </div>
@@ -664,10 +664,10 @@
       <div class="tbl-wrap">
         <table>
           <thead>
-            <tr><th>Year</th><th>Gains (USDT)</th><th>Losses (USDT)</th><th>Net P&L (USDT)</th></tr>
+            <tr><th>Year</th><th>Gains (USDT)</th><th>Losses (USDT)</th><th>Net P&L (USDT)</th><th>Tax due (EUR)</th></tr>
           </thead>
           <tbody id="f-tax-body">
-            <tr><td colspan="4" class="empty">No data</td></tr>
+            <tr><td colspan="5" class="empty">No data</td></tr>
           </tbody>
         </table>
       </div>
@@ -1380,6 +1380,7 @@
           <td class="pos">${fmt(r.gains)}</td>
           <td class="neg">${fmt(r.losses)}</td>
           <td>${fmtPnl(r.net_pnl)}</td>
+          <td class="${r.tax > 0 ? 'neg' : ''}">${r.tax > 0 ? '-€' + fmt(r.tax) : '—'}</td>
         </tr>`).join('');
       }
 
@@ -2834,6 +2835,7 @@
           <td class="pos">+${fmtUsdt(r.gains)}</td>
           <td class="neg">-${fmtUsdt(r.losses)}</td>
           <td class="${r.net_pnl >= 0 ? 'pos' : 'neg'}">${r.net_pnl >= 0 ? '+' : ''}${fmtUsdt(r.net_pnl)}</td>
+          <td class="${r.tax > 0 ? 'neg' : ''}">${r.tax > 0 ? '-€' + fmt(r.tax) : '—'}</td>
         </tr>`).join('');
       }
     } catch(e) { console.error(e); }

@@ -238,6 +238,9 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 | `DISCORD_GUILD_ID` | Guild ID for instant slash command registration |
 | `WEB_HOST` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
 | `WEB_PORT` | Dashboard port (default 8888) |
+| `TAX_RATE_LOW` | Capital gains rate on net P&L up to `TAX_BRACKET` (default 0.30) |
+| `TAX_BRACKET` | EUR threshold between low and high tax rate (default 30000) |
+| `TAX_RATE_HIGH` | Capital gains rate on net P&L above `TAX_BRACKET` (default 0.34) |
 
 ## Discord
 
