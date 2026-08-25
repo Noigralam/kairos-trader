@@ -35,6 +35,7 @@ data/futures_state_live.json
 data/futures_state_shadow_*.json
 data/candles.db
 data/kairos.db
+data/pin_lockouts.json
 
 # IDE
 .vscode/
