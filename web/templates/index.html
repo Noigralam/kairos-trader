@@ -1323,7 +1323,7 @@
               <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
               <div style="display:flex;gap:6px">
                 ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${pair} position amount from Binance?')) controlSyncPosition('${pair}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
-                <button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button>
+                <button class="override danger" onclick="_requirePinThen(() => { if(confirm('Close ${pair} position at market price?')) control('override','${pair}') })">Close</button>
               </div>
             </div>
           </div>`;
