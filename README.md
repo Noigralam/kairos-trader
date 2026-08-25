@@ -51,6 +51,7 @@ First candle tick fires within 15 minutes. When you're happy with simulation res
 
 - Python 3.10+
 - `flask`, `python-binance`, `pandas`, `python-dotenv`, `requests`, `discord.py`
+- Linux or macOS — the shell scripts and process management are Unix-only. On Windows, use **WSL2**.
 
 ## Documentation
 
