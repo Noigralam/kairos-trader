@@ -1,4 +1,5 @@
 import math
+import os
 import sqlite3
 import datetime
 import zoneinfo
@@ -1617,15 +1618,53 @@ def api_futures_status():
     })
 
 
-def _check_pin() -> bool:
+import json as _json
+_PIN_MAX_ATTEMPTS  = 5
+_PIN_FAILURES_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pin_lockouts.json")
+
+
+def _load_lockouts() -> dict:
+    try:
+        with open(_PIN_FAILURES_PATH) as f:
+            return _json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_lockouts(data: dict):
+    os.makedirs(os.path.dirname(_PIN_FAILURES_PATH), exist_ok=True)
+    with open(_PIN_FAILURES_PATH, "w") as f:
+        _json.dump(data, f)
+
+
+def _check_pin() -> tuple[bool, bool]:
+    """Returns (allowed, rate_limited). rate_limited = permanently locked out."""
     if not config.DASHBOARD_PIN:
-        return True
-    return request.headers.get("X-Dashboard-Pin", "") == config.DASHBOARD_PIN
+        return True, False
+    ip       = request.remote_addr or "unknown"
+    lockouts = _load_lockouts()
+    entry    = lockouts.get(ip, {"attempts": 0, "locked": False})
+    if entry.get("locked"):
+        return False, True
+    correct = request.headers.get("X-Dashboard-Pin", "") == config.DASHBOARD_PIN
+    if not correct:
+        entry["attempts"] = entry.get("attempts", 0) + 1
+        if entry["attempts"] >= _PIN_MAX_ATTEMPTS:
+            entry["locked"] = True
+        lockouts[ip] = entry
+        _save_lockouts(lockouts)
+    else:
+        lockouts.pop(ip, None)  # clear on success
+        _save_lockouts(lockouts)
+    return correct, entry.get("locked", False)
 
 
 @app.route("/api/futures/control", methods=["POST"])
 def api_futures_control():
-    if not _check_pin():
+    ok, limited = _check_pin()
+    if limited:
+        return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
+    if not ok:
         return jsonify({"error": "unauthorized"}), 403
     if not config.FUTURES_ENABLED:
         return jsonify({"error": "futures not enabled"}), 400
@@ -1651,7 +1690,10 @@ def api_futures_control():
 
 @app.route("/api/control", methods=["POST"])
 def api_control():
-    if not _check_pin():
+    ok, limited = _check_pin()
+    if limited:
+        return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
+    if not ok:
         return jsonify({"error": "unauthorized"}), 403
     data = request.get_json(force=True)
     action = data.get("action")

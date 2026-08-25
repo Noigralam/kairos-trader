@@ -1114,6 +1114,7 @@
   function openPinModal(cb) {
     _pendingUnlockCb = cb || null;
     document.getElementById('pin-input').value = '';
+    document.getElementById('pin-input').disabled = false;
     document.getElementById('pin-error').style.display = 'none';
     document.getElementById('pin-modal').style.display = 'flex';
     setTimeout(() => document.getElementById('pin-input').focus(), 50);
@@ -1131,7 +1132,14 @@
       headers: { 'Content-Type': 'application/json', 'X-Dashboard-Pin': pin },
       body: JSON.stringify({ action: 'ping' }),
     });
+    if (res.status === 429) {
+      document.getElementById('pin-error').textContent = 'Too many attempts — IP permanently locked. Run unlock_pin.sh on the server.';
+      document.getElementById('pin-error').style.display = '';
+      document.getElementById('pin-input').disabled = true;
+      return;
+    }
     if (res.status === 403) {
+      document.getElementById('pin-error').textContent = 'Incorrect PIN';
       document.getElementById('pin-error').style.display = '';
       document.getElementById('pin-input').value = '';
       document.getElementById('pin-input').focus();
