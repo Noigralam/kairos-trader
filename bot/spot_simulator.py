@@ -528,9 +528,19 @@ def _config_fingerprint(overrides: dict) -> str:
 
 
 def _live_spot_balance() -> float:
+    """Portfolio value of the live spot engine: cash + open positions at current market price."""
     try:
         with open(_LIVE_STATE_PATH) as f:
-            return float(json.load(f).get("balance", config.SPOT_SHADOW_DEFAULT_BALANCE))
+            data = json.load(f)
+        cash = float(data.get("balance", config.SPOT_SHADOW_DEFAULT_BALANCE))
+        held = 0.0
+        for pair, pos in data.get("positions", {}).items():
+            try:
+                price = get_price(pair)
+                held += float(pos.get("amount", 0)) * price
+            except Exception:
+                held += float(pos.get("value_eur", 0))
+        return cash + held
     except Exception:
         return config.SPOT_SHADOW_DEFAULT_BALANCE
 
