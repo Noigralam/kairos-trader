@@ -162,13 +162,24 @@ See `.env.example` for the full annotated list. Key settings:
 
 Current per-pair overrides in use:
 ```
+# SOL — fast, volatile pair; short RSI reacts quicker to momentum swings
 SPOT_RSI_PERIOD_SOLEUR=7
+# SOL — high overbought threshold; SOL tends to stay elevated before reversing
 SPOT_RSI_OVERBOUGHT_SOLEUR=80
+# SOL — lower exit profit floor; SOL moves fast so a small gain beats a miss
 SPOT_MIN_EXIT_PROFIT_PCT_SOLEUR=0.01
+
+# ETH — short RSI for faster signal response on a lower-volatility pair
 SPOT_RSI_PERIOD_ETHEUR=7
+# ETH — lower overbought threshold; ETH reverses earlier than SOL
 SPOT_RSI_OVERBOUGHT_ETHEUR=65
+
+# ADA — very short RSI; ADA oscillates rapidly and needs an aggressive period
 SPOT_RSI_PERIOD_ADAEUR=5
+# ADA — slightly relaxed oversold threshold; ADA rarely dips to the default 30
 SPOT_RSI_OVERSOLD_ADAEUR=33
+# ADA — EMA gap filter disabled; ADA often trades below EMA200 for extended periods
+SPOT_EMA_GAP_PCT_ADAEUR=0
 ```
 
 When `SPOT_DCA_MAX` is 0 for a pair, the bot goes all-in on entry. The last DCA tranche always uses 100% of remaining balance so no capital sits idle.
@@ -198,7 +209,6 @@ Enable with `SPOT_SHADOW_PROFILES=PROFILE1,PROFILE2,...`. Each profile supports 
 | `VOLUME_FILTER_PERIOD` / `VOLUME_FILTER_MULT` | Volume filter |
 | `TYPE=grid` | Grid strategy instead of RSI mean-reversion |
 
-See `SHADOWS.md` for the full list of active profiles and their hypotheses.
 
 ### Futures
 

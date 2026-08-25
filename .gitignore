@@ -48,5 +48,7 @@ data/pin_lockouts.json
 .DS_Store
 Thumbs.db
 
+SHADOWS.md
+
 # Claude Code
 .claude/
