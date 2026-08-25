@@ -244,6 +244,7 @@ def get_futures_shadow_overrides(name: str) -> dict:
 # ---------------------------------------------------------------------------
 WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")  # 0.0.0.0 to expose on LAN
 WEB_PORT = int(os.getenv("WEB_PORT", "8888"))
+DASHBOARD_PIN = os.getenv("DASHBOARD_PIN", "")  # if set, required to use control endpoints
 
 # ---------------------------------------------------------------------------
 # Tax

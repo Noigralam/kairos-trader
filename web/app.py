@@ -23,7 +23,7 @@ def favicon():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", config=config)
 
 
 @app.route("/api/status")
@@ -1617,8 +1617,16 @@ def api_futures_status():
     })
 
 
+def _check_pin() -> bool:
+    if not config.DASHBOARD_PIN:
+        return True
+    return request.headers.get("X-Dashboard-Pin", "") == config.DASHBOARD_PIN
+
+
 @app.route("/api/futures/control", methods=["POST"])
 def api_futures_control():
+    if not _check_pin():
+        return jsonify({"error": "unauthorized"}), 403
     if not config.FUTURES_ENABLED:
         return jsonify({"error": "futures not enabled"}), 400
     from bot import futures_engine
@@ -1643,10 +1651,14 @@ def api_futures_control():
 
 @app.route("/api/control", methods=["POST"])
 def api_control():
+    if not _check_pin():
+        return jsonify({"error": "unauthorized"}), 403
     data = request.get_json(force=True)
     action = data.get("action")
     pair = data.get("pair")
 
+    if action == "ping":
+        return jsonify({"ok": True})
     if action == "start":
         engine.start()
     elif action == "pause":

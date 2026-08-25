@@ -371,6 +371,21 @@
   ⚠ Binance API unreachable — <span id="api-error-msg"></span>
 </div>
 
+<!-- PIN modal -->
+<div id="pin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:28px 32px;min-width:260px;text-align:center;">
+    <div style="font-size:15px;font-weight:600;margin-bottom:16px;">🔒 Enter PIN to unlock controls</div>
+    <input id="pin-input" type="password" inputmode="numeric" maxlength="16"
+      style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:16px;text-align:center;letter-spacing:4px;"
+      placeholder="••••" onkeydown="if(event.key==='Enter')submitPin()"/>
+    <div id="pin-error" style="color:var(--red);font-size:12px;margin-top:8px;display:none;">Incorrect PIN</div>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:center;">
+      <button class="primary" onclick="submitPin()">Unlock</button>
+      <button onclick="closePinModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="container">
 
   <!-- ═══════════════════════════ SPOT TAB ══════════════════════════════ -->
@@ -409,8 +424,8 @@
       </div>
     </div>
 
-    <details class="bot-controls">
-      <summary>Controls</summary>
+    <details class="bot-controls" id="spot-controls-details">
+      <summary onclick="return requireUnlock(event, 'spot-controls-details')">Controls 🔒</summary>
       <div class="controls">
         <button class="primary" onclick="control('start')">▶ Start</button>
         <button class="warning" onclick="control('pause')">⏸ Pause</button>
@@ -555,8 +570,8 @@
       <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
     </div>
 
-    <details class="bot-controls">
-      <summary>Controls</summary>
+    <details class="bot-controls" id="futures-controls-details">
+      <summary onclick="return requireUnlock(event, 'futures-controls-details')">Controls 🔒</summary>
       <div class="controls">
         <button class="primary" onclick="futuresControl('start')">▶ Start</button>
         <button class="warning" onclick="futuresControl('pause')">⏸ Pause</button>
@@ -1076,31 +1091,105 @@
   function _syncFuturesHeader() {
   }
 
+  // --- PIN lock ---
+  const _pinEnabled = {{ 'true' if config.DASHBOARD_PIN else 'false' }};
+  let _pinUnlocked  = sessionStorage.getItem('kairos_pin_ok') === '1';
+  let _pendingUnlockCb = null;
+  let _pendingUnlockTarget = null;
+
+  function _pinHeaders() {
+    const h = { 'Content-Type': 'application/json' };
+    if (_pinEnabled) h['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+    return h;
+  }
+
+  function requireUnlock(evt, detailsId) {
+    if (!_pinEnabled || _pinUnlocked) return true;  // allow normal toggle
+    evt.preventDefault();
+    evt.stopPropagation();
+    _pendingUnlockTarget = detailsId;
+    openPinModal();
+    return false;
+  }
+
+  function openPinModal(cb) {
+    _pendingUnlockCb = cb || null;
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-error').style.display = 'none';
+    const m = document.getElementById('pin-modal');
+    m.style.display = 'flex';
+    setTimeout(() => document.getElementById('pin-input').focus(), 50);
+  }
+
+  function closePinModal() {
+    document.getElementById('pin-modal').style.display = 'none';
+    _pendingUnlockCb = null;
+    _pendingUnlockTarget = null;
+  }
+
+  async function submitPin() {
+    const pin = document.getElementById('pin-input').value;
+    // Verify against server
+    const res = await fetch('/api/control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Dashboard-Pin': pin },
+      body: JSON.stringify({ action: 'ping' }),
+    });
+    if (res.status === 403) {
+      document.getElementById('pin-error').style.display = '';
+      document.getElementById('pin-input').value = '';
+      document.getElementById('pin-input').focus();
+      return;
+    }
+    // Correct
+    sessionStorage.setItem('kairos_pin', pin);
+    sessionStorage.setItem('kairos_pin_ok', '1');
+    _pinUnlocked = true;
+    closePinModal();
+    // Update lock labels
+    document.querySelectorAll('.bot-controls summary').forEach(s => {
+      s.textContent = s.textContent.replace(' 🔒', ' 🔓');
+    });
+    // Open the details element that triggered the unlock
+    if (_pendingUnlockTarget) {
+      const el = document.getElementById(_pendingUnlockTarget);
+      if (el) el.open = true;
+    }
+    if (_pendingUnlockCb) _pendingUnlockCb();
+  }
+
+  function _requirePinThen(cb) {
+    if (!_pinEnabled || _pinUnlocked) { cb(); return; }
+    openPinModal(cb);
+  }
+
   async function control(action, pair) {
     const body = { action };
     if (pair) body.pair = pair;
     await fetch('/api/control', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _pinHeaders(),
       body: JSON.stringify(body),
     });
     await refresh();
   }
 
   async function controlBuy(pair, size_pct) {
-    await fetch('/api/control', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'manual_buy', pair, size_pct }),
+    _requirePinThen(async () => {
+      await fetch('/api/control', {
+        method: 'POST',
+        headers: _pinHeaders(),
+        body: JSON.stringify({ action: 'manual_buy', pair, size_pct }),
+      });
+      await refresh();
+      await refreshSignals();
     });
-    await refresh();
-    await refreshSignals();
   }
 
   async function controlSyncPosition(pair) {
     const res = await fetch('/api/control', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _pinHeaders(),
       body: JSON.stringify({ action: 'sync_position', pair }),
     });
     const data = await res.json();
@@ -2858,14 +2947,16 @@
   }
 
   async function futuresControl(action, symbol) {
-    const body = { action };
-    if (symbol) body.symbol = symbol;
-    await fetch('/api/futures/control', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    _requirePinThen(async () => {
+      const body = { action };
+      if (symbol) body.symbol = symbol;
+      await fetch('/api/futures/control', {
+        method: 'POST',
+        headers: _pinHeaders(),
+        body: JSON.stringify(body),
+      });
+      await refreshFutures();
     });
-    await refreshFutures();
   }
 
   let _fLastStatus = null;
