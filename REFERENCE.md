@@ -349,8 +349,8 @@ web/
     index.html          — single-page dashboard (Spot / Futures tabs)
 data/
   trades.db             — trade history, balance history, candle cache (WAL)
-  spot_state_*.json     — spot engine state per mode
-  futures_state_*.json  — futures engine state per mode
+  spot_state_*.json     — spot engine state (* = simulation or live; one active at a time)
+  futures_state_*.json  — futures engine state (* = simulation or live; one active at a time)
   spot_state_shadow_*.json    — per-shadow spot state
   futures_state_shadow_*.json — per-shadow futures state
 backtest.py             — spot backtest + parameter sweep tool
