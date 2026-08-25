@@ -581,6 +581,7 @@
         <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
       </div>
     </details>
+    <div id="f-live-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:-6px;"></div>
 
     <section>
       <h2>Performance</h2>
@@ -1527,8 +1528,9 @@
         if (days)  parts.push(`${days}d`);
         if (hours) parts.push(`${hours}h`);
         parts.push(`${String(mins).padStart(2,'0')}m`);
+        const sinceDate = since.toLocaleDateString('fi-FI', {day:'numeric', month:'short'});
         document.getElementById('live-since').textContent =
-          `Live for: ${parts.join(' ')}`;
+          `${parts.join(' ')} · since ${sinceDate}`;
       }
 
     } catch (e) {
@@ -1936,8 +1938,8 @@
         if (days)  parts.push(`${days}d`);
         if (hours) parts.push(`${hours}h`);
         parts.push(`${String(mins).padStart(2,'0')}m`);
-        const dateStr = since.toLocaleDateString('fi-FI', { day:'numeric', month:'short', year:'numeric' });
-        sinceEl.textContent = `Running for: ${parts.join(' ')} · since ${dateStr}`;
+        const dateStr = since.toLocaleDateString('fi-FI', {day:'numeric', month:'short'});
+        sinceEl.textContent = `${parts.join(' ')} · since ${dateStr}`;
       } else {
         sinceEl.textContent = '';
       }
@@ -3028,6 +3030,21 @@
         if (fhSinceEl && d.started_at) fhSinceEl.textContent = _fmtDuration(d.started_at);
       }
 
+      if (d.started_at) {
+        const since = new Date(d.started_at);
+        const diff  = Math.floor((Date.now() - since) / 1000);
+        const days  = Math.floor(diff / 86400);
+        const hours = Math.floor((diff % 86400) / 3600);
+        const mins  = Math.floor((diff % 3600) / 60);
+        const parts = [];
+        if (days)  parts.push(`${days}d`);
+        if (hours) parts.push(`${hours}h`);
+        parts.push(`${String(mins).padStart(2,'0')}m`);
+        const sinceDate = since.toLocaleDateString('fi-FI', {day:'numeric', month:'short'});
+        document.getElementById('f-live-since').textContent =
+          `${parts.join(' ')} · since ${sinceDate}`;
+      }
+
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
       document.getElementById('f-fees').innerHTML      = fmtPnlUsdt(-feesAndFunding);
       document.getElementById('last-tick').textContent = 'Last tick @ ' + (d.last_tick || '—');
@@ -3699,7 +3716,21 @@
       const fEl = document.getElementById('fsh-funding');
       fEl.innerHTML = `<span class="${funding <= 0 ? 'pos' : 'neg'}">${funding <= 0 ? '' : '+'}$${Math.abs(funding).toFixed(2)}</span>`;
 
-      document.getElementById('fsh-since').textContent = d.started_at ? `Since ${d.started_at.slice(0, 16).replace('T', ' ')}` : '';
+      if (d.started_at) {
+        const fshSince = new Date(d.started_at);
+        const fshDiff  = Math.floor((Date.now() - fshSince) / 1000);
+        const fshDays  = Math.floor(fshDiff / 86400);
+        const fshHours = Math.floor((fshDiff % 86400) / 3600);
+        const fshMins  = Math.floor((fshDiff % 3600) / 60);
+        const fshParts = [];
+        if (fshDays)  fshParts.push(`${fshDays}d`);
+        if (fshHours) fshParts.push(`${fshHours}h`);
+        fshParts.push(`${String(fshMins).padStart(2,'0')}m`);
+        const fshDate = fshSince.toLocaleDateString('fi-FI', {day:'numeric', month:'short'});
+        document.getElementById('fsh-since').textContent = `${fshParts.join(' ')} · since ${fshDate}`;
+      } else {
+        document.getElementById('fsh-since').textContent = '';
+      }
 
       const csvBtn = document.getElementById('fsh-csv-btn');
       if (csvBtn) csvBtn.href = `/api/futures/shadow/${_activeFShadow}/trades/csv`;
