@@ -355,8 +355,7 @@ data/
   futures_state_shadow_*.json — per-shadow futures state
 backtest.py             — spot backtest + parameter sweep tool
 backtest_futures.py     — futures backtest + parameter sweep tool
-xrp_sweep.py            — XRP/BNB parameter sweep
-dot_sweep.py            — DOT parameter sweep
+pair_sweep.py           — full parameter sweep for any single EUR pair
 main.py                 — entry point: starts spot engine, futures engine, web dashboard
 start.sh / stop.sh      — process management
 watchdog.sh             — auto-restart on crash
