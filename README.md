@@ -17,7 +17,7 @@ Simulation mode requires no API keys — paper trade first, switch to live when 
 - **Fast stop-check loop** — re-checks stops every 30s between 15m candles
 - **Web dashboard** — live P&L, open positions, price charts, balance history, tax estimate
 - **Discord integration** — trade alerts, tick embeds, slash commands
-- **Backtest + parameter sweep** — replay historical candles, sweep RSI/trail/DCA params, rank shadow profiles
+- **Backtest + parameter sweep** — replay historical candles for spot, futures, and grid strategies; sweep RSI/trail/DCA/leverage params; pair-specific sweeps; rank shadow profiles
 
 ## Quick start
 
