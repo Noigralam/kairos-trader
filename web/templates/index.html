@@ -77,6 +77,7 @@
     details.bot-controls {
       margin-bottom: 16px;
     }
+    .pin-gated { display: none; }
     details.bot-controls summary {
       display: inline-flex; align-items: center; gap: 5px;
       font-size: 12px; color: var(--muted); cursor: pointer;
@@ -320,6 +321,7 @@
       </svg>
     </h1>
     <span id="version-badge" style="font-size:10px;color:var(--muted);opacity:0.5;margin-top:4px;align-self:flex-end;">v—</span>
+    {% if config.DASHBOARD_PIN %}<button id="lock-btn" onclick="if(_pinUnlocked){sessionStorage.removeItem('kairos_pin_ok');sessionStorage.removeItem('kairos_pin');_pinUnlocked=false;_applyLockState();}else{openPinModal();}" style="background:none;border:none;cursor:pointer;font-size:16px;padding:0;margin-top:2px;align-self:flex-end;" title="Lock/unlock controls">🔒</button>{% endif %}
     <div class="tab-bar" style="margin-bottom:0">
       <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
         <span class="tab-dot" style="background:var(--blue)"></span>Spot
@@ -424,8 +426,8 @@
       </div>
     </div>
 
-    <details class="bot-controls" id="spot-controls-details">
-      <summary onclick="return requireUnlock(event, 'spot-controls-details')">Controls 🔒</summary>
+    <details class="bot-controls pin-gated" id="spot-controls-details">
+      <summary>Controls</summary>
       <div class="controls">
         <button class="primary" onclick="control('start')">▶ Start</button>
         <button class="warning" onclick="control('pause')">⏸ Pause</button>
@@ -570,8 +572,8 @@
       <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
     </div>
 
-    <details class="bot-controls" id="futures-controls-details">
-      <summary onclick="return requireUnlock(event, 'futures-controls-details')">Controls 🔒</summary>
+    <details class="bot-controls pin-gated" id="futures-controls-details">
+      <summary>Controls</summary>
       <div class="controls">
         <button class="primary" onclick="futuresControl('start')">▶ Start</button>
         <button class="warning" onclick="futuresControl('pause')">⏸ Pause</button>
@@ -1093,9 +1095,8 @@
 
   // --- PIN lock ---
   const _pinEnabled = {{ 'true' if config.DASHBOARD_PIN else 'false' }};
-  let _pinUnlocked  = sessionStorage.getItem('kairos_pin_ok') === '1';
+  let _pinUnlocked  = !_pinEnabled || sessionStorage.getItem('kairos_pin_ok') === '1';
   let _pendingUnlockCb = null;
-  let _pendingUnlockTarget = null;
 
   function _pinHeaders() {
     const h = { 'Content-Type': 'application/json' };
@@ -1103,33 +1104,28 @@
     return h;
   }
 
-  function requireUnlock(evt, detailsId) {
-    if (!_pinEnabled || _pinUnlocked) return true;  // allow normal toggle
-    evt.preventDefault();
-    evt.stopPropagation();
-    _pendingUnlockTarget = detailsId;
-    openPinModal();
-    return false;
+  function _applyLockState() {
+    const gated = document.querySelectorAll('.pin-gated');
+    gated.forEach(el => el.style.display = _pinUnlocked ? '' : 'none');
+    const lockBtn = document.getElementById('lock-btn');
+    if (lockBtn) lockBtn.textContent = _pinUnlocked ? '🔓' : '🔒';
   }
 
   function openPinModal(cb) {
     _pendingUnlockCb = cb || null;
     document.getElementById('pin-input').value = '';
     document.getElementById('pin-error').style.display = 'none';
-    const m = document.getElementById('pin-modal');
-    m.style.display = 'flex';
+    document.getElementById('pin-modal').style.display = 'flex';
     setTimeout(() => document.getElementById('pin-input').focus(), 50);
   }
 
   function closePinModal() {
     document.getElementById('pin-modal').style.display = 'none';
     _pendingUnlockCb = null;
-    _pendingUnlockTarget = null;
   }
 
   async function submitPin() {
     const pin = document.getElementById('pin-input').value;
-    // Verify against server
     const res = await fetch('/api/control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Dashboard-Pin': pin },
@@ -1141,26 +1137,24 @@
       document.getElementById('pin-input').focus();
       return;
     }
-    // Correct
     sessionStorage.setItem('kairos_pin', pin);
     sessionStorage.setItem('kairos_pin_ok', '1');
     _pinUnlocked = true;
     closePinModal();
-    // Update lock labels
-    document.querySelectorAll('.bot-controls summary').forEach(s => {
-      s.textContent = s.textContent.replace(' 🔒', ' 🔓');
-    });
-    // Open the details element that triggered the unlock
-    if (_pendingUnlockTarget) {
-      const el = document.getElementById(_pendingUnlockTarget);
-      if (el) el.open = true;
-    }
+    _applyLockState();
     if (_pendingUnlockCb) _pendingUnlockCb();
   }
 
   function _requirePinThen(cb) {
-    if (!_pinEnabled || _pinUnlocked) { cb(); return; }
+    if (_pinUnlocked) { cb(); return; }
     openPinModal(cb);
+  }
+
+  // Apply lock state on load (hides pin-gated elements if locked)
+  // Called after DOM is ready via inline script at bottom
+  function _initLock() {
+    if (!_pinEnabled) return;  // no PIN set — show everything
+    _applyLockState();
   }
 
   async function control(action, pair) {
@@ -1323,7 +1317,7 @@
               <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
               <div style="display:flex;gap:6px">
                 ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${pair} position amount from Binance?')) controlSyncPosition('${pair}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
-                <button class="override danger" onclick="_requirePinThen(() => { if(confirm('Close ${pair} position at market price?')) control('override','${pair}') })">Close</button>
+                <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></span>
               </div>
             </div>
           </div>`;
@@ -1358,7 +1352,7 @@
           </div>
           <div class="commentary">${d.commentary}</div>
           ${posBlock}
-          <div style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+          <div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
               onclick="if(confirm('Buy ${pair} with 50% of balance?')) controlBuy('${pair}', 0.5)">Buy 50%</button>
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
@@ -1366,6 +1360,7 @@
           </div>
         </div>`;
       }).join('');
+      _applyLockState();
     } catch(e) {}
   }
 
@@ -2796,7 +2791,7 @@
             </div>
             <div class="pos-row" style="margin-top:8px">
               <span class="plabel">${Number(pos.amount).toFixed(4)} units</span>
-              <button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button>
+              <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>
             </div>
           </div>`;
         }
@@ -2832,6 +2827,7 @@
           ${posBlock}
         </div>`;
       }).join('');
+      _applyLockState();
     } catch(e) { console.error(e); }
   }
 
@@ -3092,10 +3088,11 @@
           </div>
           <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--muted)">${Number(p.amount).toFixed(4)} units</span>
-            <button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button>
+            <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>
           </div>
         </div>`;
       }).join('');
+      _applyLockState();
     } catch(e) { console.error('[futures]', e); }
   }
 
@@ -3995,7 +3992,8 @@ async function openSettingsModal(context) {
   }
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettingsModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSettingsModal(); closePinModal(); } });
+_initLock();
 </script>
 </body>
 </html>
