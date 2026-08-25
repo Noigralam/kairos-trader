@@ -2154,7 +2154,7 @@
       const bkDs   = { label: 'Blocked buy', data: data.blocked_buys, backgroundColor: '#f0883e66', pointRadius: 4, pointStyle: 'triangle', rotation: 180,  showLine: false, type: 'scatter' };
       const abDs   = { label: 'Actual buy',  data: data.actual_buys,  backgroundColor: '#3fb950',  pointRadius: 6, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
       const asDs   = { label: 'Actual sell', data: data.actual_sells, backgroundColor: '#f85149',  pointRadius: 6, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
-      const adDs   = { label: 'Actual DCA',  data: data.actual_dcas,  backgroundColor: '#58a6ff',  pointRadius: 5, pointStyle: 'rectRot',   showLine: false, type: 'scatter' };
+      const adDs   = { label: 'Actual DCA',  data: data.actual_dcas,  backgroundColor: '#58a6ff',  pointRadius: 5, pointStyle: 'triangle', rotation: 180, showLine: false, type: 'scatter' };
 
       // Price chart
       const shPos = _shPositions[_shChartPair] || null;
@@ -2201,7 +2201,7 @@
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
                 backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
-                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'line', label: 'Break-even', data: shPosLines.breakEven, borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Min exit',   data: shPosLines.minExit,   borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Peak',       data: shPosLines.peak,      borderColor: '#3fb950', borderWidth: 1, borderDash: [2,3], pointRadius: 0 },
@@ -2425,7 +2425,7 @@
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
                 backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
-                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'line', label: 'Break-even', data: posLines.breakEven, borderColor: '#8b949e', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Min exit',   data: posLines.minExit,   borderColor: '#f85149', borderWidth: 1, borderDash: [4,2], pointRadius: 0 },
               { type: 'line', label: 'Peak',       data: posLines.peak,      borderColor: '#3fb950', borderWidth: 1, borderDash: [2,3], pointRadius: 0 },
@@ -3165,7 +3165,7 @@
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
                 backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
-                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'line', label: 'BB Upper', data: data.bb_upper, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '+1', backgroundColor: '#8b949e18' },
               { type: 'line', label: 'BB Lower', data: data.bb_lower, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1 },
               { type: 'bar',  label: 'Volume', data: data.volume, backgroundColor: data.vol_colors, yAxisID: 'y1', borderWidth: 0 },
@@ -3576,7 +3576,7 @@
               { type: 'scatter', label: 'Executed SELL', data: data.actual_sells,
                 backgroundColor: '#ff3cac', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'scatter', label: 'DCA',           data: data.actual_dcas,
-                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', borderColor: '#fff', borderWidth: 1 },
+                backgroundColor: '#f0e040', pointRadius: 7, pointStyle: 'triangle', rotation: 180, borderColor: '#fff', borderWidth: 1 },
               { type: 'line', label: 'BB Upper', data: data.bb_upper, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1, fill: '+1', backgroundColor: '#8b949e18' },
               { type: 'line', label: 'BB Lower', data: data.bb_lower, borderColor: '#8b949e55', borderWidth: 1, pointRadius: 0, tension: 0.1 },
               { type: 'bar',  label: 'Volume', data: data.volume, backgroundColor: data.vol_colors, yAxisID: 'y1', borderWidth: 0 },
