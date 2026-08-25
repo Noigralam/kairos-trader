@@ -9,7 +9,7 @@ from .spot_risk import Position, apply_dca, update_peak, check_trailing_stop, ch
 from .notifier import trade_alert, trailing_stop_alert, notify
 
 log = logging.getLogger("cryptobot")
-from .db import log_trade, log_balance
+from .db import log_trade, log_balance, clear_shadow_trades
 from .spot_exchange import round_qty, get_min_notional, get_eur_balance, get_free_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
@@ -518,6 +518,15 @@ def check_stops(prices: dict):
 _DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
 
+def _config_fingerprint(overrides: dict) -> str:
+    """Hash of strategy-relevant overrides; excludes spot_balance so balance changes don't trigger a reset."""
+    import hashlib
+    skip = {"spot_balance"}
+    relevant = {k: v for k, v in overrides.items() if k not in skip}
+    blob = json.dumps(relevant, sort_keys=True)
+    return hashlib.md5(blob.encode()).hexdigest()
+
+
 def _live_spot_balance() -> float:
     try:
         with open(_LIVE_STATE_PATH) as f:
@@ -549,6 +558,7 @@ class SpotShadowSimulator:
         self.live_baseline_pct: float | None = None
         self._stop_cooldowns: dict[str, float] = {}
         self._reentry_drop_prices: dict[str, float] = {}
+        self._fingerprint = _config_fingerprint(overrides)
         self._load()
         if self.started_at is None:
             import datetime, zoneinfo
@@ -586,6 +596,7 @@ class SpotShadowSimulator:
             "name": self.name,
             "started_at": self.started_at,
             "overrides": self.overrides,
+            "config_fingerprint": self._fingerprint,
             "starting_balance":  self.starting_balance,
             "live_baseline_pct": self.live_baseline_pct,
             "balance": self.balance,
@@ -617,6 +628,14 @@ class SpotShadowSimulator:
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
+            saved_fp = data.get("config_fingerprint")
+            if saved_fp is not None and saved_fp != self._fingerprint:
+                log.info(f"[SHADOW] {self.name}: config changed — resetting trades and state")
+                clear_shadow_trades(self._db_mode)
+                os.remove(self.state_path)
+                self.starting_balance = _live_spot_balance()
+                self.balance = self.starting_balance
+                return
             self.started_at        = data.get("started_at",        None)
             self.starting_balance  = data.get("starting_balance",  self.starting_balance)
             self.live_baseline_pct = data.get("live_baseline_pct", None)
@@ -898,6 +917,7 @@ class GridShadowSimulator:
         self._slots: list[dict] = []
         self._highest_price: float = 0.0
 
+        self._fingerprint = _config_fingerprint(overrides)
         self._load()
         if self.started_at is None:
             import datetime, zoneinfo
@@ -1068,6 +1088,7 @@ class GridShadowSimulator:
                 "name":             self.name,
                 "started_at":       self.started_at,
                 "overrides":        self.overrides,
+                "config_fingerprint": self._fingerprint,
                 "starting_balance":  self.starting_balance,
                 "live_baseline_pct": self.live_baseline_pct,
                 "balance":          self.balance,
@@ -1086,6 +1107,14 @@ class GridShadowSimulator:
         try:
             with open(self.state_path) as f:
                 data = json.load(f)
+            if data.get("config_fingerprint") != self._fingerprint:
+                log.info(f"[SHADOW] {self.name}: config changed — resetting trades and state")
+                clear_shadow_trades(self._db_mode)
+                os.remove(self.state_path)
+                self.starting_balance = _live_spot_balance()
+                self.balance = self.starting_balance
+                self._slot_eur = self.starting_balance / self._n_levels
+                return
             self.started_at        = data.get("started_at",        None)
             self.starting_balance  = data.get("starting_balance",  self.starting_balance)
             self.live_baseline_pct = data.get("live_baseline_pct", None)

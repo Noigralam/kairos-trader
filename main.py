@@ -1,5 +1,6 @@
 import logging
 import os
+from bot import __version__
 from bot.db import init_db
 from web.app import run
 
@@ -15,7 +16,7 @@ def setup_logging():
         return datetime.datetime.fromtimestamp(t, tz=_tz).timetuple()
 
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-    fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s",
+    fmt = logging.Formatter(f"%(asctime)s  v{__version__}  %(levelname)-8s  %(message)s",
                             datefmt="%Y-%m-%d %H:%M:%S")
     fmt.converter = _localtime
 

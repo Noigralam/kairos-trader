@@ -123,6 +123,15 @@ def get_trade_count(mode: str = None) -> int:
     return row[0] if row else 0
 
 
+def clear_shadow_trades(mode: str):
+    """Delete all trades and balance history for a shadow mode (used on config change)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("DELETE FROM trades WHERE mode = ?", (mode,))
+    conn.execute("DELETE FROM balance_history WHERE mode = ?", (mode,))
+    conn.commit()
+    conn.close()
+
+
 def log_balance(balance: float, mode: str):
     conn = sqlite3.connect(DB_PATH)
     conn.execute(

@@ -319,6 +319,7 @@
           font-size="20" font-weight="700" fill="#e6edf3" letter-spacing="0.4">Kairos</text>
       </svg>
     </h1>
+    <span id="version-badge" style="font-size:10px;color:var(--muted);opacity:0.5;margin-top:4px;align-self:flex-end;">v—</span>
     <div class="tab-bar" style="margin-bottom:0">
       <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
         <span class="tab-dot" style="background:var(--blue)"></span>Spot
@@ -1328,6 +1329,9 @@
       const logs = await logRes.json();
 
       _syncSpotHeader();
+
+      // Version badge
+      if (s.version) document.getElementById('version-badge').textContent = 'v' + s.version;
 
       // Binance API error banner
       const banner = document.getElementById('api-error-banner');
