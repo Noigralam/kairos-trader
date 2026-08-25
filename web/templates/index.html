@@ -1457,7 +1457,7 @@
       const hPnlEl = document.getElementById('hdr-spot-pnl');
       hPnlEl.textContent  = `${hPnl >= 0 ? '+' : ''}€${fmt(Math.abs(hPnl))} PnL`;
       hPnlEl.style.color  = hPnl >= 0 ? 'var(--green)' : 'var(--red)';
-      if (s.live_since) document.getElementById('hdr-spot-since').textContent = 'Running ' + _fmtDuration(s.live_since);
+      if (s.live_since) document.getElementById('hdr-spot-since').textContent = _fmtDuration(s.live_since);
       _positions = s.positions;
       _spotMode  = s.mode;
       loadSpotTrades();
@@ -1666,7 +1666,7 @@
           pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(2)} PnL`;
           pnlEl.style.color  = pnlColor;
           trEl.textContent   = `${s.total_trades} trades`;
-          if (sinceEl && s.started_at) sinceEl.textContent = 'Running ' + _fmtDuration(s.started_at);
+          if (sinceEl && s.started_at) sinceEl.textContent = _fmtDuration(s.started_at);
         }
       } catch(e) {}
     }
@@ -1712,7 +1712,7 @@
           pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}€${fmt(Math.abs(pnl))} PnL`;
           pnlEl.style.color  = pnlColor;
           trEl.textContent   = `${s.total_trades} trades`;
-          if (sinceEl && s.started_at) sinceEl.textContent = 'Running ' + _fmtDuration(s.started_at);
+          if (sinceEl && s.started_at) sinceEl.textContent = _fmtDuration(s.started_at);
         }
       } catch(e) {}
     }
@@ -3017,7 +3017,7 @@
         fhPnlEl.textContent = `${fhPnl >= 0 ? '+' : ''}$${fmtUsdt(Math.abs(fhPnl))} PnL`;
         fhPnlEl.style.color = fhPnl >= 0 ? 'var(--green)' : 'var(--red)';
         const fhSinceEl = document.getElementById(`hdr-fut-since${sfx}`);
-        if (fhSinceEl && d.started_at) fhSinceEl.textContent = 'Running ' + _fmtDuration(d.started_at);
+        if (fhSinceEl && d.started_at) fhSinceEl.textContent = _fmtDuration(d.started_at);
       }
 
       const feesAndFunding = (d.total_fees || 0) + (d.total_funding || 0);
