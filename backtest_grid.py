@@ -2,11 +2,12 @@
 Grid strategy backtest sweep.
 
 Usage:
-    python backtest_grid.py [pair] [days]
-    python backtest_grid.py XRPEUR 180
-    python backtest_grid.py XRPEUR 180 --cached
+    python backtest_grid.py                         # all configured SPOT_TRADING_PAIRS, 180d
+    python backtest_grid.py XRPEUR                  # single pair, 180d
+    python backtest_grid.py XRPEUR SOLEUR 365       # multiple pairs, custom days
+    python backtest_grid.py XRPEUR 180 --cached     # skip candle sync
 
-Sweeps spacing × levels and prints a ranked results table.
+Sweeps spacing × levels and prints a ranked results table per pair.
 """
 import sys
 import itertools
@@ -17,6 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from bot import config
 from bot.candles import get_df, initial_sync
 
 FEE        = 0.001   # 0.1% per side
@@ -224,12 +226,10 @@ def analyse_volatility(df: pd.DataFrame, pair: str):
 # Entry point
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    pair = args[0].upper() if args else "XRPEUR"
-    days = int(args[1]) if len(args) > 1 else 180
-
-    print(f"\nGrid backtest sweep — {pair}  {days}d  balance=€{BALANCE}")
+def run_for_pair(pair: str, days: int):
+    print(f"\n{'━'*70}")
+    print(f"  Grid backtest sweep — {pair}  {days}d  balance=€{BALANCE}")
+    print(f"{'━'*70}")
     print(f"Spacing values: {[f'{s*100:.1f}%' for s in SPACINGS]}")
     print(f"Level  values:  {LEVELS}")
     print(f"Combinations:   {len(SPACINGS) * len(LEVELS)}")
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     df = fetch(pair, days)
     if df.empty:
         print("No candle data — run without --cached first.")
-        sys.exit(1)
+        return
 
     print(f"Candles loaded: {len(df)}  ({df['open_time'].iloc[0]} → {df['open_time'].iloc[-1]})")
     analyse_volatility(df, pair)
@@ -245,14 +245,23 @@ if __name__ == "__main__":
     print(f"\nRunning {len(SPACINGS) * len(LEVELS)} simulations…")
     results = sweep(pair, df)
 
-    ranked = print_table(results, sort_by="realised_pct")
+    print_table(results, sort_by="realised_pct")
 
-    # Also show best by return% (includes open positions)
     print("\n--- Top 10 by total return% (including open unrealised) ---")
     print_table(results, sort_by="return_pct", top_n=10)
 
-    # Best single spacing across all levels
     print("\n--- Best spacing (avg realised% across all level counts) ---")
     by_sp = pd.DataFrame(results).groupby("spacing")["realised_pct"].mean().sort_values(ascending=False)
     for sp, val in by_sp.items():
         print(f"  {sp*100:.1f}%  →  avg realised {val:+.2f}%")
+
+
+if __name__ == "__main__":
+    cli_args  = sys.argv[1:]
+    str_args  = [a for a in cli_args if not a.isdigit() and not a.startswith("--")]
+    day_args  = [int(a) for a in cli_args if a.isdigit()]
+    days      = day_args[0] if day_args else 180
+    pairs     = [a.upper() for a in str_args] or config.SPOT_TRADING_PAIRS
+
+    for pair in pairs:
+        run_for_pair(pair, days)

@@ -10,8 +10,11 @@ Usage:
     python backtest_futures.py sweep floor [days]   # profit floor %
     python backtest_futures.py sweep lev   [days]   # leverage
     python backtest_futures.py sweep all   [days]   # all sweeps
+    python backtest_futures.py shadows [days]       # rank all futures shadow profiles
 
 Days can be one or multiple values: python backtest_futures.py sweep trail 365 180 90
+
+Add --cached to any command to skip candle syncing and use only local candles.db data.
 """
 import sys
 from dataclasses import dataclass
@@ -31,6 +34,7 @@ WARMUP   = 210
 CANDLES_PER_DAY = 96          # 15m candles
 FUNDING_INTERVAL = 32         # 8h / 15m = 32 candles per funding settlement
 FUNDING_RATE     = 0.0001     # 0.01% per 8h — conservative estimate for longs
+USE_CACHE        = False      # set to True via --cached flag to skip syncing
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +44,7 @@ FUNDING_RATE     = 0.0001     # 0.01% per 8h — conservative estimate for longs
 def fetch(pair: str, days: int) -> pd.DataFrame:
     needed = days * CANDLES_PER_DAY + WARMUP
     df = get_df(pair, INTERVAL, limit=needed)
-    if len(df) < needed * 0.9:
+    if not USE_CACHE and len(df) < needed * 0.9:
         print(f"  Syncing {pair}/15m {days}d…", flush=True)
         initial_sync(pair, INTERVAL, days=days)
         df = get_df(pair, INTERVAL, limit=needed)
@@ -431,11 +435,82 @@ def run_baseline(days_list: list[int]):
 
 
 # ---------------------------------------------------------------------------
+# Shadow profile comparison
+# ---------------------------------------------------------------------------
+
+def run_shadow_backtest(days_list: list[int]):
+    profiles = config.get_futures_shadow_profiles()
+    if not profiles:
+        print("No futures shadow profiles configured.")
+        return
+
+    KEY_MAP = {
+        "futures_leverage":       "leverage",
+        "futures_pos_pct":        "pos_pct",
+        "futures_tp_pct":         "tp_pct",
+        "futures_trail_pct":      "trail_pct",
+        "futures_floor_pct":      "floor_pct",
+        "futures_dca_drop":       "dca_drop",
+        "futures_dca_pct":        "dca_pct",
+        "futures_rsi_oversold":   "rsi_buy",
+        "futures_rsi_overbought": "rsi_sell",
+        "futures_rsi_period":     "rsi_period",
+        "futures_ema_gap":        "ema_gap",
+    }
+
+    for days in days_list:
+        _header(days, "Shadow profile comparison")
+        print(f"  {'#':<3}  {'Profile':<18}  {'Symbols':<22}  {'Return':>8}  {'PnL':>8}"
+              f"  {'n':>4}  {'W/L':<7}  Exits")
+        print(f"  {'─'*3}  {'─'*18}  {'─'*22}  {'─'*8}  {'─'*8}"
+              f"  {'─'*4}  {'─'*7}  {'─'*28}")
+
+        results = []
+        for name in profiles:
+            ov    = config.get_futures_shadow_overrides(name)
+            pairs = ov.get("symbols", PAIRS)
+            start = float(ov.get("futures_balance", config.FUTURES_SIMULATION_BALANCE))
+
+            kwargs = {}
+            for cfg_key, run_key in KEY_MAP.items():
+                if cfg_key in ov:
+                    kwargs[run_key] = ov[cfg_key]
+
+            all_trades: list[FTrade] = []
+            for pair in pairs:
+                df = fetch(pair, days)
+                trades, _ = run_pair(pair, df, start, **kwargs)
+                all_trades.extend(trades)
+
+            realized   = [t for t in all_trades if t.exit_reason != "end_of_data"]
+            total_pnl  = sum(t.pnl for t in realized)
+            return_pct = total_pnl / start * 100
+            results.append((name, pairs, realized, total_pnl, return_pct))
+
+        results.sort(key=lambda x: x[4], reverse=True)
+        for rank, (name, pairs, realized, pnl, ret) in enumerate(results, 1):
+            wins = sum(1 for t in realized if t.pnl > 0)
+            n    = len(realized)
+            wl   = f"{wins}/{n - wins}" if n else "—"
+            reasons: dict[str, int] = {}
+            for t in realized:
+                reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
+            exits     = "  ".join(f"{k}×{v}" for k, v in reasons.items())
+            pairs_str = "+".join(pairs)
+            print(f"  {rank:<3}  {name:<18}  {pairs_str:<22}  {ret:>+7.1f}%  {pnl:>+8.2f}"
+                  f"  {n:>4}  {wl:<7}  {exits}")
+        print()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    args     = sys.argv[1:]
+    args = sys.argv[1:]
+    if "--cached" in args:
+        USE_CACHE = True
+        args = [a for a in args if a != "--cached"]
     day_args = [int(a) for a in args if a.isdigit()]
     str_args = [a for a in args if not a.isdigit()]
 
@@ -460,5 +535,8 @@ if __name__ == "__main__":
         else:
             print(f"Unknown sweep '{mode}'. Options: {', '.join(sweeps)}, all")
             sys.exit(1)
+    elif str_args and str_args[0] == "shadows":
+        days_list = day_args or [365, 180]
+        run_shadow_backtest(days_list)
     else:
         run_baseline(days_list)
