@@ -271,6 +271,8 @@ Slash commands (requires `DISCORD_BOT_TOKEN`):
 
 ## Backtest
 
+Add `--cached` to any backtest command to skip candle syncing and use only the local cache (faster, reproducible).
+
 ### Spot
 
 ```bash
@@ -289,15 +291,8 @@ Slash commands (requires `DISCORD_BOT_TOKEN`):
 .venv/bin/python backtest.py sweep cooldown         # re-entry cooldown
 .venv/bin/python backtest.py sweep all              # all sweeps
 
-.venv/bin/python xrp_sweep.py                       # XRP/BNB-specific sweeps
-.venv/bin/python dot_sweep.py                       # DOT-specific sweeps
-```
-
-Add `--cached` to skip candle syncing and use only the local cache (faster, reproducible):
-
-```bash
-.venv/bin/python backtest.py shadows --cached
-.venv/bin/python backtest.py sweep trail --cached 365
+.venv/bin/python pair_sweep.py XRPEUR               # full sweep for a single pair (730/365/180d)
+.venv/bin/python pair_sweep.py DOTEUR 365 --cached  # custom window, skip sync
 ```
 
 ### Futures
@@ -305,6 +300,7 @@ Add `--cached` to skip candle syncing and use only the local cache (faster, repr
 ```bash
 .venv/bin/python backtest_futures.py                # baseline, current config
 .venv/bin/python backtest_futures.py 90             # custom window
+.venv/bin/python backtest_futures.py shadows        # all futures shadow profiles ranked (365d + 180d)
 
 .venv/bin/python backtest_futures.py sweep rsi      # RSI thresholds
 .venv/bin/python backtest_futures.py sweep trail    # trailing stop %
@@ -317,6 +313,17 @@ Add `--cached` to skip candle syncing and use only the local cache (faster, repr
 ```
 
 The futures backtest models isolated margin, 0.05% taker fee, 0.01%/8h funding on open longs, and liquidation at `entry × (1 − 1/lev + 0.5%)`.
+
+### Grid
+
+```bash
+.venv/bin/python backtest_grid.py                   # all configured SPOT_TRADING_PAIRS, 180d
+.venv/bin/python backtest_grid.py XRPEUR            # single pair, 180d
+.venv/bin/python backtest_grid.py XRPEUR SOLEUR 365 # multiple pairs, custom days
+.venv/bin/python backtest_grid.py XRPEUR --cached   # skip sync
+```
+
+Sweeps spacing × level combinations and ranks by realised P&L%.
 
 ## Project layout
 
