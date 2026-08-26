@@ -131,13 +131,8 @@ def api_tax_fifo_csv():
 @app.route("/api/tax/fifo/integrity")
 def api_tax_fifo_integrity():
     tax.init_schema()
-    # collect current holdings from open spot positions
-    status = engine.get_status() if hasattr(engine, "get_status") else {}
-    positions = status.get("positions", {}) if isinstance(status, dict) else {}
-    holdings = {
-        tax._asset(pair): pos.get("amount", pos.get("units", 0))
-        for pair, pos in positions.items()
-    }
+    state = simulator.get_state()
+    holdings = {tax._asset(pair): pos.amount for pair, pos in state.positions.items()}
     return jsonify(tax.integrity_check(holdings))
 
 
