@@ -70,11 +70,14 @@ def log_trade(pair, side, price, amount, value_eur, fee, mode, pnl=None, notes=N
     if mode == "live":
         _tax.init_schema()
         asset = _tax._asset(pair)
-        fee_eur = _tax._fee_to_eur(side, fee, price, amount)
         tax_conn = sqlite3.connect(DB_PATH)
         if side == "BUY":
-            _tax._add_lot(tax_conn, trade_id, asset, pair, ts, amount, value_eur + fee_eur)
+            # If fee is in asset units, actual received qty is amount - fee_sol
+            fee_sol = fee if fee < amount * 0.01 else 0.0
+            net_qty = amount - fee_sol
+            _tax._add_lot(tax_conn, trade_id, asset, pair, ts, net_qty, value_eur)
         elif side == "SELL":
+            fee_eur = _tax._fee_to_eur(side, fee, price, amount)
             _tax._dispose_fifo(tax_conn, trade_id, asset, pair, ts, amount, value_eur, fee_eur)
         tax_conn.commit()
         tax_conn.close()

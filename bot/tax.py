@@ -185,12 +185,13 @@ def rebuild():
 
     for trade_id, timestamp, pair, side, price, amount, value_eur, fee in trades:
         asset = _asset(pair)
-        fee_eur = _fee_to_eur(side, fee, price, amount)
 
         if side == "BUY":
-            cost_eur = value_eur + fee_eur
-            _add_lot(conn, trade_id, asset, pair, timestamp, amount, cost_eur)
+            fee_sol = fee if fee < amount * 0.01 else 0.0
+            net_qty = amount - fee_sol
+            _add_lot(conn, trade_id, asset, pair, timestamp, net_qty, value_eur)
         elif side == "SELL":
+            fee_eur = _fee_to_eur(side, fee, price, amount)
             _dispose_fifo(conn, trade_id, asset, pair, timestamp, amount, value_eur, fee_eur)
 
     conn.commit()
