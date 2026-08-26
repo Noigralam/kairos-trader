@@ -285,6 +285,30 @@
   #sh-carousel { overflow: hidden; width: 420px; cursor: grab; user-select: none; }
   #sh-carousel.dragging { cursor: grabbing; }
   #sh-carousel-track { display: flex; gap: 16px; width: max-content; }
+
+  @media (max-width: 700px) {
+    header {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 10px 12px;
+      gap: 8px;
+    }
+    header > div:first-child {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    header > div:last-child {
+      flex-wrap: wrap;
+      gap: 10px;
+      width: 100%;
+    }
+    .container { padding: 10px 12px; }
+    .tab-bar { flex-wrap: wrap; }
+    .tab-bar button { padding: 6px 12px; font-size: 12px; }
+    #sh-carousel { width: calc(100vw - 24px); }
+    .stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important; }
+    section h2 { font-size: 13px; }
+  }
   </style>
 </head>
 <body>
