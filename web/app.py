@@ -4,7 +4,7 @@ import sqlite3
 import datetime
 import zoneinfo
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
-from bot import spot_engine as engine, spot_simulator as simulator, db, config
+from bot import spot_engine as engine, spot_simulator as simulator, db, config, tax
 from bot import __version__
 from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy, get_api_error
 from bot.notifier import get_recent_logs
@@ -119,6 +119,45 @@ def api_futures_tax():
         {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3], "tax": round(_fi_tax(r[3]), 2)}
         for r in rows
     ])
+
+
+@app.route("/api/tax/fifo")
+def api_tax_fifo():
+    tax.init_schema()
+    return jsonify(tax.annual_summary())
+
+
+@app.route("/api/tax/fifo/csv")
+def api_tax_fifo_csv():
+    year = request.args.get("year", str(datetime.datetime.now().year))
+    tax.init_schema()
+    csv_data = tax.disposals_csv(year)
+    return Response(csv_data, mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename=tax_fifo_{year}.csv"})
+
+
+@app.route("/api/tax/fifo/integrity")
+def api_tax_fifo_integrity():
+    tax.init_schema()
+    # collect current holdings from open spot positions
+    status = engine.get_status() if hasattr(engine, "get_status") else {}
+    positions = status.get("positions", {}) if isinstance(status, dict) else {}
+    holdings = {
+        tax._asset(pair): pos.get("amount", pos.get("units", 0))
+        for pair, pos in positions.items()
+    }
+    return jsonify(tax.integrity_check(holdings))
+
+
+@app.route("/api/tax/fifo/rebuild", methods=["POST"])
+def api_tax_fifo_rebuild():
+    allowed, rate_limited = _check_pin(request)
+    if rate_limited:
+        return jsonify({"error": "Too many attempts — IP locked"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+    tax.rebuild()
+    return jsonify({"ok": True, "summary": tax.annual_summary()})
 
 
 @app.route("/api/stats")

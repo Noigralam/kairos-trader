@@ -565,6 +565,35 @@
       </div>
     </section>
 
+    <section>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div>
+          <h2 style="margin-bottom:2px">FIFO Tax Report <span style="font-size:11px;font-weight:400;color:var(--muted)">(Finnish Vero)</span></h2>
+          <div style="font-size:11px;color:var(--muted);opacity:0.7">Binance · foreign provider · sell-for-fiat only</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="fifo-year-select" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:12px"></select>
+          <a id="fifo-csv-btn" href="#" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;text-decoration:none">↓ CSV</a>
+          <button onclick="rebuildFifo()" class="pin-gated" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer">↺ Rebuild</button>
+        </div>
+      </div>
+      <div class="tbl-wrap" style="margin-bottom:10px">
+        <table>
+          <thead>
+            <tr><th>Year</th><th>Provider</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net (EUR)</th><th>Fees (EUR)</th><th>Trades</th></tr>
+          </thead>
+          <tbody id="fifo-body">
+            <tr><td colspan="7" class="empty">Click Rebuild to generate FIFO report</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="fifo-integrity" style="font-size:12px;color:var(--muted);margin-bottom:6px"></div>
+      <div style="font-size:11px;color:var(--muted);opacity:0.6;line-height:1.5">
+        ⚠ These figures cover bot trades only. Combine with all other capital income
+        (e.g. equity trading) against the shared €1,000 annual deduction allowance (TVL 50 §).
+      </div>
+    </section>
+
   </div><!-- /tab-spot -->
 
   <!-- ═══════════════════════════ FUTURES TAB ═══════════════════════════ -->
@@ -1548,6 +1577,69 @@
     } catch (e) {
     }
   }
+
+  // ── FIFO tax ──────────────────────────────────────────────────────────────
+  async function loadFifo() {
+    try {
+      const rows = await fetch('/api/tax/fifo').then(r => r.json());
+      const tb = document.getElementById('fifo-body');
+      if (!rows.length) {
+        tb.innerHTML = '<tr><td colspan="7" class="empty">No data — click Rebuild</td></tr>';
+        return;
+      }
+      tb.innerHTML = rows.map(r => `<tr>
+        <td>${r.year}</td>
+        <td style="color:var(--muted)">${r.provider}</td>
+        <td class="pos">${r.gains.toFixed(2)}</td>
+        <td class="neg">${r.losses > 0 ? r.losses.toFixed(2) : '—'}</td>
+        <td>${r.net >= 0 ? '<span class="pos">+' : '<span class="neg">'}${r.net.toFixed(2)}</span></td>
+        <td style="color:var(--muted)">${r.fee_total.toFixed(2)}</td>
+        <td style="color:var(--muted)">${r.trades}</td>
+      </tr>`).join('');
+
+      // populate year selector
+      const sel = document.getElementById('fifo-year-select');
+      const years = [...new Set(rows.map(r => r.year))].sort().reverse();
+      sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+      document.getElementById('fifo-csv-btn').href = `/api/tax/fifo/csv?year=${years[0]}`;
+      sel.onchange = () => {
+        document.getElementById('fifo-csv-btn').href = `/api/tax/fifo/csv?year=${sel.value}`;
+      };
+
+      // integrity check
+      const ic = await fetch('/api/tax/fifo/integrity').then(r => r.json());
+      const icEl = document.getElementById('fifo-integrity');
+      if (!ic.length) {
+        icEl.textContent = '';
+      } else {
+        const allOk = ic.every(r => r.ok);
+        icEl.innerHTML = ic.map(r =>
+          `<span style="color:${r.ok ? 'var(--muted)' : 'var(--red)'}">
+            ${r.asset}: lots ${r.lots_remaining.toFixed(4)} · held ${r.bot_holdings.toFixed(4)}
+            ${r.ok ? '✓' : '⚠ mismatch ' + r.diff.toFixed(4)}
+          </span>`
+        ).join('  ·  ');
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  async function rebuildFifo() {
+    const btn = event.target;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/tax/fifo/rebuild', {
+        method: 'POST',
+        headers: _pinHeaders(),
+      });
+      if (res.status === 403) { openPinModal(); return; }
+      if (res.status === 429) { alert('IP locked — too many PIN attempts'); return; }
+      await loadFifo();
+    } catch(e) { console.error(e); }
+    finally { btn.textContent = '↺ Rebuild'; btn.disabled = false; }
+  }
+
+  loadFifo();
 
   // ── Shadow tab ────────────────────────────────────────────────────────────
   let _shNames        = [];
