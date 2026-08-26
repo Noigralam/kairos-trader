@@ -105,7 +105,8 @@
     th { color: var(--muted); font-size: 12px; font-weight: 500; background: var(--surface); }
     td { font-size: 13px; }
     tr:last-child td { border-bottom: none; }
-    .tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; overflow-x: auto; }
+    td { white-space: nowrap; }
 
     .empty { padding: 24px; text-align: center; color: var(--muted); }
     .buy  { color: var(--green); font-weight: 600; }
@@ -311,6 +312,7 @@
     .stat-card .value { font-size: 14px !important; }
     .stat-card .label { font-size: 11px !important; }
     section h2 { font-size: 13px; }
+    th, td { padding: 6px 8px; font-size: 12px; }
   }
   </style>
 </head>
