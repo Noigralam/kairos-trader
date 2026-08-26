@@ -306,7 +306,10 @@
     .tab-bar { flex-wrap: wrap; }
     .tab-bar button { padding: 6px 12px; font-size: 12px; }
     #sh-carousel { width: calc(100vw - 24px); }
-    .stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important; }
+    .stats { grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)) !important; gap: 6px !important; }
+    .stat-card { padding: 8px 6px !important; }
+    .stat-card .value { font-size: 14px !important; }
+    .stat-card .label { font-size: 11px !important; }
     section h2 { font-size: 13px; }
   }
   </style>
@@ -344,8 +347,6 @@
           font-size="20" font-weight="700" fill="#e6edf3" letter-spacing="0.4">Kairos</text>
       </svg>
     </h1>
-    <span id="version-badge" style="font-size:10px;color:var(--muted);opacity:0.5;margin-top:4px;align-self:flex-end;">v—</span>
-    {% if config.DASHBOARD_PIN %}<button id="lock-btn" onclick="if(_pinUnlocked){sessionStorage.removeItem('kairos_pin_ok');sessionStorage.removeItem('kairos_pin');_pinUnlocked=false;_applyLockState();}else{openPinModal();}" style="background:none;border:none;cursor:pointer;font-size:16px;padding:0;margin-top:2px;align-self:flex-end;" title="Lock/unlock controls">🔒</button>{% endif %}
     <div class="tab-bar" style="margin-bottom:0">
       <button class="tab active" data-tab="spot" onclick="switchTab('spot')">
         <span class="tab-dot" style="background:var(--blue)"></span>Spot
@@ -364,6 +365,10 @@
   <div style="display:flex;align-items:center;gap:20px;">
     <!-- Shared: session + next tick + last tick -->
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+        <span id="version-badge" style="font-size:10px;color:var(--muted);opacity:0.5;">v—</span>
+        {% if config.DASHBOARD_PIN %}<button id="lock-btn" onclick="if(_pinUnlocked){sessionStorage.removeItem('kairos_pin_ok');sessionStorage.removeItem('kairos_pin');_pinUnlocked=false;_applyLockState();}else{openPinModal();}" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0;line-height:1;" title="Lock/unlock controls">🔒</button>{% endif %}
+      </div>
       <span id="uptime"    style="font-size:12px;color:var(--muted);">Session: —</span>
       <span id="next-tick" style="font-size:12px;color:var(--muted);">Next tick in —</span>
       <span id="last-tick" style="font-size:12px;color:var(--muted);">Last tick @ —</span>
@@ -444,10 +449,6 @@
         <div class="label">Net P&L (after tax)</div>
         <div class="value" id="pnl-net">—</div>
       </div>
-      <div class="stat-card">
-        <div class="label">Total Trades</div>
-        <div class="value" id="total-trades">—</div>
-      </div>
     </div>
 
     <details class="bot-controls pin-gated" id="spot-controls-details">
@@ -469,11 +470,7 @@
         <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="stat-best">—</div></div>
         <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="stat-worst">—</div></div>
         <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="stat-hold">—</div></div>
-        <div class="stat-card">
-          <div class="label">Fear &amp; Greed</div>
-          <div class="value" id="fng-value">—</div>
-          <div style="font-size:11px;color:var(--muted)" id="fng-label"></div>
-        </div>
+        <div class="stat-card"><div class="label">Total Trades</div><div class="value" id="total-trades">—</div></div>
       </div>
     </section>
 
@@ -615,11 +612,7 @@
         <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="f-stat-best">—</div></div>
         <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="f-stat-worst">—</div></div>
         <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="f-stat-hold">—</div></div>
-        <div class="stat-card">
-          <div class="label">Fear &amp; Greed</div>
-          <div class="value" id="f-fng-value">—</div>
-          <div style="font-size:11px;color:var(--muted)" id="f-fng-label"></div>
-        </div>
+        <div class="stat-card"><div class="label">Total Trades</div><div class="value" id="f-trades-perf">—</div></div>
       </div>
     </section>
 
@@ -2589,25 +2582,6 @@
   }
   loadStats();
 
-  // ── fear & greed ──────────────────────────────────────────────────────────
-  function _fngColor(v) {
-    return v <= 25 ? '#f85149' : v <= 45 ? '#e3b341' : v <= 55 ? '#8b949e' : v <= 75 ? '#3fb950' : '#58a6ff';
-  }
-  async function loadFng() {
-    try {
-      const d = await fetch('/api/fng').then(r => r.json());
-      if (d.value == null) return;
-      ['fng-value', 'f-fng-value'].forEach(id => {
-        const el = document.getElementById(id);
-        el.textContent = d.value;
-        el.style.color = _fngColor(d.value);
-      });
-      document.getElementById('fng-label').textContent   = d.label;
-      document.getElementById('f-fng-label').textContent = d.label;
-    } catch(e) { console.error(e); }
-  }
-  loadFng();
-  setInterval(loadFng, 3600000);
 
   // ── balance history chart ─────────────────────────────────────────────────
   let _balanceChart = null;
@@ -3029,6 +3003,8 @@
       }
       document.getElementById('f-pnl').innerHTML       = fmtPnlUsdt(d.total_pnl);
       document.getElementById('f-trades').textContent  = d.total_trades;
+      const fTradesPerf = document.getElementById('f-trades-perf');
+      if (fTradesPerf) fTradesPerf.textContent = d.total_trades;
 
       // futures header block
       for (const sfx of ['', '-copy']) {
