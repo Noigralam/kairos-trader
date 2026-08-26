@@ -472,7 +472,6 @@
         <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="stat-best">—</div></div>
         <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="stat-worst">—</div></div>
         <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="stat-hold">—</div></div>
-        <div class="stat-card"><div class="label">Total Trades</div><div class="value" id="total-trades">—</div></div>
       </div>
     </section>
 
@@ -522,14 +521,14 @@
 
     <section>
       <div class="chart-controls">
-        <h2>Recent Trades</h2>
+        <h2>Recent Trades <span id="total-trades" style="font-size:12px;font-weight:400;color:var(--muted)"></span></h2>
         <a href="/api/trades/csv" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
       </div>
       <div class="tbl-wrap">
         <table>
           <thead>
             <tr>
-              <th>Time (Helsinki)</th>
+              <th>Time</th>
               <th>Pair</th>
               <th>Side</th>
               <th>Price</th>
@@ -614,7 +613,6 @@
         <div class="stat-card"><div class="label">Best Trade</div><div class="value" id="f-stat-best">—</div></div>
         <div class="stat-card"><div class="label">Worst Trade</div><div class="value" id="f-stat-worst">—</div></div>
         <div class="stat-card"><div class="label">Avg Hold Time</div><div class="value" id="f-stat-hold">—</div></div>
-        <div class="stat-card"><div class="label">Total Trades</div><div class="value" id="f-trades-perf">—</div></div>
       </div>
     </section>
 
@@ -665,14 +663,14 @@
 
     <section>
       <div class="chart-controls">
-        <h2>Recent Trades</h2>
+        <h2>Recent Trades <span id="f-total-trades" style="font-size:12px;font-weight:400;color:var(--muted)"></span></h2>
         <a href="/api/futures/trades/csv" download class="csv-btn" title="Export all trades as CSV">↓ CSV</a>
       </div>
       <div class="tbl-wrap">
         <table>
           <thead>
             <tr>
-              <th>Time (Helsinki)</th>
+              <th>Time</th>
               <th>Pair</th>
               <th>Side</th>
               <th>Price</th>
@@ -853,7 +851,7 @@
         <table>
           <thead>
             <tr>
-              <th>Time (Helsinki)</th><th>Pair</th><th>Side</th><th>Price</th>
+              <th>Time</th><th>Pair</th><th>Side</th><th>Price</th>
               <th>Amount</th><th>Value (EUR)</th><th>PnL</th><th>Hold</th><th>Notes</th>
             </tr>
           </thead>
@@ -1008,7 +1006,7 @@
         <table>
           <thead>
             <tr>
-              <th>Time (Helsinki)</th><th>Symbol</th><th>Side</th><th>Price</th>
+              <th>Time</th><th>Symbol</th><th>Side</th><th>Price</th>
               <th>Amount</th><th>Notional $</th><th>PnL $</th><th>Hold</th><th>Notes</th>
             </tr>
           </thead>
@@ -1402,11 +1400,11 @@
         tb.innerHTML = '<tr><td colspan="9" class="empty">No trades yet</td></tr>';
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
-          <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td>${t.timestamp.slice(5,16).replace('T',' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side.toLowerCase()}">${t.side}</td>
           <td>${fmt(t.price)}</td>
-          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>${Number(t.amount).toFixed(4)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
           <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
@@ -1453,7 +1451,8 @@
 
       // Stats
       document.getElementById('balance').textContent = fmt(s.balance);
-      document.getElementById('total-trades').textContent = s.total_trades;
+      const ttEl = document.getElementById('total-trades');
+      if (ttEl) ttEl.textContent = `(${s.total_trades} trades)`;
       const openVal = Object.values(s.positions).reduce((sum, p) => sum + p.current_price * p.amount, 0);
       const portVal = s.balance + openVal;
       document.getElementById('portfolio-value').textContent = fmt(portVal);
@@ -2061,11 +2060,11 @@
         tb.innerHTML = '<tr><td colspan="9" class="empty">No trades yet</td></tr>';
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
-          <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td>${t.timestamp.slice(5,16).replace('T',' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side.toLowerCase()}">${t.side}</td>
           <td>${fmt(t.price)}</td>
-          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>${Number(t.amount).toFixed(4)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
           <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
@@ -2892,7 +2891,7 @@
         tb.innerHTML = '<tr><td colspan="8" class="empty">No futures trades yet</td></tr>';
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
-          <td>${t.timestamp.slice(0,19).replace('T',' ')}</td>
+          <td>${t.timestamp.slice(5,16).replace('T',' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side.toLowerCase()}">${t.side}</td>
           <td>${fmtUsdt(t.price)}</td>
@@ -3005,8 +3004,8 @@
       }
       document.getElementById('f-pnl').innerHTML       = fmtPnlUsdt(d.total_pnl);
       document.getElementById('f-trades').textContent  = d.total_trades;
-      const fTradesPerf = document.getElementById('f-trades-perf');
-      if (fTradesPerf) fTradesPerf.textContent = d.total_trades;
+      const fttEl = document.getElementById('f-total-trades');
+      if (fttEl) fttEl.textContent = `(${d.total_trades} trades)`;
 
       // futures header block
       for (const sfx of ['', '-copy']) {
@@ -3762,11 +3761,11 @@
         tbody.innerHTML = '<tr><td colspan="9" class="empty">No trades yet</td></tr>';
       } else {
         tbody.innerHTML = data.trades.map(t => `<tr>
-          <td style="color:var(--muted);font-size:12px">${t.timestamp}</td>
+          <td style="color:var(--muted);font-size:12px">${t.timestamp.slice(5,16).replace('T',' ')}</td>
           <td>${t.pair}</td>
           <td class="${t.side === 'BUY' ? 'pos' : 'neg'}">${t.side}</td>
           <td>$${Number(t.price).toFixed(2)}</td>
-          <td>${Number(t.amount).toFixed(6)}</td>
+          <td>${Number(t.amount).toFixed(4)}</td>
           <td>$${Number(t.value_eur || 0).toFixed(2)}</td>
           <td>${_fmtPnlUsdt(t.pnl)}</td>
           <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
