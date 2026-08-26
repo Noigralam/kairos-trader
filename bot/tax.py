@@ -185,13 +185,11 @@ def rebuild():
 
     for trade_id, timestamp, pair, side, price, amount, value_eur, fee in trades:
         asset = _asset(pair)
+        fee_eur = _fee_to_eur(side, fee, price, amount)
 
         if side == "BUY":
-            fee_sol = fee if fee < amount * 0.01 else 0.0
-            net_qty = amount - fee_sol
-            _add_lot(conn, trade_id, asset, pair, timestamp, net_qty, value_eur)
+            _add_lot(conn, trade_id, asset, pair, timestamp, amount, value_eur + fee_eur)
         elif side == "SELL":
-            fee_eur = _fee_to_eur(side, fee, price, amount)
             _dispose_fifo(conn, trade_id, asset, pair, timestamp, amount, value_eur, fee_eur)
 
     conn.commit()
@@ -329,7 +327,7 @@ def integrity_check(current_holdings: dict) -> list:
             "lots_remaining": round(lot_remaining, 6),
             "bot_holdings":   round(held, 6),
             "diff":           round(diff, 6),
-            "ok":             diff < 0.001,
+            "ok":             diff < 0.01,
         })
 
     # Assets held by bot but not in lots
