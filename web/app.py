@@ -103,14 +103,6 @@ def _fi_tax(net_pnl: float) -> float:
     return min(net_pnl, config.TAX_BRACKET) * config.TAX_RATE_LOW + max(0, net_pnl - config.TAX_BRACKET) * config.TAX_RATE_HIGH
 
 
-@app.route("/api/tax")
-def api_tax():
-    rows = db.get_tax_summary()
-    return jsonify([
-        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3], "tax": round(_fi_tax(r[3]), 2)}
-        for r in rows
-    ])
-
 
 @app.route("/api/futures/tax")
 def api_futures_tax():
@@ -151,7 +143,7 @@ def api_tax_fifo_integrity():
 
 @app.route("/api/tax/fifo/rebuild", methods=["POST"])
 def api_tax_fifo_rebuild():
-    allowed, rate_limited = _check_pin(request)
+    allowed, rate_limited = _check_pin()
     if rate_limited:
         return jsonify({"error": "Too many attempts — IP locked"}), 429
     if config.DASHBOARD_PIN and not allowed:

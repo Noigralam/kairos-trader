@@ -447,10 +447,6 @@
         <div class="label">Gross P&L (after fees)</div>
         <div class="value" id="pnl">—</div>
       </div>
-      <div class="stat-card">
-        <div class="label">Net P&L (after tax)</div>
-        <div class="value" id="pnl-net">—</div>
-      </div>
     </div>
 
     <details class="bot-controls pin-gated" id="spot-controls-details">
@@ -552,20 +548,6 @@
     </section>
 
     <section>
-      <h2>Tax Summary</h2>
-      <div class="tbl-wrap">
-        <table>
-          <thead>
-            <tr><th>Year</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Gross P&L (EUR)</th><th>Tax due (EUR)</th><th>Net P&L (EUR)</th></tr>
-          </thead>
-          <tbody id="tax-body">
-            <tr><td colspan="6" class="empty">No data</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div>
           <h2 style="margin-bottom:2px">FIFO Tax Report <span style="font-size:11px;font-weight:400;color:var(--muted)">(Finnish Vero)</span></h2>
@@ -574,7 +556,7 @@
         <div style="display:flex;gap:8px;align-items:center">
           <select id="fifo-year-select" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:12px"></select>
           <a id="fifo-csv-btn" href="#" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;text-decoration:none">↓ CSV</a>
-          <button onclick="rebuildFifo()" class="pin-gated" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer">↺ Rebuild</button>
+          <button onclick="rebuildFifo()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer">↺ Rebuild</button>
         </div>
       </div>
       <div class="tbl-wrap" style="margin-bottom:10px">
@@ -1451,14 +1433,12 @@
 
   async function refresh() {
     try {
-      const [statusRes, taxRes, logRes] = await Promise.all([
+      const [statusRes, logRes] = await Promise.all([
         fetch('/api/status'),
-        fetch('/api/tax'),
         fetch('/api/log'),
       ]);
       const s = await statusRes.json();
       _spotLastStatus = s;
-      const tax = await taxRes.json();
       const logs = await logRes.json();
 
       _syncSpotHeader();
@@ -1511,27 +1491,6 @@
       _positions = s.positions;
       _spotMode  = s.mode;
       loadSpotTrades();
-
-      // Tax
-      const txb = document.getElementById('tax-body');
-      if (tax.length === 0) {
-        txb.innerHTML = '<tr><td colspan="4" class="empty">No data</td></tr>';
-      } else {
-        txb.innerHTML = tax.map(r => `<tr>
-          <td>${r.year}</td>
-          <td class="pos">${fmt(r.gains)}</td>
-          <td class="neg">${fmt(r.losses)}</td>
-          <td>${fmtPnl(r.net_pnl)}</td>
-          <td class="${r.tax > 0 ? 'neg' : ''}">${r.tax > 0 ? '-€' + fmt(r.tax) : '—'}</td>
-          <td>${fmtPnl(r.net_pnl - r.tax)}</td>
-        </tr>`).join('');
-      }
-      const totalTax = tax.reduce((s, r) => s + (r.tax || 0), 0);
-      const netPnlEl = document.getElementById('pnl-net');
-      if (netPnlEl) {
-        const netPnl = (s.total_pnl ?? 0) - totalTax;
-        netPnlEl.innerHTML = fmtPnl(netPnl);
-      }
 
       // Log
       const lb = document.getElementById('log-box');
