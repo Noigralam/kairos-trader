@@ -1,12 +1,9 @@
 """
-Finnish capital gains tax module — FIFO cost basis tracking.
+Capital gains tax module — FIFO cost basis tracking.
 
-Scope: spot live trades only (sell-for-fiat EUR pairs on Binance = foreign provider).
-Finnish Vero rules: FIFO matching, separate gain/loss totals, annual reporting.
-
-Note: These figures cover bot trades only. Capital gains/losses must be combined
-with all other capital income (e.g. equity trading) when applying the shared
-€1,000 annual deduction allowance (TVL 50 §).
+Scope: spot live trades only (sell-for-fiat pairs on Binance).
+Tracks FIFO cost basis, realizes gains/losses per disposal, and reports annually.
+Tax rates and exempt allowance are configured via TAX_* env vars.
 """
 import csv
 import io
@@ -210,7 +207,7 @@ def rebuild():
 def annual_summary():
     """
     Returns list of dicts, one per year, with FIFO-based gains/losses.
-    Gains and losses are reported separately per Finnish Vero requirements.
+    Gains and losses are reported separately.
     """
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute("""

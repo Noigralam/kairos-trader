@@ -284,21 +284,34 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 
 ## Tax reporting (FIFO)
 
-The dashboard's **Tax** tab tracks capital gains using Finnish FIFO rules (Vero). Every live trade automatically updates the ledger; the tab shows annual gains, losses, fees, net taxable amount, and an estimated tax liability based on the configured rates.
+The dashboard's **Tax** tab tracks capital gains using FIFO cost-basis matching. Every live trade automatically updates the ledger; the tab shows annual gains, losses, fees, net taxable amount, and an estimated tax liability based on the configured rates.
 
 The FIFO ledger is maintained in `data/trades.db`. It tracks cost-basis lots from BUY fills and disposes them against SELL fills in order. Fees are included in the cost basis.
 
-Tax rate configuration (in `.env`):
+Tax configuration (in `.env`):
 
 | Variable | Default | Description |
 |---|---|---|
 | `TAX_RATE_LOW` | `0.30` | Rate on gains up to `TAX_BRACKET` |
-| `TAX_BRACKET` | `30000` | EUR threshold between low and high rate |
+| `TAX_BRACKET` | `30000` | Threshold between low and high rate. Set to a very large number (e.g. `9999999`) for flat-rate countries |
 | `TAX_RATE_HIGH` | `0.34` | Rate on gains above `TAX_BRACKET` |
+| `TAX_EXEMPT_AMOUNT` | `0` | Annual tax-free allowance subtracted from gains before rates apply (e.g. `3000` for UK CGT) |
+
+**Country examples:**
+
+| Country | Settings |
+|---|---|
+| Finland | `TAX_RATE_LOW=0.30` `TAX_BRACKET=30000` `TAX_RATE_HIGH=0.34` |
+| Germany | `TAX_RATE_LOW=0.26375` `TAX_BRACKET=9999999` `TAX_RATE_HIGH=0.26375` |
+| Sweden | `TAX_RATE_LOW=0.30` `TAX_BRACKET=9999999` `TAX_RATE_HIGH=0.30` |
+| UK | `TAX_RATE_LOW=0.10` `TAX_BRACKET=9999999` `TAX_RATE_HIGH=0.10` `TAX_EXEMPT_AMOUNT=3000` |
+| France | `TAX_RATE_LOW=0.30` `TAX_BRACKET=9999999` `TAX_RATE_HIGH=0.30` |
+
+> UK rates shown are for basic-rate taxpayers (20% income tax band). Higher-rate taxpayers pay 20% CGT — adjust accordingly.
 
 The **Rebuild** button in the Tax tab re-processes all historical live trades from scratch — useful after correcting a trade record or importing old data.
 
-The **Export CSV** button downloads a disposal-by-disposal report for the selected year, suitable for submitting to the tax authority.
+The **Export CSV** button downloads a disposal-by-disposal report for the selected year, suitable for submitting to your local tax authority.
 
 > The FIFO ledger only tracks `live` mode trades. Simulation trades are not included.
 
@@ -396,7 +409,7 @@ bot/
   spot_simulator.py     — spot state + shadow simulators; lazy-inits shadows on first access
   spot_exchange.py      — Binance spot API wrapper
   spot_risk.py          — Position dataclass, trailing stop, DCA, PnL
-  tax.py                — FIFO capital gains tracking (Finnish Vero rules); hooks into db.log_trade()
+  tax.py                — FIFO capital gains tracking; hooks into db.log_trade()
   strategy.py           — RSI + EMA200 signal (shared by spot + futures)
   candles.py            — local SQLite candle cache, incremental sync (spot + futures)
   notifier.py           — Discord webhooks, tick embeds, alerts, log buffering
@@ -428,6 +441,8 @@ pair_sweep.py           — full parameter sweep for any single EUR pair
 main.py                 — engine entry point: spot engine, futures engine, Discord bot
 dashboard.py            — dashboard entry point: Flask web server only
 start.sh / stop.sh      — process management (engine, dashboard, or both)
+status.sh               — show whether engine and dashboard processes are running
 watchdog.sh             — auto-restart on crash
+unlock_pin.sh           — clear dashboard PIN lockouts (./unlock_pin.sh [ip])
 backtest_results/       — auto-created; backtest output files with descriptive names
 ```

@@ -39,7 +39,7 @@ All outbound communication. Sends Discord webhook embeds for tick summaries, tra
 The `discord.py` slash-command bot (`/crp_status`, `/crp_pause`, `/crp_buy`, `/crp_close`, etc.). Runs in its own daemon thread. Commands call into spot engine functions directly. Requires `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID`.
 
 ### `bot/tax.py` *(351 lines)*
-Finnish FIFO capital gains tracker for live spot trades. Maintains `fifo_lots` and `fifo_disposals` tables in `trades.db`. `_add_lot()` records cost basis on BUY; `_dispose_fifo()` matches SELL proceeds against the oldest lots in order, recording gain/loss per disposal. `annual_summary()` returns year-by-year totals. `integrity_check()` compares lot quantities against held positions to catch mismatches. `rebuild()` wipes and re-processes all historical live trades from scratch.
+FIFO capital gains tracker for live spot trades. Maintains `fifo_lots` and `fifo_disposals` tables in `trades.db`. `_add_lot()` records cost basis on BUY; `_dispose_fifo()` matches SELL proceeds against the oldest lots in order, recording gain/loss per disposal. `annual_summary()` returns year-by-year totals. `integrity_check()` compares lot quantities against held positions to catch mismatches. `rebuild()` wipes and re-processes all historical live trades from scratch.
 
 ### `bot/spot_exchange.py` *(96 lines)*
 Thin wrapper around the Binance spot REST API. `get_price(pair)` returns the current ask. `get_eur_balance()` fetches the real EUR wallet balance. `place_order()` / `place_sell_order()` execute real trades in live mode. `get_account_asset()` fetches a specific asset balance for position reconciliation.

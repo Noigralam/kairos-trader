@@ -49,7 +49,8 @@ def favicon():
 
 @app.route("/")
 def index():
-    return render_template("index.html", config=config)
+    return render_template("index.html", config=config,
+                           dashboard_only=bool(os.environ.get("KAIROS_DASHBOARD_ONLY")))
 
 
 @app.route("/api/status")
@@ -92,10 +93,11 @@ def api_trades_csv():
                     headers={"Content-Disposition": "attachment; filename=spot_trades.csv"})
 
 
-def _fi_tax(net_pnl: float) -> float:
+def _calc_tax(net_pnl: float) -> float:
     if net_pnl <= 0:
         return 0.0
-    return min(net_pnl, config.TAX_BRACKET) * config.TAX_RATE_LOW + max(0, net_pnl - config.TAX_BRACKET) * config.TAX_RATE_HIGH
+    taxable = max(0.0, net_pnl - config.TAX_EXEMPT_AMOUNT)
+    return min(taxable, config.TAX_BRACKET) * config.TAX_RATE_LOW + max(0, taxable - config.TAX_BRACKET) * config.TAX_RATE_HIGH
 
 
 
@@ -103,7 +105,7 @@ def _fi_tax(net_pnl: float) -> float:
 def api_futures_tax():
     rows = db.get_tax_summary(mode="futures_live")
     return jsonify([
-        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3], "tax": round(_fi_tax(r[3]), 2)}
+        {"year": r[0], "gains": r[1], "losses": r[2], "net_pnl": r[3], "tax": round(_calc_tax(r[3]), 2)}
         for r in rows
     ])
 
@@ -1741,6 +1743,17 @@ def api_control():
 
 
 def run(host: str = None, port: int = None):
+    import logging
+    _log = logging.getLogger("cryptobot")
+    if config.DASHBOARD_PIN and len(config.DASHBOARD_PIN) < 6:
+        _log.warning(
+            "DASHBOARD_PIN is set but shorter than 6 characters — "
+            "use a longer PIN to reduce brute-force risk"
+        )
+    elif not config.DASHBOARD_PIN:
+        _log.warning(
+            "DASHBOARD_PIN is not set — control endpoints are unprotected"
+        )
     app.run(
         host=host or config.WEB_HOST,
         port=port or config.WEB_PORT,

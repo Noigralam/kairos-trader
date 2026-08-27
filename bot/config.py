@@ -249,6 +249,7 @@ DASHBOARD_PIN = os.getenv("DASHBOARD_PIN", "")  # if set, required to use contro
 # ---------------------------------------------------------------------------
 # Tax
 # ---------------------------------------------------------------------------
-TAX_RATE_LOW       = float(os.getenv("TAX_RATE_LOW",  "0.30"))   # rate on gains up to TAX_BRACKET
-TAX_BRACKET        = float(os.getenv("TAX_BRACKET",   "30000"))   # EUR threshold between low and high rate
-TAX_RATE_HIGH      = float(os.getenv("TAX_RATE_HIGH", "0.34"))   # rate on gains above TAX_BRACKET
+TAX_RATE_LOW       = float(os.getenv("TAX_RATE_LOW",    "0.30"))   # rate on gains up to TAX_BRACKET
+TAX_BRACKET        = float(os.getenv("TAX_BRACKET",     "30000"))  # threshold between low and high rate
+TAX_RATE_HIGH      = float(os.getenv("TAX_RATE_HIGH",   "0.34"))   # rate on gains above TAX_BRACKET
+TAX_EXEMPT_AMOUNT  = float(os.getenv("TAX_EXEMPT_AMOUNT", "0"))    # annual tax-free allowance (subtracted before rates apply)

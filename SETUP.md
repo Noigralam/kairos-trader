@@ -23,7 +23,7 @@ python3 --version
 ## Step 2 — Get the code
 
 ```bash
-git clone <repo-url> kairos
+git clone https://github.com/Noigralam/crypto.git kairos
 cd kairos
 ```
 
@@ -153,4 +153,11 @@ chmod +x start.sh stop.sh status.sh
 The bot reads `.env` only on startup. Any change requires a restart:
 ```bash
 ./stop.sh && ./start.sh
+```
+
+**Locked out of the dashboard PIN**
+Too many wrong PIN attempts locks the offending IP. To unlock:
+```bash
+./unlock_pin.sh              # clear all locked IPs
+./unlock_pin.sh 192.168.1.x  # clear a specific IP only
 ```

@@ -468,6 +468,7 @@
       </div>
     </div>
 
+    {% if not dashboard_only %}
     <details class="bot-controls pin-gated" id="spot-controls-details">
       <summary>Controls</summary>
       <div class="controls">
@@ -477,6 +478,7 @@
         <button class="danger" onclick="control('stop')">■ Stop</button>
       </div>
     </details>
+    {% endif %}
     <div id="live-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:-6px;"></div>
 
     <section>
@@ -568,8 +570,8 @@
     <section>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div>
-          <h2 style="margin-bottom:2px">FIFO Tax Report <span style="font-size:11px;font-weight:400;color:var(--muted)">(Finnish Vero)</span></h2>
-          <div style="font-size:11px;color:var(--muted);opacity:0.7">Binance · foreign provider · sell-for-fiat only</div>
+          <h2 style="margin-bottom:2px">FIFO Tax Report</h2>
+          <div style="font-size:11px;color:var(--muted);opacity:0.7">Binance · sell-for-fiat trades only · rates configured in .env</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <select id="fifo-year-select" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:12px"></select>
@@ -589,8 +591,8 @@
       </div>
       <div id="fifo-integrity" style="font-size:12px;color:var(--muted);margin-bottom:6px"></div>
       <div style="font-size:11px;color:var(--muted);opacity:0.6;line-height:1.5">
-        ⚠ These figures cover bot trades only. Combine with all other capital income
-        (e.g. equity trading) against the shared €1,000 annual deduction allowance (TVL 50 §).
+        ⚠ These figures cover bot trades only. Combine with any other capital gains/losses
+        when filing your tax return.
       </div>
     </section>
 
@@ -629,6 +631,7 @@
       <div class="stat-card"><div class="label">Fees + Funding</div><div class="value" id="f-fees">—</div></div>
     </div>
 
+    {% if not dashboard_only %}
     <details class="bot-controls pin-gated" id="futures-controls-details">
       <summary>Controls</summary>
       <div class="controls">
@@ -638,6 +641,7 @@
         <button class="danger"  onclick="futuresControl('stop')">■ Stop</button>
       </div>
     </details>
+    {% endif %}
     <div id="f-live-since" style="font-size:11px;color:var(--muted);opacity:0.6;margin-top:-6px;"></div>
 
     <section>
@@ -1069,6 +1073,8 @@
 </div>
 
 <script>
+  const DASHBOARD_ONLY = {{ dashboard_only | tojson }};
+
   const _fi = (n, decimals=2) =>
     Number(n).toLocaleString('fi-FI', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
   function fmt(n, decimals=2) {
@@ -1373,7 +1379,7 @@
               <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
               <div style="display:flex;gap:6px">
                 ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${pair} position amount from Binance?')) controlSyncPosition('${pair}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
-                <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></span>
+                ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></span>`}
               </div>
             </div>
           </div>`;
@@ -1408,12 +1414,12 @@
           </div>
           <div class="commentary">${d.commentary}</div>
           ${posBlock}
-          <div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+          ${DASHBOARD_ONLY ? '' : `<div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
               onclick="if(confirm('Buy ${pair} with 50% of balance?')) controlBuy('${pair}', 0.5)">Buy 50%</button>
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
               onclick="if(confirm('Buy ${pair} with 100% of balance?')) controlBuy('${pair}', 1.0)">Buy 100%</button>
-          </div>
+          </div>`}
         </div>`;
       }).join('');
       _applyLockState();
@@ -2888,7 +2894,7 @@
             </div>
             <div class="pos-row" style="margin-top:8px">
               <span class="plabel">${Number(pos.amount).toFixed(4)} units</span>
-              <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>
+              ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>`}
             </div>
           </div>`;
         }
@@ -3215,7 +3221,7 @@
           </div>
           <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--muted)">${Number(p.amount).toFixed(4)} units</span>
-            <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>
+            ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>`}
           </div>
         </div>`;
       }).join('');
