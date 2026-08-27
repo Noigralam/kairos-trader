@@ -10,9 +10,12 @@ INTERVAL_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4
 # ---------------------------------------------------------------------------
 BINANCE_API_KEY    = os.getenv("BINANCE_API_KEY", "")
 BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
-DISCORD_BOT_TOKEN   = os.getenv("DISCORD_BOT_TOKEN", "")
-DISCORD_GUILD_ID    = os.getenv("DISCORD_GUILD_ID", "")
+DISCORD_WEBHOOK_URL     = os.getenv("DISCORD_WEBHOOK_URL", "")
+DISCORD_BOT_TOKEN       = os.getenv("DISCORD_BOT_TOKEN", "")
+DISCORD_GUILD_ID        = os.getenv("DISCORD_GUILD_ID", "")
+DISCORD_NOTIFY_TICKS    = os.getenv("DISCORD_NOTIFY_TICKS",    "true").lower()  != "false"
+DISCORD_MENTION_ON_TRADE = os.getenv("DISCORD_MENTION_ON_TRADE", "true").lower() != "false"
+DISCORD_TICK_HISTORY    = int(os.getenv("DISCORD_TICK_HISTORY", "5"))
 
 # ---------------------------------------------------------------------------
 # Spot (EUR pairs)

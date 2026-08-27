@@ -277,6 +277,9 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 | `DISCORD_WEBHOOK_URL` | Trade alerts and tick embeds |
 | `DISCORD_BOT_TOKEN` | Slash command bot (optional) |
 | `DISCORD_GUILD_ID` | Guild ID for instant slash command registration |
+| `DISCORD_NOTIFY_TICKS` | `true` — set to `false` to suppress 15m tick embeds (trade alerts still sent) |
+| `DISCORD_MENTION_ON_TRADE` | `true` — set to `false` to suppress `@everyone` on live trade alerts |
+| `DISCORD_TICK_HISTORY` | `5` — how many tick messages to keep before deleting the oldest |
 | `WEB_HOST` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
 | `WEB_PORT` | Dashboard port (default 8888) |
 | `DASHBOARD_PIN` | Optional PIN to gate control actions in the web UI (use 6+ characters) |
@@ -319,7 +322,7 @@ The **Export CSV** button downloads a disposal-by-disposal report for the select
 
 ## Discord
 
-When `DISCORD_WEBHOOK_URL` is set the bot posts tick embeds, trade alerts, extreme RSI/EMA alerts, and a daily summary.
+When `DISCORD_WEBHOOK_URL` is set the bot posts tick embeds, trade alerts, extreme RSI/EMA alerts, and a daily summary. Tick embeds and `@everyone` mentions can be disabled independently — see the config table above.
 
 Slash commands (requires `DISCORD_BOT_TOKEN`):
 

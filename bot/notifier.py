@@ -15,7 +15,7 @@ _log_buffer: collections.deque = collections.deque(maxlen=50)
 
 # ── persistent tick message IDs ────────────────────────────────────────────────
 _IDS_PATH      = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "discord_ids.json")
-_MAX_TICK_MSGS = 5
+_MAX_TICK_MSGS = config.DISCORD_TICK_HISTORY
 
 
 def _load_ids() -> list:
@@ -226,7 +226,8 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
     }
 
     _terminal(f"[TICK] {tick_time} — " + "  |  ".join(log_parts))
-    _send_tick({"embeds": [embed]}, chart_buf)
+    if config.DISCORD_NOTIFY_TICKS:
+        _send_tick({"embeds": [embed]}, chart_buf)
 
 
 
@@ -279,7 +280,7 @@ def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: fl
     if pnl  is not None:
         fields.append({"name": "PnL", "value": f"€{pnl:+.2f}", "inline": True})
 
-    content = "@everyone" if config.SPOT_MODE == "live" else ""
+    content = "@everyone" if (config.SPOT_MODE == "live" and config.DISCORD_MENTION_ON_TRADE) else ""
     embed = {
         "title":     f"{emoji} {side} — {pair}",
         "color":     color,
@@ -292,7 +293,7 @@ def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: fl
 
 
 def trailing_stop_alert(pair: str, price: float, pnl: float):
-    content = "@everyone" if config.SPOT_MODE == "live" else ""
+    content = "@everyone" if (config.SPOT_MODE == "live" and config.DISCORD_MENTION_ON_TRADE) else ""
     embed = {
         "title":     f"🛑 TRAILING STOP — {pair}",
         "color":     0x3fb950 if pnl >= 0 else 0xf85149,
