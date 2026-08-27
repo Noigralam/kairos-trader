@@ -161,6 +161,13 @@ def _dispose_fifo(conn, trade_id, asset, pair, disposed_at, quantity, proceeds_e
              trade_id),
         )
 
+    # Zero out micro-residuals left by Binance SOL-fee deductions (gross lot qty
+    # slightly exceeds net wallet balance sold). These were never in the wallet.
+    conn.execute(
+        "UPDATE tax_lots SET remaining = 0 WHERE asset = ? AND remaining < 0.02",
+        (asset,),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Rebuild from history
