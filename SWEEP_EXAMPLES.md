@@ -4,6 +4,8 @@ How to use the backtest tools to find good parameters, illustrated with real exa
 
 Add `--cached` to any command after the first run to skip candle syncing and use the local cache — much faster for iterating on the same window.
 
+Every run saves a full copy of its output to `backtest_results/` with a filename that describes what was run and when (e.g. `spot_sweep_buyrsi_730d_365d_2026-08-27.txt`). The path is printed at the top of each run. Each sweep also includes a footer legend explaining every column.
+
 ---
 
 ## Example 1 — Evaluating a new pair: NEAR2

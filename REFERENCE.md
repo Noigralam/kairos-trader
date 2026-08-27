@@ -323,6 +323,15 @@ Slash commands (requires `DISCORD_BOT_TOKEN`):
 
 Add `--cached` to any backtest command to skip candle syncing and use only the local cache (faster, reproducible).
 
+Every run automatically saves a copy of all output to `backtest_results/` with a descriptive filename, e.g.:
+- `spot_sweep_trail_730d_365d_2026-08-27.txt`
+- `futures_baseline_730d_365d_2026-08-27.txt`
+- `grid_XRPEUR+SOLEUR_180d_2026-08-27.txt`
+
+The path is printed at the top of each run. Results are never lost to terminal scroll.
+
+Each sweep also prints a footer legend explaining every output column and a description of how the swept parameter affects the trading logic.
+
 See [SWEEP_EXAMPLES.md](SWEEP_EXAMPLES.md) for worked examples showing how the current shadow profiles were found.
 
 ### Spot
@@ -414,9 +423,11 @@ data/
   futures_state_shadow_*.json — per-shadow futures state
 backtest.py             — spot backtest + parameter sweep tool
 backtest_futures.py     — futures backtest + parameter sweep tool
+backtest_grid.py        — grid strategy backtest: spacing × levels sweep
 pair_sweep.py           — full parameter sweep for any single EUR pair
 main.py                 — engine entry point: spot engine, futures engine, Discord bot
 dashboard.py            — dashboard entry point: Flask web server only
 start.sh / stop.sh      — process management (engine, dashboard, or both)
 watchdog.sh             — auto-restart on crash
+backtest_results/       — auto-created; backtest output files with descriptive names
 ```

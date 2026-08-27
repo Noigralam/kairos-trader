@@ -1,7 +1,7 @@
 # Codebase Overview
 
 Every Python file in the project, what it does, and how it fits together.
-Total: ~8 900 lines across 23 files.
+Total: ~9 100 lines across 23 files.
 
 ---
 
@@ -82,14 +82,14 @@ The Flask dashboard. ~40 API endpoints covering: spot and futures status (read f
 
 ## Backtest / research tools
 
-### `backtest.py` *(1 459 lines)*
-Spot backtest engine and parameter sweep tool. Replays historical candles from the local cache against the same trade logic used in the live engine. Modes: single baseline run, shadow profile comparison ranked by return, or any of ~15 targeted sweeps (buy RSI, sell RSI, RSI period, trailing stop, profit floor, take-profit, DCA, EMA gap, volume filter, cooldown, partial close, interval, time stop, daily EMA, drawdown). Results print as ranked tables. Accepts multiple day windows in one command.
+### `backtest.py` *(1 656 lines)*
+Spot backtest engine and parameter sweep tool. Replays historical candles from the local cache against the same trade logic used in the live engine. Modes: single baseline run, shadow profile comparison ranked by return, or any of ~15 targeted sweeps (buy RSI, sell RSI, RSI period, trailing stop, profit floor, take-profit, DCA, EMA gap, volume filter, cooldown, partial close, interval, time stop, daily EMA, drawdown). Results print as ranked tables with a footer legend explaining every column and a description of how the swept parameter affects trading logic. All output is mirrored to a descriptively-named file in `backtest_results/`. Accepts multiple day windows in one command.
 
-### `backtest_futures.py` *(542 lines)*
-Futures backtest with isolated-margin accounting: models 0.05% taker fee, 0.01%/8h funding on open longs, and liquidation at `entry × (1 − 1/leverage + 0.5%)`. Sweeps: RSI thresholds, trailing stop, profit floor, take-profit, position size, DCA, and leverage. Also does shadow profile comparison ranked by return.
+### `backtest_futures.py` *(642 lines)*
+Futures backtest with isolated-margin accounting: models 0.05% taker fee, 0.01%/8h funding on open longs, and liquidation at `entry × (1 − 1/leverage + 0.5%)`. Sweeps: RSI thresholds, trailing stop, profit floor, take-profit, position size, DCA, and leverage. Also does shadow profile comparison ranked by return. Footer legend and output file mirroring identical to `backtest.py`.
 
-### `backtest_grid.py` *(267 lines)*
-Grid strategy backtester. Places simulated limit orders at fixed price levels around a centre price and tracks fills as price oscillates. Sweeps spacing and number-of-levels combinations, ranks by realised P&L. Used for evaluating `XRP_GRID`, `SOL_GRID_*` shadow profiles.
+### `backtest_grid.py` *(326 lines)*
+Grid strategy backtester. Places simulated limit orders at fixed price levels around a centre price and tracks fills as price oscillates. Sweeps spacing and number-of-levels combinations, ranks by realised P&L. Footer legend explains all grid-specific columns (spacing, levels, trades, realised%, stuck%, recenters, open_slots, fees) and how the grid mechanics work. Output mirrored to `backtest_results/`. Used for evaluating `XRP_GRID`, `SOL_GRID_*` shadow profiles.
 
 ### `pair_sweep.py` *(58 lines)*
 Convenience wrapper around `backtest.py`. Points `PAIRS` at a single EUR pair and runs every sweep (RSI period, buy threshold, exit, floor, trail, min exit, DCA, EMA gap, cooldown) across 730d / 365d / 180d in one shot. The natural starting point when evaluating a new pair candidate. See `SWEEP_EXAMPLES.md` for worked examples.
