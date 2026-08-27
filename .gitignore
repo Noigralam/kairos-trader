@@ -19,6 +19,9 @@ build/
 secrets.json
 config.json
 
+# Backtest output
+backtest_results/
+
 # Logs & runtime state
 *.log
 logs/
