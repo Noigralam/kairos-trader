@@ -130,7 +130,7 @@ The trading engine and web dashboard run as **separate processes**. The engine w
 ./stop.sh dashboard     # stop dashboard only
 ```
 
-`start.sh` prints the dashboard URL on startup. `watchdog.sh` can be used to auto-restart on crash.
+`start.sh` prints the dashboard URL on startup. `watchdog.sh` can be used to auto-restart on crash — see SETUP.md for cron setup.
 
 Logs are written to separate files:
 
@@ -444,7 +444,7 @@ main.py                 — engine entry point: spot engine, futures engine, Dis
 dashboard.py            — dashboard entry point: Flask web server only
 start.sh / stop.sh      — process management (engine, dashboard, or both)
 status.sh               — show whether engine and dashboard processes are running
-watchdog.sh             — auto-restart on crash
+watchdog.sh             — one-shot crash detector: checks engine PID, restarts if dead, posts Discord alert
 unlock_pin.sh           — clear dashboard PIN lockouts (./unlock_pin.sh [ip])
 backtest_results/       — auto-created; backtest output files with descriptive names
 ```

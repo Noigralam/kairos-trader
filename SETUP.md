@@ -116,6 +116,27 @@ To check whether both processes are running:
 
 ---
 
+## Optional — Auto-restart with watchdog
+
+`watchdog.sh` checks whether the engine is running and restarts it if not. It is designed to be called by cron on a regular schedule.
+
+```bash
+# Add to crontab — run every 5 minutes
+crontab -e
+```
+
+Add this line (adjust the path to match where you cloned the repo):
+
+```
+*/5 * * * * /home/<user>/kairos/watchdog.sh >> /home/<user>/kairos/data/watchdog.log 2>&1
+```
+
+If `DISCORD_WEBHOOK_URL` is set in `.env`, the watchdog will post a Discord alert when it detects a crash and again when the restart succeeds or fails.
+
+> The watchdog only monitors the **engine** process (`data/kairos.pid`), not the dashboard. The dashboard can be restarted independently with `./start.sh dashboard` and is less critical to monitor since it does not execute trades.
+
+---
+
 ## Optional — Enable HTTPS (recommended if you set a PIN)
 
 If you set a `DASHBOARD_PIN`, the PIN is sent in cleartext over HTTP by default. To encrypt it, enable HTTPS with a self-signed certificate:
