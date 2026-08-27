@@ -29,6 +29,7 @@ class SimState:
     total_fees: float = 0.0
     portfolio_peak: float = 0.0
     stop_cooldowns: dict = field(default_factory=dict)  # pair -> epoch expiry
+    live_since: str | None = None
 
 
 _state = SimState()
@@ -39,6 +40,7 @@ def _save():
     now = _time.time()
     data = {
         "mode": config.SPOT_MODE,
+        "live_since": _state.live_since,
         "balance": _state.balance,
         "total_trades": _state.total_trades,
         "total_pnl": _state.total_pnl,
@@ -71,6 +73,7 @@ def _load():
     try:
         with open(STATE_PATH) as f:
             data = json.load(f)
+        _state.live_since = data.get("live_since", None)
         _state.balance = data.get("balance", config.SPOT_SIMULATION_BALANCE)
         _state.total_trades = data.get("total_trades", 0)
         _state.total_pnl = data.get("total_pnl", 0.0)

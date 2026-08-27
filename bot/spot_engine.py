@@ -266,23 +266,15 @@ def _stop_loop():
             log.error(f"[SPOT STOP-CHECK] {e}", exc_info=True)
 
 
-_LIVE_SINCE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_live_since.txt")
-
-
 def _ensure_live_since():
-    if config.SPOT_MODE == "live" and not os.path.exists(_LIVE_SINCE_PATH):
+    if config.SPOT_MODE == "live" and simulator.get_state().live_since is None:
         import datetime, zoneinfo
-        ts = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
-        with open(_LIVE_SINCE_PATH, "w") as f:
-            f.write(ts)
+        simulator.get_state().live_since = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+        simulator._save()
 
 
 def get_live_since() -> str | None:
-    try:
-        with open(_LIVE_SINCE_PATH) as f:
-            return f.read().strip()
-    except Exception:
-        return None
+    return simulator.get_state().live_since
 
 
 def get_uptime() -> int | None:
