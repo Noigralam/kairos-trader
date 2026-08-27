@@ -242,9 +242,11 @@ def get_futures_shadow_overrides(name: str) -> dict:
 # ---------------------------------------------------------------------------
 # Web dashboard
 # ---------------------------------------------------------------------------
-WEB_HOST = os.getenv("WEB_HOST", "127.0.0.1")  # 0.0.0.0 to expose on LAN
-WEB_PORT = int(os.getenv("WEB_PORT", "8888"))
-DASHBOARD_PIN = os.getenv("DASHBOARD_PIN", "")  # if set, required to use control endpoints
+WEB_HOST      = os.getenv("WEB_HOST",      "127.0.0.1")  # 0.0.0.0 to expose on LAN
+WEB_PORT      = int(os.getenv("WEB_PORT", "8888"))
+DASHBOARD_PIN = os.getenv("DASHBOARD_PIN", "")           # if set, required to use control endpoints
+WEB_SSL_CERT  = os.getenv("WEB_SSL_CERT",  "")           # path to SSL certificate file (enables HTTPS)
+WEB_SSL_KEY   = os.getenv("WEB_SSL_KEY",   "")           # path to SSL private key file
 
 # ---------------------------------------------------------------------------
 # Tax

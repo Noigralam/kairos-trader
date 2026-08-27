@@ -279,7 +279,9 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 | `DISCORD_GUILD_ID` | Guild ID for instant slash command registration |
 | `WEB_HOST` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
 | `WEB_PORT` | Dashboard port (default 8888) |
-| `DASHBOARD_PIN` | Optional PIN to gate control actions in the web UI |
+| `DASHBOARD_PIN` | Optional PIN to gate control actions in the web UI (use 6+ characters) |
+| `WEB_SSL_CERT` | Path to SSL certificate file — enables HTTPS when set together with `WEB_SSL_KEY` |
+| `WEB_SSL_KEY` | Path to SSL private key file |
 | `TAX_RATE_LOW` / `TAX_BRACKET` / `TAX_RATE_HIGH` | FIFO tax rates — see Tax reporting section |
 
 ## Tax reporting (FIFO)

@@ -1745,18 +1745,33 @@ def api_control():
 def run(host: str = None, port: int = None):
     import logging
     _log = logging.getLogger("cryptobot")
+
+    ssl_context = None
+    if config.WEB_SSL_CERT and config.WEB_SSL_KEY:
+        if os.path.exists(config.WEB_SSL_CERT) and os.path.exists(config.WEB_SSL_KEY):
+            ssl_context = (config.WEB_SSL_CERT, config.WEB_SSL_KEY)
+            _log.info(f"HTTPS enabled — cert={config.WEB_SSL_CERT}")
+        else:
+            _log.warning(
+                f"WEB_SSL_CERT/WEB_SSL_KEY set but files not found "
+                f"({config.WEB_SSL_CERT}, {config.WEB_SSL_KEY}) — falling back to HTTP"
+            )
+
     if config.DASHBOARD_PIN and len(config.DASHBOARD_PIN) < 6:
         _log.warning(
             "DASHBOARD_PIN is set but shorter than 6 characters — "
             "use a longer PIN to reduce brute-force risk"
         )
     elif not config.DASHBOARD_PIN:
-        _log.warning(
-            "DASHBOARD_PIN is not set — control endpoints are unprotected"
-        )
+        _log.warning("DASHBOARD_PIN is not set — control endpoints are unprotected")
+
+    if not ssl_context and config.DASHBOARD_PIN:
+        _log.warning("HTTPS is not enabled — PIN is transmitted in cleartext")
+
     app.run(
         host=host or config.WEB_HOST,
         port=port or config.WEB_PORT,
         debug=False,
         use_reloader=False,
+        ssl_context=ssl_context,
     )

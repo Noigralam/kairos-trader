@@ -116,6 +116,35 @@ To check whether both processes are running:
 
 ---
 
+## Optional — Enable HTTPS (recommended if you set a PIN)
+
+If you set a `DASHBOARD_PIN`, the PIN is sent in cleartext over HTTP by default. To encrypt it, enable HTTPS with a self-signed certificate:
+
+```bash
+# Generate a self-signed certificate valid for 10 years (no domain needed)
+openssl req -x509 -newkey rsa:4096 -keyout data/key.pem -out data/cert.pem \
+  -days 3650 -nodes -subj "/CN=kairos"
+```
+
+Then add to `.env`:
+
+```
+WEB_SSL_CERT=data/cert.pem
+WEB_SSL_KEY=data/key.pem
+```
+
+Restart the dashboard:
+
+```bash
+./stop.sh dashboard && ./start.sh dashboard
+```
+
+The dashboard is now available at `https://<your-ip>:8888`. Your browser will show a security warning on first visit because the certificate is self-signed — click **Advanced → Proceed** to accept it. Once accepted, the connection is encrypted.
+
+> The certificate and key are stored in `data/` which is gitignored, so they will never be committed.
+
+---
+
 ## Step 8 — Going live (when you're ready)
 
 See the **Go live** section in [REFERENCE.md](REFERENCE.md) for the full Binance API key setup. Only do this after you've watched the simulation run for a while and are comfortable with how it behaves.
