@@ -267,14 +267,14 @@ def _stop_loop():
 
 
 def _ensure_live_since():
-    if config.SPOT_MODE == "live" and simulator.get_state().live_since is None:
-        import datetime, zoneinfo
-        simulator.get_state().live_since = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
-        simulator._save()
+    from . import spot_simulator as _sim
+    if config.SPOT_MODE == "live" and get_state().live_since is None:
+        get_state().live_since = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+        _sim._save()
 
 
 def get_live_since() -> str | None:
-    return simulator.get_state().live_since
+    return get_state().live_since
 
 
 def get_uptime() -> int | None:
