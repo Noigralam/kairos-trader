@@ -561,7 +561,7 @@
       <div class="tbl-wrap" style="margin-bottom:10px">
         <table>
           <thead>
-            <tr><th>Year</th><th>Provider</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Net (EUR)</th><th>Fees (EUR)</th><th>Trades</th></tr>
+            <tr><th>Year</th><th>Provider</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Fees (EUR)</th><th>Net (EUR)</th><th>Trades</th></tr>
           </thead>
           <tbody id="fifo-body">
             <tr><td colspan="7" class="empty">Click Rebuild to generate FIFO report</td></tr>
@@ -1549,8 +1549,8 @@
         <td style="color:var(--muted)">${r.provider}</td>
         <td class="pos">${r.gains.toFixed(2)}</td>
         <td class="neg">${r.losses > 0 ? r.losses.toFixed(2) : '—'}</td>
-        <td>${r.net >= 0 ? '<span class="pos">+' : '<span class="neg">'}${r.net.toFixed(2)}</span></td>
         <td style="color:var(--muted)">${r.fee_total.toFixed(2)}</td>
+        <td>${r.net >= 0 ? '<span class="pos">+' : '<span class="neg">'}${r.net.toFixed(2)}</span></td>
         <td style="color:var(--muted)">${r.trades}</td>
       </tr>`).join('');
 
