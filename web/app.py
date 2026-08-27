@@ -1346,7 +1346,16 @@ def api_log():
         try:
             with open(_ENGINE_LOG_PATH, encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
-            return jsonify([l.rstrip("\n") for l in lines[-150:]])
+            out = []
+            for l in lines[-150:]:
+                l = l.rstrip("\n")
+                # format: "YYYY-MM-DD HH:MM:SS  vX.X.X  LEVEL  message"
+                parts = l.split("  ", 3)
+                if len(parts) >= 4:
+                    out.append({"time": parts[0].replace(" ", "T"), "msg": parts[3]})
+                elif l:
+                    out.append({"time": "", "msg": l})
+            return jsonify(list(reversed(out)))
         except Exception:
             return jsonify([])
     return jsonify(get_recent_logs())

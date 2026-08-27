@@ -1548,9 +1548,9 @@
 
       document.getElementById('last-tick').textContent =
         'Last tick @ ' + (s.last_tick || '—');
+      loadChart();
       if (s.last_tick && s.last_tick !== _lastKnownTick) {
         _lastKnownTick = s.last_tick;
-        loadChart();
         loadBalanceChart();
         loadStats();
       }
@@ -3154,6 +3154,7 @@
       loadFuturesTrades();
       loadFuturesBalanceChart();
       loadFuturesTax();
+      loadFuturesChart();
 
       // Position cards
       const grid  = document.getElementById('futures-pos-grid');
