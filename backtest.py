@@ -437,12 +437,11 @@ _EXIT_SHORT = {
 }
 
 
-def summarise(label: str, trades: list[Trade], start: float, wide: bool = False):
+def _format_row(label: str, trades: list[Trade], start: float, wide: bool = False) -> tuple[float, str]:
     realized = [t for t in trades if t.exit_reason != "end_of_data"]
     open_eod = len(trades) - len(realized)
     if not realized:
-        print(f"  {label:<44}  no closed trades")
-        return
+        return (float("-inf"), f"  {label:<44}  no closed trades")
     pnl   = sum(t.pnl  for t in realized)
     fees  = sum(t.fees for t in realized)
     wins  = sum(1 for t in realized if t.pnl > 0)
@@ -458,15 +457,21 @@ def summarise(label: str, trades: list[Trade], start: float, wide: bool = False)
 
     if wide:
         dca_n = sum(1 for t in realized if t.dca_used)
-        print(f"  {label:<44}  n={n:>3}{eod}  W/L={wins}/{n-wins}"
-              f"  PnL={pnl:>+7.2f}  avg={avg:>+5.2f}  worst={worst:>+6.2f}  best={best:>+5.2f}"
-              f"  fees={fees:.2f}  dca×{dca_n}  [{exits}]")
+        line = (f"  {label:<44}  n={n:>3}{eod}  W/L={wins}/{n-wins}"
+                f"  PnL={pnl:>+7.2f}  avg={avg:>+5.2f}  worst={worst:>+6.2f}  best={best:>+5.2f}"
+                f"  fees={fees:.2f}  dca×{dca_n}  [{exits}]")
     else:
         tax   = min(max(pnl, 0), 30000) * 0.30 + max(max(pnl, 0) - 30000, 0) * 0.34
         after = start + pnl - (tax if pnl > 0 else 0)
-        print(f"  {label:<36}  n={n:>3}  {eod:>4}  W/L={wins}/{n-wins}"
-              f"  PnL={pnl:>+7.2f}  bal-aft-tax={after:>7.2f}"
-              f"  worst={worst:>+7.2f}  fees={fees:.2f}  [{exits}]")
+        line = (f"  {label:<36}  n={n:>3}  {eod:>4}  W/L={wins}/{n-wins}"
+                f"  PnL={pnl:>+7.2f}  bal-aft-tax={after:>7.2f}"
+                f"  worst={worst:>+7.2f}  fees={fees:.2f}  [{exits}]")
+    return (pnl, line)
+
+
+def summarise(label: str, trades: list[Trade], start: float, wide: bool = False):
+    _, line = _format_row(label, trades, start, wide)
+    print(line)
 
 
 def _header(days: int, title: str, wide: bool = False):
@@ -532,10 +537,14 @@ def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: l
         for pair in pairs:
             df = fetch(pair, days)
             print(f"\n  ── {pair} ──")
+            rows = []
             for s in scenarios:
                 kwargs = {k: v for k, v in s.items() if k != "label"}
                 trades, _ = run_pair(pair, df, start, **kwargs)
-                summarise(s["label"], trades, start, wide=True)
+                rows.append(_format_row(s["label"], trades, start, wide=True))
+            rows.sort(key=lambda x: x[0], reverse=True)
+            for i, (_, line) in enumerate(rows):
+                print(line + ("  ◄ best" if i == 0 else ""))
         print()
     _legend(wide=True, description=description)
 
@@ -1198,15 +1207,19 @@ def sweep_dca(days_list: list[int]):
         for pair in PAIRS:
             df = fetch(pair, days)
             print(f"\n  ── {pair} ──")
+            rows = []
             base, _ = run_pair(pair, df, start, enable_dca=False)
-            summarise("no DCA  (baseline)", base, start, wide=True)
+            rows.append(_format_row("no DCA  (baseline)", base, start, wide=True))
             for drop in [0.01, 0.02, 0.03]:
                 for size in [0.50, 0.75]:
                     cur = (abs(drop - config.SPOT_DCA_DROP_PCT) < 1e-9 and
                            abs(size - config.SPOT_DCA_SIZE_PCT) < 1e-9)
                     label = f"drop={drop*100:.0f}%  size={size*100:.0f}%{'  ◄ current' if cur else ''}"
                     trades, _ = run_pair(pair, df, start, dca_drop=drop, dca_pct=size)
-                    summarise(label, trades, start, wide=True)
+                    rows.append(_format_row(label, trades, start, wide=True))
+            rows.sort(key=lambda x: x[0], reverse=True)
+            for i, (_, line) in enumerate(rows):
+                print(line + ("  ◄ best" if i == 0 else ""))
         print()
     _legend(wide=True, description=(
         "DCA (Dollar-Cost Averaging) = buying more if price drops after the initial entry, lowering cost basis.\n"

@@ -272,12 +272,11 @@ _EXIT_SHORT = {
 }
 
 
-def summarise(label: str, trades: list[FTrade], start: float):
+def _format_row(label: str, trades: list[FTrade], start: float) -> tuple[float, str]:
     realized = [t for t in trades if t.exit_reason != "end_of_data"]
     open_eod = len(trades) - len(realized)
     if not realized:
-        print(f"  {label:<46}  no closed trades")
-        return
+        return (float("-inf"), f"  {label:<46}  no closed trades")
     pnl      = sum(t.pnl     for t in realized)
     fees     = sum(t.fees    for t in realized)
     funding  = sum(t.funding for t in realized)
@@ -291,12 +290,17 @@ def summarise(label: str, trades: list[FTrade], start: float):
     reasons  = {}
     for t in realized:
         reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
-    exits = "  ".join(f"{_EXIT_SHORT.get(k, k)}×{v}" for k, v in reasons.items())
+    exits    = "  ".join(f"{_EXIT_SHORT.get(k, k)}×{v}" for k, v in reasons.items())
     liq_flag = f"  ⚠ {liq}×LIQ" if liq else ""
+    line = (f"  {label:<46}  n={n:>3}{eod}  W/L={wins}/{n-wins}"
+            f"  PnL={pnl:>+7.2f}  avg={avg:>+5.2f}  worst={worst:>+6.2f}  best={best:>+5.2f}"
+            f"  fees={fees:.2f}  fund={funding:.2f}  [{exits}]{liq_flag}")
+    return (pnl, line)
 
-    print(f"  {label:<46}  n={n:>3}{eod}  W/L={wins}/{n-wins}"
-          f"  PnL={pnl:>+7.2f}  avg={avg:>+5.2f}  worst={worst:>+6.2f}  best={best:>+5.2f}"
-          f"  fees={fees:.2f}  fund={funding:.2f}  [{exits}]{liq_flag}")
+
+def summarise(label: str, trades: list[FTrade], start: float):
+    _, line = _format_row(label, trades, start)
+    print(line)
 
 
 def _header(days: int, title: str):
@@ -348,10 +352,14 @@ def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], descript
         for pair in PAIRS:
             df = fetch(pair, days)
             print(f"\n  ── {pair} ──")
+            rows = []
             for s in scenarios:
                 kwargs = {k: v for k, v in s.items() if k != "label"}
                 trades, _ = run_pair(pair, df, start, **kwargs)
-                summarise(s["label"], trades, start)
+                rows.append(_format_row(s["label"], trades, start))
+            rows.sort(key=lambda x: x[0], reverse=True)
+            for i, (_, line) in enumerate(rows):
+                print(line + ("  ◄ best" if i == 0 else ""))
         print()
     _legend(description=description)
 
@@ -421,8 +429,9 @@ def sweep_dca(days_list: list[int]):
         for pair in PAIRS:
             df = fetch(pair, days)
             print(f"\n  ── {pair} ──")
+            rows = []
             trades, _ = run_pair(pair, df, start, enable_dca=False)
-            summarise("no DCA  (baseline)", trades, start)
+            rows.append(_format_row("no DCA  (baseline)", trades, start))
             for drop in [0.005, 0.01, 0.015, 0.02, 0.03]:
                 for dca_pct in [0.50, 0.75]:
                     cur = (abs(drop - config.FUTURES_DCA_DROP_PCT) < 1e-9 and
@@ -430,7 +439,10 @@ def sweep_dca(days_list: list[int]):
                     label = (f"drop={drop*100:.1f}%  dca_size={dca_pct*100:.0f}%"
                              + ("  ◄ current" if cur else ""))
                     trades, _ = run_pair(pair, df, start, dca_drop=drop, dca_pct=dca_pct)
-                    summarise(label, trades, start)
+                    rows.append(_format_row(label, trades, start))
+            rows.sort(key=lambda x: x[0], reverse=True)
+            for i, (_, line) in enumerate(rows):
+                print(line + ("  ◄ best" if i == 0 else ""))
         print()
     _legend(description=(
         "DCA (Dollar-Cost Averaging) = adding margin if price drops after entry, lowering the liquidation price.\n"
