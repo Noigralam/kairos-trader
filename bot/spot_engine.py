@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import os
 import threading
@@ -220,6 +221,8 @@ def _loop():
             open_val   = sum(prices[p] * pos.amount for p, pos in snap_state.positions.items() if p in prices)
             _db.log_balance(round(snap_state.balance + open_val, 2), config.SPOT_MODE)
 
+            write_status_snapshot(prices)
+
         except Exception as e:
             log.error(e, exc_info=True)
             notify(f"⚠️ Tick failed — {e}")
@@ -262,8 +265,72 @@ def _stop_loop():
                 check_stops(prices)
                 for shadow in get_shadows():
                     shadow.check_stops(prices)
+                write_status_snapshot(prices)
         except Exception as e:
             log.error(f"[SPOT STOP-CHECK] {e}", exc_info=True)
+
+
+_STATUS_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_spot.json")
+
+
+def write_status_snapshot(prices: dict | None = None):
+    """Write a status snapshot to disk so the dashboard can run in a separate process."""
+    try:
+        state = get_state()
+        tz = zoneinfo.ZoneInfo("Europe/Helsinki")
+        now_iso = datetime.datetime.now(tz=tz).isoformat()
+
+        if prices is None:
+            # best-effort: fetch current prices for open positions only
+            prices = {}
+            for pair in state.positions:
+                try:
+                    prices[pair] = get_price(pair)
+                except Exception:
+                    pass
+
+        positions_out = {}
+        for pair, pos in state.positions.items():
+            cur = prices.get(pair, pos.value_eur / pos.amount if pos.amount else 0)
+            positions_out[pair] = {
+                "entry_price":    pos.entry_price,
+                "amount":         pos.amount,
+                "value_eur":      round(pos.value_eur, 2),
+                "highest_price":  pos.highest_price,
+                "trailing_stop":  round(pos.trailing_stop_level(), 2),
+                "take_profit":    pos.take_profit_price,
+                "dca_trigger":    round(pos.entry_price * (1 - (config.dca_drop_for(pair) + pos.dca_count * config.SPOT_DCA_STEP_PCT)), 2) if pos.dca_count < config.dca_max_for(pair) else None,
+                "dca_count":      pos.dca_count,
+                "dca_max":        config.dca_max_for(pair),
+                "break_even":     round(pos.entry_price * (1 + config.SPOT_FEE) / (1 - config.SPOT_FEE), 2),
+                "current_price":  round(cur, 2),
+            }
+
+        starting = config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else _db.get_starting_balance(config.SPOT_MODE)
+        snap = {
+            "version":          __import__("bot").__version__,
+            "mode":             config.SPOT_MODE,
+            "status":           _status.value,
+            "api_error":        _api_error,
+            "last_tick":        _last_tick,
+            "live_since":       state.live_since,
+            "started_at":       datetime.datetime.fromtimestamp(_start_time, tz=tz).isoformat() if _start_time else None,
+            "interval":         config.SPOT_INTERVAL,
+            "stop_check_interval": config.SPOT_STOP_CHECK_INTERVAL,
+            "balance":          round(state.balance, 2),
+            "starting_balance": starting,
+            "total_trades":     state.total_trades,
+            "total_pnl":        round(state.total_pnl, 2),
+            "total_fees":       round(state.total_fees, 4),
+            "positions":        positions_out,
+            "written_at":       now_iso,
+        }
+        tmp = _STATUS_SNAPSHOT_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(snap, f, indent=2)
+        os.replace(tmp, _STATUS_SNAPSHOT_PATH)
+    except Exception as e:
+        log.warning(f"[SNAPSHOT] Failed to write status snapshot: {e}")
 
 
 def _ensure_live_since():

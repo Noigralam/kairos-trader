@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 import threading
 import time
 import datetime
@@ -199,6 +201,8 @@ def _loop():
             open_pnl = sum(p.unrealized_pnl(prices[s]) for s, p in snap.positions.items() if s in prices)
             _db.log_balance(round(snap.balance + open_pnl, 2), f"futures_{config.FUTURES_MODE}")
 
+            write_status_snapshot(prices)
+
         except Exception as e:
             log.error(f"[FUTURES LOOP] {e}", exc_info=True)
             notify(f"[FUTURES ERROR] {e}", discord=False)
@@ -235,8 +239,72 @@ def _stop_loop():
                 check_stops(prices)
                 for sh in get_futures_shadows():
                     sh.check_stops(prices)
+                write_status_snapshot(prices)
         except Exception as e:
             log.error(f"[FUTURES STOP-CHECK] {e}", exc_info=True)
+
+
+_STATUS_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_futures.json")
+
+
+def write_status_snapshot(prices: dict | None = None):
+    """Write a futures status snapshot to disk so the dashboard can run in a separate process."""
+    try:
+        state = get_state()
+        tz = zoneinfo.ZoneInfo("Europe/Helsinki")
+        now_iso = datetime.datetime.now(tz=tz).isoformat()
+
+        if prices is None:
+            prices = {}
+            for sym in state.positions:
+                try:
+                    prices[sym] = get_mark_price(sym)
+                except Exception:
+                    pass
+
+        positions_out = {}
+        for sym, pos in state.positions.items():
+            cur = prices.get(sym, pos.entry_price)
+            positions_out[sym] = {
+                "side":            pos.side,
+                "entry_price":     pos.entry_price,
+                "amount":          pos.amount,
+                "margin":          round(pos.margin, 2),
+                "leverage":        pos.leverage,
+                "notional":        round(pos.notional, 2),
+                "take_profit":     pos.take_profit_price,
+                "trailing_stop":   round(pos.trailing_stop_level(), 2),
+                "liquidation":     round(pos.liquidation_price(), 2),
+                "highest_price":   pos.highest_price,
+                "funding_paid":    round(pos.funding_paid, 4),
+                "unrealized_pnl":  round(pos.unrealized_pnl(cur), 2),
+                "pnl_pct":         round(pos.pnl_pct(cur) * 100, 2),
+                "current_price":   round(cur, 4),
+            }
+
+        starting = _db.get_starting_balance(f"futures_{config.FUTURES_MODE}")
+        snap = {
+            "version":          __import__("bot").__version__,
+            "mode":             config.FUTURES_MODE,
+            "status":           "running" if _running and not _paused else ("paused" if _paused else "stopped"),
+            "last_tick":        _last_tick,
+            "started_at":       datetime.datetime.fromtimestamp(_start_time, tz=tz).isoformat() if _start_time else None,
+            "interval":         _FUTURES_INTERVAL,
+            "balance":          round(state.balance, 2),
+            "starting_balance": starting,
+            "total_trades":     state.total_trades,
+            "total_pnl":        round(state.total_pnl, 2),
+            "total_fees":       round(state.total_fees, 4),
+            "total_funding":    round(state.total_funding, 4),
+            "positions":        positions_out,
+            "written_at":       now_iso,
+        }
+        tmp = _STATUS_SNAPSHOT_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(snap, f, indent=2)
+        os.replace(tmp, _STATUS_SNAPSHOT_PATH)
+    except Exception as e:
+        log.warning(f"[SNAPSHOT] Failed to write futures status snapshot: {e}")
 
 
 def start():
