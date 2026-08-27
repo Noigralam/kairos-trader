@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import sqlite3
@@ -6,11 +7,35 @@ import zoneinfo
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from bot import spot_engine as engine, spot_simulator as simulator, db, config, tax
 from bot import __version__
-from bot.spot_engine import get_last_tick, get_uptime, get_live_since, manual_buy, get_api_error
+from bot.spot_engine import manual_buy, write_status_snapshot as _write_spot_snapshot
 from bot.notifier import get_recent_logs
 from bot.spot_exchange import get_price
 from bot.candles import get_df
 from bot.strategy import compute_signal, Signal, rsi_series
+
+_SPOT_SNAPSHOT_PATH    = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_spot.json")
+_FUTURES_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_futures.json")
+_SNAPSHOT_STALE_SECS   = 300  # warn if snapshot older than 5 min
+
+
+def _read_snapshot(path: str) -> dict:
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _snapshot_stale(snap: dict) -> bool:
+    written = snap.get("written_at")
+    if not written:
+        return True
+    try:
+        tz = zoneinfo.ZoneInfo("Europe/Helsinki")
+        age = (datetime.datetime.now(tz=tz) - datetime.datetime.fromisoformat(written)).total_seconds()
+        return age > _SNAPSHOT_STALE_SECS
+    except Exception:
+        return True
 
 _TZ = zoneinfo.ZoneInfo("Europe/Helsinki")
 
@@ -29,39 +54,9 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    state = simulator.get_state()
-    return jsonify({
-        "version": __version__,
-        "status": engine.get_status(),
-        "api_error": get_api_error(),
-        "last_tick": get_last_tick(),
-        "uptime": get_uptime(),
-        "live_since": get_live_since(),
-        "mode": config.SPOT_MODE,
-        "interval": config.SPOT_INTERVAL,
-        "stop_check_interval": config.SPOT_STOP_CHECK_INTERVAL,
-        "balance": round(state.balance, 2),
-        "total_trades": state.total_trades,
-        "total_pnl": round(state.total_pnl, 2),
-        "total_fees": round(state.total_fees, 4),
-        "starting_balance": config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else db.get_starting_balance(config.SPOT_MODE),
-        "positions": {
-            pair: {
-                "entry_price": pos.entry_price,
-                "amount": pos.amount,
-                "value_eur": round(pos.value_eur, 2),
-                "highest_price": pos.peak(),
-                "trailing_stop": round(pos.trailing_stop_level(), 2),
-                "take_profit": pos.take_profit_price,
-                "dca_trigger": round(pos.entry_price * (1 - (config.SPOT_DCA_DROP_PCT + pos.dca_count * config.SPOT_DCA_STEP_PCT)), 2) if pos.dca_count < config.SPOT_DCA_MAX else None,
-                "dca_count":   pos.dca_count,
-                "dca_max":     config.SPOT_DCA_MAX,
-                "break_even": round(pos.entry_price * (1 + config.SPOT_FEE) / (1 - config.SPOT_FEE), 2),
-                "current_price": round(get_price(pair), 2),
-            }
-            for pair, pos in state.positions.items()
-        },
-    })
+    snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
+    snap["stale"] = _snapshot_stale(snap)
+    return jsonify(snap)
 
 
 @app.route("/api/trades")
@@ -131,8 +126,8 @@ def api_tax_fifo_csv():
 @app.route("/api/tax/fifo/integrity")
 def api_tax_fifo_integrity():
     tax.init_schema()
-    state = simulator.get_state()
-    holdings = {tax._asset(pair): pos.amount for pair, pos in state.positions.items()}
+    snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
+    holdings = {tax._asset(pair): pos["amount"] for pair, pos in snap.get("positions", {}).items()}
     return jsonify(tax.integrity_check(holdings))
 
 
@@ -262,7 +257,8 @@ def _daily_ema_val(pair: str):
 @app.route("/api/signals")
 def api_signals():
     out = {}
-    state = simulator.get_state()
+    snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
+    snap_positions = snap.get("positions", {})
     for pair in config.SPOT_TRADING_PAIRS:
         try:
             price = get_price(pair)
@@ -276,7 +272,7 @@ def api_signals():
             gap = price - result.ema_trend
             ema_threshold = result.ema_trend * (1 + config.ema_gap_for(pair))
             above_trend = price >= ema_threshold
-            has_position = pair in state.positions
+            has_position = pair in snap_positions
 
             if result.signal == Signal.BUY and not has_position:
                 commentary = f"RSI hit oversold ({result.rsi:.1f}) and price is above EMA200 — buy signal firing."
@@ -338,27 +334,27 @@ def api_signals():
 
 
 class _MainSpotShim:
-    """Wraps the main SpotSimulator state so it can be served by shadow sub-endpoints."""
+    """Wraps the spot status snapshot so it can appear as the baseline in spot shadow ranking."""
     name     = "MAIN"
     overrides: dict = {}
     is_main  = True
 
-    def __init__(self, state):
-        self._state   = state
+    def __init__(self, snap: dict):
+        self._snap    = snap
         self.pairs    = list(config.SPOT_TRADING_PAIRS)
         self.interval = config.SPOT_INTERVAL
         self._db_mode = config.SPOT_MODE
 
     @property
-    def balance(self):       return self._state.balance
+    def balance(self):       return self._snap.get("balance", 0.0)
     @property
-    def total_trades(self):  return self._state.total_trades
+    def total_trades(self):  return self._snap.get("total_trades", 0)
     @property
-    def total_pnl(self):     return self._state.total_pnl
+    def total_pnl(self):     return self._snap.get("total_pnl", 0.0)
     @property
-    def total_fees(self):    return self._state.total_fees
+    def total_fees(self):    return self._snap.get("total_fees", 0.0)
     @property
-    def positions(self):     return self._state.positions
+    def positions(self):     return self._snap.get("positions", {})
 
     def _o(self, key, default):
         return default
@@ -372,13 +368,13 @@ class _MainSpotShim:
 
 
 class _MainFuturesShim:
-    """Wraps the main FuturesSimulator state so it can appear as the baseline in futures shadow ranking."""
+    """Wraps the futures status snapshot so it can appear as the baseline in futures shadow ranking."""
     name         = "MAIN"
     overrides: dict = {}
     is_main      = True
 
-    def __init__(self, state):
-        self._state   = state
+    def __init__(self, snap: dict):
+        self._snap    = snap
         self.symbols  = list(config.FUTURES_TRADING_PAIRS)
         self._db_mode = f"futures_{config.FUTURES_MODE}"
         self._starting = db.get_starting_balance(self._db_mode) or config.FUTURES_SIMULATION_BALANCE
@@ -387,17 +383,17 @@ class _MainFuturesShim:
         return default
 
     @property
-    def balance(self):        return self._state.balance
+    def balance(self):        return self._snap.get("balance", 0.0)
     @property
-    def total_trades(self):   return self._state.total_trades
+    def total_trades(self):   return self._snap.get("total_trades", 0)
     @property
-    def total_pnl(self):      return self._state.total_pnl
+    def total_pnl(self):      return self._snap.get("total_pnl", 0.0)
     @property
-    def total_fees(self):     return self._state.total_fees
+    def total_fees(self):     return self._snap.get("total_fees", 0.0)
     @property
-    def total_funding(self):  return self._state.total_funding
+    def total_funding(self):  return self._snap.get("total_funding", 0.0)
     @property
-    def positions(self):      return self._state.positions
+    def positions(self):      return self._snap.get("positions", {})
 
 
 @app.route("/api/shadows")
@@ -411,21 +407,23 @@ def api_shadows():
 
 @app.route("/api/shadows/ranking")
 def api_shadows_ranking():
-    from bot.spot_simulator import get_shadows, get_state
+    from bot.spot_simulator import get_shadows
     from bot.spot_exchange import get_price
 
-    state = get_state()
+    snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
+    snap_balance = snap.get("balance", 0.0)
+    snap_positions = snap.get("positions", {})
+
     live_prices = {}
     for p in config.SPOT_TRADING_PAIRS:
         try:
             live_prices[p] = get_price(p)
         except Exception:
             pass
-    live_open_val  = sum(live_prices.get(p, pos.value_eur) * pos.amount for p, pos in state.positions.items())
-    live_portfolio = state.balance + live_open_val
-    # When in simulation mode the main sim IS the baseline; live_return_pct used for vs_live on other shadows
+    live_open_val  = sum(live_prices.get(p, pos["value_eur"]) * pos["amount"] for p, pos in snap_positions.items())
+    live_portfolio = snap_balance + live_open_val
     if config.SPOT_MODE == "live":
-        live_starting   = config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else db.get_starting_balance(config.SPOT_MODE)
+        live_starting   = snap.get("starting_balance") or db.get_starting_balance(config.SPOT_MODE)
         live_return_pct = round((live_portfolio / live_starting - 1) * 100, 2) if live_starting and live_starting > 0 else None
     else:
         live_starting   = config.SPOT_SIMULATION_BALANCE
@@ -462,7 +460,7 @@ def api_shadows_ranking():
 
     rows = []
     if config.SPOT_MODE == "simulation":
-        rows.append(_shadow_row(_MainSpotShim(state), is_main=True))
+        rows.append(_shadow_row(_MainSpotShim(snap), is_main=True))
     for s in get_shadows():
         rows.append(_shadow_row(s))
     rows.sort(key=lambda x: (not x["is_main"], -x["return_pct"]))
@@ -1044,9 +1042,9 @@ def api_futures_signals():
     if not config.FUTURES_ENABLED:
         return jsonify({})
     from bot.futures_exchange import get_klines as f_klines, get_mark_price
-    from bot.futures_simulator import get_state as fget_state
     out = {}
-    state = fget_state()
+    f_snap = _read_snapshot(_FUTURES_SNAPSHOT_PATH)
+    f_snap_positions = f_snap.get("positions", {})
     for sym in config.FUTURES_TRADING_PAIRS:
         try:
             price  = get_mark_price(sym)
@@ -1061,7 +1059,7 @@ def api_futures_signals():
             gap           = price - result.ema_trend
             ema_threshold = result.ema_trend * (1 + config.futures_ema_gap_for(sym))
             above_trend   = price >= ema_threshold
-            has_position  = sym in state.positions
+            has_position  = sym in f_snap_positions
 
             if result.signal == Signal.BUY and not has_position:
                 commentary = f"RSI hit oversold ({result.rsi:.1f}) and price is above EMA200 — long signal firing."
@@ -1099,22 +1097,22 @@ def api_futures_signals():
             else:
                 commentary = result.reason
 
-            pos = state.positions.get(sym)
+            pos = f_snap_positions.get(sym)
             pos_data = None
             if pos:
                 pos_data = {
-                    "entry_price":       round(pos.entry_price, 4),
+                    "entry_price":       pos.get("entry_price"),
                     "mark_price":        round(price, 4),
-                    "amount":            pos.amount,
-                    "margin":            round(pos.margin, 2),
-                    "leverage":          pos.leverage,
-                    "unrealized_pnl":    round(pos.unrealized_pnl(price), 4),
-                    "pnl_pct":           round(pos.pnl_pct(price) * 100, 2),
-                    "liquidation_price": round(pos.liquidation_price(), 4),
-                    "trailing_stop":     round(pos.trailing_stop_level(), 4),
-                    "take_profit_price": round(pos.take_profit_price, 4),
-                    "highest_price":     round(pos.highest_price, 4),
-                    "dca_done":          pos.dca_done,
+                    "amount":            pos.get("amount"),
+                    "margin":            pos.get("margin"),
+                    "leverage":          pos.get("leverage"),
+                    "unrealized_pnl":    pos.get("unrealized_pnl"),
+                    "pnl_pct":           pos.get("pnl_pct"),
+                    "liquidation_price": pos.get("liquidation"),
+                    "trailing_stop":     pos.get("trailing_stop"),
+                    "take_profit_price": pos.get("take_profit"),
+                    "highest_price":     pos.get("highest_price"),
+                    "dca_done":          pos.get("dca_done"),
                 }
 
             out[sym] = {
@@ -1404,9 +1402,9 @@ def api_futures_stats():
 def api_futures_shadows():
     if not config.FUTURES_ENABLED:
         return jsonify([])
-    from bot.futures_simulator import get_futures_shadows, get_state as fget_state
+    from bot.futures_simulator import get_futures_shadows
     from bot.futures_exchange import get_mark_price as _gmp
-    main_shim = _MainFuturesShim(fget_state())
+    main_shim = _MainFuturesShim(_read_snapshot(_FUTURES_SNAPSHOT_PATH))
     shims = list(get_futures_shadows())
 
     def _portfolio(sh):
@@ -1451,9 +1449,9 @@ def api_futures_shadows():
 
 
 def _get_futures_shadow(name: str):
-    from bot.futures_simulator import get_futures_shadows, get_state as fget_state
+    from bot.futures_simulator import get_futures_shadows
     if name.upper() == "MAIN":
-        return _MainFuturesShim(fget_state())
+        return _MainFuturesShim(_read_snapshot(_FUTURES_SNAPSHOT_PATH))
     return next((s for s in get_futures_shadows() if s.name.upper() == name.upper()), None)
 
 
@@ -1569,7 +1567,7 @@ def api_futures_shadow_balance_history(name):
 def api_futures_shadows_pnl_history():
     if not config.FUTURES_ENABLED:
         return jsonify({})
-    from bot.futures_simulator import get_futures_shadows, get_state as fget_state
+    from bot.futures_simulator import get_futures_shadows
     days = float(request.args.get("days", 30))
     out  = {}
 
@@ -1598,50 +1596,19 @@ def api_futures_shadows_pnl_history():
 def api_futures_status():
     if not config.FUTURES_ENABLED:
         return jsonify({"enabled": False})
-    from bot.futures_simulator import get_state as fget_state
-    from bot.futures_engine import get_last_tick as f_last_tick, get_uptime as f_get_uptime, is_running as f_running, is_paused as f_paused
-    from bot.futures_exchange import get_mark_price
-    state = fget_state()
-    positions_out = {}
-    for sym, pos in state.positions.items():
-        try:
-            mark = get_mark_price(sym)
-        except Exception:
-            mark = pos.entry_price
-        positions_out[sym] = {
-            "side":              pos.side,
-            "entry_price":       round(pos.entry_price, 4),
-            "amount":            pos.amount,
-            "margin":            round(pos.margin, 2),
-            "leverage":          pos.leverage,
-            "mark_price":        round(mark, 4),
-            "unrealized_pnl":    round(pos.unrealized_pnl(mark), 4),
-            "pnl_pct":           round(pos.pnl_pct(mark) * 100, 2),
-            "liquidation_price": round(pos.liquidation_price(), 4),
-            "take_profit_price": round(pos.take_profit_price, 4),
-            "trailing_stop":     round(pos.trailing_stop_level(), 4),
-            "dca_done":          pos.dca_done,
-            "dca_drop":          config.FUTURES_DCA_DROP_PCT,
-            "funding_paid":      round(pos.funding_paid, 4),
-        }
-    return jsonify({
-        "enabled":              True,
-        "running":              f_running(),
-        "paused":               f_paused(),
-        "mode":                 config.FUTURES_MODE,
-        "stop_check_interval":  config.FUTURES_STOP_CHECK_INTERVAL,
-        "leverage":      config.FUTURES_LEVERAGE,
-        "last_tick":     f_last_tick(),
-        "uptime":        f_get_uptime(),
-        "started_at":    db.get_balance_history(f"futures_{config.FUTURES_MODE}", 0)[:1][0][0] if db.get_balance_history(f"futures_{config.FUTURES_MODE}", 0) else None,
-        "balance":           round(state.balance, 2),
-        "starting_balance":  db.get_starting_balance(f"futures_{config.FUTURES_MODE}") or config.FUTURES_SIMULATION_BALANCE,
-        "total_trades":      state.total_trades,
-        "total_pnl":         round(state.total_pnl, 4),
-        "total_fees":        round(state.total_fees, 4),
-        "total_funding":     round(state.total_funding, 4),
-        "positions":         positions_out,
-    })
+    snap = _read_snapshot(_FUTURES_SNAPSHOT_PATH)
+    snap["enabled"] = True
+    snap["stale"] = _snapshot_stale(snap)
+    snap["dca_drop"] = config.FUTURES_DCA_DROP_PCT
+    snap["stop_check_interval"] = config.FUTURES_STOP_CHECK_INTERVAL
+    snap["leverage"] = config.FUTURES_LEVERAGE
+    # rename trailing_stop → trailing_stop, take_profit → take_profit_price for dashboard compat
+    for pos in snap.get("positions", {}).values():
+        if "take_profit" in pos and "take_profit_price" not in pos:
+            pos["take_profit_price"] = pos["take_profit"]
+        if "current_price" in pos and "mark_price" not in pos:
+            pos["mark_price"] = pos["current_price"]
+    return jsonify(snap)
 
 
 import json as _json
