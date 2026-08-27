@@ -388,14 +388,14 @@ def stop():
     bot_status_alert("stopped")
 
 
-def override_close(pair: str):
+def manual_close(pair: str):
     """Manually close an open position regardless of current signal."""
     try:
         price = get_price(pair)
         close_position(pair, price, reason="manual_override")
-        notify(f"[OVERRIDE] Closed {pair} @ €{price:.2f}")
+        notify(f"[MANUAL CLOSE] {pair} @ €{price:.2f}")
     except Exception as e:
-        notify(f"[OVERRIDE ERROR] {e}")
+        notify(f"[MANUAL CLOSE ERROR] {e}")
 
 
 def manual_buy(pair: str, size_pct: float):

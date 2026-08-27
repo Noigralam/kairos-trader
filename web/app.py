@@ -7,7 +7,7 @@ import zoneinfo
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from bot import spot_engine as engine, spot_simulator as simulator, db, config, tax
 from bot import __version__
-from bot.spot_engine import manual_buy, write_status_snapshot as _write_spot_snapshot
+from bot.spot_engine import manual_buy, manual_close, write_status_snapshot as _write_spot_snapshot
 from bot.notifier import get_recent_logs
 from bot.spot_exchange import get_price
 from bot.candles import get_df
@@ -199,22 +199,22 @@ def api_shadow_config(name):
             "rsi_period":        int(_ov("spot_rsi_period",     base["rsi_period"])),
             "rsi_oversold":      int(_ov("spot_rsi_oversold",   base["rsi_oversold"])),
             "rsi_overbought":    int(_ov("spot_rsi_overbought", base["rsi_overbought"])),
-            "ema_gap_pct":       round(float(_ov("spot_ema_gap",        base["ema_gap_pct"] / 100)) * 100, 2),
-            "dca_drop_pct":      round(float(_ov("spot_dca_drop",       base["dca_drop_pct"] / 100)) * 100, 2),
-            "dca_max":           int(_ov("spot_dca_max",         base["dca_max"])),
-            "dca_step_pct":      round(float(_ov("spot_dca_step",       base["dca_step_pct"] / 100)) * 100, 2),
-            "dca_size_pct":      round(float(_ov("spot_dca_size",       base["dca_size_pct"] / 100)) * 100, 2),
-            "take_profit_pct":   round(float(_ov("spot_take_profit",    base["take_profit_pct"] / 100)) * 100, 2),
-            "trailing_stop_pct": round(float(_ov("spot_trailing_stop",  base["trailing_stop_pct"] / 100)) * 100, 2),
-            "profit_floor_pct":  round(float(_ov("spot_profit_floor",   base["profit_floor_pct"] / 100)) * 100, 2),
-            "min_exit_pct":      round(float(_ov("spot_min_exit",       base["min_exit_pct"] / 100)) * 100, 2),
+            "ema_gap_pct":       round(float(_ov("spot_ema_gap_pct",        base["ema_gap_pct"] / 100)) * 100, 2),
+            "dca_drop_pct":      round(float(_ov("spot_dca_drop_pct",       base["dca_drop_pct"] / 100)) * 100, 2),
+            "dca_max":           int(_ov("spot_dca_max",                     base["dca_max"])),
+            "dca_step_pct":      round(float(_ov("spot_dca_step_pct",        base["dca_step_pct"] / 100)) * 100, 2),
+            "dca_size_pct":      round(float(_ov("spot_dca_size_pct",        base["dca_size_pct"] / 100)) * 100, 2),
+            "take_profit_pct":   round(float(_ov("spot_take_profit_pct",     base["take_profit_pct"] / 100)) * 100, 2),
+            "trailing_stop_pct": round(float(_ov("spot_trailing_stop_pct",   base["trailing_stop_pct"] / 100)) * 100, 2),
+            "profit_floor_pct":  round(float(_ov("spot_profit_floor_pct",    base["profit_floor_pct"] / 100)) * 100, 2),
+            "min_exit_pct":      round(float(_ov("spot_min_exit_profit_pct", base["min_exit_pct"] / 100)) * 100, 2),
         }
 
     extra = {}
     if "spot_reentry_drop_pct" in ov:
         extra["reentry_drop_pct"] = round(float(ov["spot_reentry_drop_pct"]) * 100, 2)
     if "spot_stop_cooldown_candles" in ov:
-        extra["stop_cooldown_candles"] = int(ov["spot_stop_cooldown_candles"])
+        extra["stop_cooldown_candles"] = int(ov["spot_stop_cooldown_candles"])  # key now matches config
 
     return jsonify({
         "name":     s.name,
@@ -530,7 +530,7 @@ def api_shadow_status(name):
             "break_even":    round(pos.entry_price * (1 + fee) / (1 - fee), 2),
             "dca_count":     pos.dca_count,
             "dca_max":       s._o("spot_dca_max", config.SPOT_DCA_MAX),
-            "dca_trigger":   round(pos.entry_price * (1 - (s._o("spot_dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("spot_dca_step", config.SPOT_DCA_STEP_PCT))), 2)
+            "dca_trigger":   round(pos.entry_price * (1 - (s._o("spot_dca_drop_pct", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("spot_dca_step_pct", config.SPOT_DCA_STEP_PCT))), 2)
                              if pos.dca_count < s._o("spot_dca_max", config.SPOT_DCA_MAX) else None,
             "current_price": round(price, 2),
         }
@@ -626,10 +626,10 @@ def api_shadow_signals(name):
     for pair in (s.pairs or config.SPOT_TRADING_PAIRS):
         try:
             price  = get_price(pair)
-            rsi_period   = s._o("spot_rsi_period",   config.rsi_period_for(pair))
-            rsi_oversold = s._o("spot_rsi_oversold",  config.rsi_oversold_for(pair))
+            rsi_period   = s._o("spot_rsi_period",     config.rsi_period_for(pair))
+            rsi_oversold = s._o("spot_rsi_oversold",   config.rsi_oversold_for(pair))
             rsi_ob       = s._o("spot_rsi_overbought", config.rsi_overbought_for(pair))
-            ema_gap      = s._o("spot_ema_gap",        config.ema_gap_for(pair))
+            ema_gap      = s._o("spot_ema_gap_pct",    config.ema_gap_for(pair))
             result = compute_signal(get_df(pair, s.interval),
                                     rsi_period=rsi_period, rsi_oversold=rsi_oversold,
                                     rsi_overbought=rsi_ob, ema_gap=ema_gap)
@@ -665,8 +665,8 @@ def api_shadow_signals(name):
                     "take_profit":   round(pos.take_profit_price, 2),
                     "break_even":    round(pos.entry_price * (1 + fee) / (1 - fee), 2),
                     "dca_count":     pos.dca_count,
-                    "dca_max":       s._o("spot_dca_max", config.SPOT_DCA_MAX),
-                    "dca_trigger":   round(pos.entry_price * (1 - (s._o("spot_dca_drop", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("spot_dca_step", config.SPOT_DCA_STEP_PCT))), 2)
+                    "dca_max":       s._o("spot_dca_max",     config.SPOT_DCA_MAX),
+                    "dca_trigger":   round(pos.entry_price * (1 - (s._o("spot_dca_drop_pct", config.SPOT_DCA_DROP_PCT) + pos.dca_count * s._o("spot_dca_step_pct", config.SPOT_DCA_STEP_PCT))), 2)
                                      if pos.dca_count < s._o("spot_dca_max", config.SPOT_DCA_MAX) else None,
                     "current_price": round(price, 2),
                 }
@@ -717,7 +717,7 @@ def api_shadow_chart(name, pair):
     _rp      = s._o("spot_rsi_period",     config.rsi_period_for(pair))
     _ros     = s._o("spot_rsi_oversold",   config.rsi_oversold_for(pair))
     _rob     = s._o("spot_rsi_overbought", config.rsi_overbought_for(pair))
-    _egap    = s._o("spot_ema_gap",        config.ema_gap_for(pair))
+    _egap    = s._o("spot_ema_gap_pct",    config.ema_gap_for(pair))
     rsi_s    = rsi_series(close, _rp)
 
     buy_prices = [None] * len(df); sell_prices = [None] * len(df); blocked_buys = [None] * len(df)
@@ -843,9 +843,9 @@ def api_futures_shadow_config(name):
             "rsi_period":        int(_ov("futures_rsi_period",     base["rsi_period"])),
             "rsi_oversold":      int(_ov("futures_rsi_oversold",   base["rsi_oversold"])),
             "rsi_overbought":    int(_ov("futures_rsi_overbought", base["rsi_overbought"])),
-            "ema_gap_pct":       round(float(_ov("futures_ema_gap", base["ema_gap_pct"] / 100)) * 100, 2),
-            "leverage":          int(_ov("futures_leverage",        base["leverage"])),
-            "position_size_pct": round(float(_ov("futures_pos_pct", base["position_size_pct"] / 100)) * 100, 2),
+            "ema_gap_pct":       round(float(_ov("futures_ema_gap_pct",          base["ema_gap_pct"] / 100)) * 100, 2),
+            "leverage":          int(_ov("futures_leverage",                      base["leverage"])),
+            "position_size_pct": round(float(_ov("futures_position_size_pct",    base["position_size_pct"] / 100)) * 100, 2),
             "dca_drop_pct":      base["dca_drop_pct"],
             "dca_size_pct":      base["dca_size_pct"],
             "take_profit_pct":   base["take_profit_pct"],
@@ -879,7 +879,7 @@ def api_futures_shadow_signals(name):
             rsi_period   = sh._o("futures_rsi_period",     config.futures_rsi_period_for(sym))
             rsi_oversold = sh._o("futures_rsi_oversold",   config.futures_rsi_oversold_for(sym))
             rsi_ob       = sh._o("futures_rsi_overbought", config.futures_rsi_overbought_for(sym))
-            ema_gap      = sh._o("futures_ema_gap",        config.futures_ema_gap_for(sym))
+            ema_gap      = sh._o("futures_ema_gap_pct",    config.futures_ema_gap_for(sym))
             df           = _get_df(sym, "15m", limit=250)
             result       = compute_signal(df, rsi_period=rsi_period, rsi_oversold=rsi_oversold,
                                           rsi_overbought=rsi_ob, ema_gap=ema_gap)
@@ -919,7 +919,7 @@ def api_futures_shadow_signals(name):
                     "trailing_stop":     round(pos.trailing_stop_level(), 4),
                     "take_profit_price": round(pos.take_profit_price, 4),
                     "highest_price":     round(pos.highest_price, 4),
-                    "dca_done":          pos.dca_done,
+                    "dca_count":         pos.dca_count,
                 }
 
             out[sym] = {
@@ -969,7 +969,7 @@ def api_futures_shadow_chart(name, symbol):
     _rp   = sh._o("futures_rsi_period",     config.futures_rsi_period_for(sym))
     _ros  = sh._o("futures_rsi_oversold",   config.futures_rsi_oversold_for(sym))
     _rob  = sh._o("futures_rsi_overbought", config.futures_rsi_overbought_for(sym))
-    _egap = sh._o("futures_ema_gap",        config.futures_ema_gap_for(sym))
+    _egap = sh._o("futures_ema_gap_pct",    config.futures_ema_gap_for(sym))
     rsi   = rsi_series(close, _rp)
 
     buy_prices   = [None] * len(df)
@@ -1114,7 +1114,7 @@ def api_futures_signals():
                     "trailing_stop":     pos.get("trailing_stop"),
                     "take_profit_price": pos.get("take_profit"),
                     "highest_price":     pos.get("highest_price"),
-                    "dca_done":          pos.get("dca_done"),
+                    "dca_count":         pos.get("dca_count"),
                 }
 
             out[sym] = {
@@ -1698,9 +1698,9 @@ def api_futures_control():
         futures_engine.resume()
     elif action == "stop":
         futures_engine.stop()
-    elif action == "manual_open" and symbol:
+    elif action == "manual_buy" and symbol:
         size_pct = float(data.get("size_pct", config.FUTURES_POSITION_SIZE_PCT))
-        futures_engine.manual_open(symbol, size_pct)
+        futures_engine.manual_buy(symbol, size_pct)
     elif action == "manual_close" and symbol:
         futures_engine.manual_close(symbol)
     return jsonify({"running": futures_engine.is_running(), "paused": futures_engine.is_paused()})
@@ -1729,8 +1729,8 @@ def api_control():
         engine.resume()
     elif action == "stop":
         engine.stop()
-    elif action == "override" and pair:
-        engine.override_close(pair)
+    elif action == "manual_close" and pair:
+        manual_close(pair)
     elif action == "manual_buy" and pair:
         size_pct = float(data.get("size_pct", 0.5))
         manual_buy(pair, size_pct)

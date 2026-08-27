@@ -171,7 +171,7 @@ async def cmd_close(interaction: discord.Interaction, pair: str):
     pct   = (price - pos.entry_price) / pos.entry_price * 100
 
     def do_close():
-        engine.override_close(pair)
+        engine.manual_close(pair)
         return f"Closed {pair} @ €{price:,.2f} ({pct:+.1f}%)"
 
     view = ConfirmView(do_close, f"Close {pair}")

@@ -595,8 +595,8 @@ class SpotShadowSimulator:
             floor = 0.0
             trail = config.partial_close_trail_for(pos.pair)
         else:
-            floor = self._o("spot_floor_pct", config.profit_floor_for(pos.pair))
-            trail = self._o("spot_trail_pct", config.trailing_stop_for(pos.pair))
+            floor = self._o("spot_profit_floor_pct", config.profit_floor_for(pos.pair))
+            trail = self._o("spot_trailing_stop_pct", config.trailing_stop_for(pos.pair))
         return max(
             pos.entry_price * (1 + fee + floor) / (1 - fee),
             pos.peak() * (1 - trail),
@@ -693,11 +693,11 @@ class SpotShadowSimulator:
             fng_val, _ = get_fng()
             if fng_val is not None and fng_val > fng_max:
                 return
-        tp_pct      = self._o("spot_tp_pct",  config.take_profit_for(pair))
+        tp_pct      = self._o("spot_take_profit_pct",  config.take_profit_for(pair))
         max_sz      = self.balance / (1 + SPOT_FEE)
         no_dca      = self._o("spot_dca_max", config.dca_max_for(pair)) == 0
-        pos_pct_set = "pos_pct" in self.overrides
-        pct         = self._o("spot_pos_pct", config.SPOT_POSITION_SIZE_PCT)
+        pos_pct_set = "spot_position_size_pct" in self.overrides
+        pct         = self._o("spot_position_size_pct", config.SPOT_POSITION_SIZE_PCT)
         size        = max_sz if (no_dca and not pos_pct_set) else min(self.balance * pct, max_sz)
         if size < 1:
             return
@@ -714,10 +714,10 @@ class SpotShadowSimulator:
         if pos is None:
             return
         dca_max = self._o("spot_dca_max", config.dca_max_for(pair))
-        tp_pct  = self._o("spot_tp_pct",  config.take_profit_for(pair))
+        tp_pct  = self._o("spot_take_profit_pct", config.take_profit_for(pair))
         if pos.dca_count >= dca_max:
             return
-        pct    = self._o("spot_dca_pct", config.SPOT_DCA_SIZE_PCT)
+        pct    = self._o("spot_dca_size_pct", config.SPOT_DCA_SIZE_PCT)
         max_sz = self.balance / (1 + SPOT_FEE)
         is_last_dca = (pos.dca_count + 1 >= dca_max)
         size   = max_sz if is_last_dca else min(self.balance * pct, max_sz)
@@ -764,7 +764,7 @@ class SpotShadowSimulator:
         self.total_pnl      += pnl
         self.total_fees     += sell_fee
         if reason == "trailing_stop":
-            candles = self._o("spot_stop_cooldown", config.stop_cooldown_for(pair))
+            candles = self._o("spot_stop_cooldown_candles", config.stop_cooldown_for(pair))
             if candles > 0:
                 secs = candles * _INTERVAL_SECONDS.get(self.interval, 900)
                 self._stop_cooldowns[pair] = _time.time() + secs
@@ -811,26 +811,26 @@ class SpotShadowSimulator:
             df     = get_df(pair, self.interval)
             result = compute_signal(
                 df,
-                rsi_period     = self._o("spot_rsi_period",     config.rsi_period_for(pair)),
-                rsi_oversold   = self._o("spot_rsi_oversold",   config.rsi_oversold_for(pair)),
-                rsi_overbought = self._o("spot_rsi_overbought", config.rsi_overbought_for(pair)),
-                ema_gap        = self._o("spot_ema_gap",        config.ema_gap_for(pair)),
-                vol_period     = self._o("spot_vol_period",     config.vol_period_for(pair)),
-                vol_mult       = self._o("spot_vol_mult",       config.vol_mult_for(pair)),
+                rsi_period     = self._o("spot_rsi_period",          config.rsi_period_for(pair)),
+                rsi_oversold   = self._o("spot_rsi_oversold",      config.rsi_oversold_for(pair)),
+                rsi_overbought = self._o("spot_rsi_overbought",    config.rsi_overbought_for(pair)),
+                ema_gap        = self._o("spot_ema_gap_pct",       config.ema_gap_for(pair)),
+                vol_period     = self._o("spot_volume_filter_period", config.vol_period_for(pair)),
+                vol_mult       = self._o("spot_volume_filter_mult",   config.vol_mult_for(pair)),
             )
 
             if result.signal == Signal.BUY and pair not in self.positions:
                 self._open(pair, price)
             elif pair in self.positions:
                 pos      = self.positions[pair]
-                dca_drop = self._o("spot_dca_drop", config.dca_drop_for(pair))
-                dca_step = self._o("spot_dca_step", config.SPOT_DCA_STEP_PCT)
+                dca_drop = self._o("spot_dca_drop_pct", config.dca_drop_for(pair))
+                dca_step = self._o("spot_dca_step_pct", config.SPOT_DCA_STEP_PCT)
                 drop     = (pos.entry_price - price) / pos.entry_price
                 next_drop = dca_drop + pos.dca_count * dca_step
                 if pos.dca_count < self._o("spot_dca_max", config.dca_max_for(pair)) and drop >= next_drop:
                     self._dca(pair, price)
                 if result.signal == Signal.SELL:
-                    min_exit = self._o("spot_min_exit", config.min_exit_for(pair))
+                    min_exit = self._o("spot_min_exit_profit_pct", config.min_exit_for(pair))
                     if price >= pos.entry_price * (1 + min_exit):
                         self._close(pair, price, "signal")
 

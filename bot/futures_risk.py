@@ -12,7 +12,7 @@ class FuturesPosition:
     leverage:          int
     take_profit_price: float = 0.0
     highest_price:     float = 0.0   # long: tracks peak; short: tracks trough
-    dca_done:          bool  = False
+    dca_count:         int   = 0
     funding_paid:      float = 0.0   # cumulative funding cost in USDT (positive = paid out)
     opened_at:         float = 0.0   # unix timestamp
     trail_pct:         float = 0.0   # 0 = use config default
@@ -74,7 +74,7 @@ def apply_dca(pos: FuturesPosition, dca_price: float, dca_margin: float) -> None
     pos.take_profit_price  = pos.entry_price * (1 + config.FUTURES_TAKE_PROFIT_PCT) if pos.side == "LONG" \
                              else pos.entry_price * (1 - config.FUTURES_TAKE_PROFIT_PCT)
     pos.highest_price      = dca_price
-    pos.dca_done           = True
+    pos.dca_count          = 1
 
 
 def update_peak(pos: FuturesPosition, current_price: float) -> bool:

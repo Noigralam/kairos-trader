@@ -180,7 +180,7 @@ def _loop():
                 elif has_pos:
                     pos  = state.positions[sym]
                     drop = (pos.entry_price - price) / pos.entry_price
-                    if not pos.dca_done and drop >= config.FUTURES_DCA_DROP_PCT:
+                    if pos.dca_count == 0 and drop >= config.FUTURES_DCA_DROP_PCT:
                         dca_long(sym, price)
 
                 # Futures exits are driven by check_stops (take-profit / trailing stop),
@@ -274,6 +274,7 @@ def write_status_snapshot(prices: dict | None = None):
                 "trailing_stop":   round(pos.trailing_stop_level(), 2),
                 "liquidation":     round(pos.liquidation_price(), 2),
                 "highest_price":   pos.highest_price,
+                "dca_count":       pos.dca_count,
                 "funding_paid":    round(pos.funding_paid, 4),
                 "unrealized_pnl":  round(pos.unrealized_pnl(cur), 2),
                 "pnl_pct":         round(pos.pnl_pct(cur) * 100, 2),
@@ -357,7 +358,15 @@ def is_paused() -> bool:
     return _paused
 
 
-def manual_open(symbol: str, size_pct: float = None):
+def get_status() -> str:
+    if _running and not _paused:
+        return "running"
+    if _paused:
+        return "paused"
+    return "stopped"
+
+
+def manual_buy(symbol: str, size_pct: float = None):
     """Manually open a long on a futures pair."""
     try:
         price = get_mark_price(symbol)

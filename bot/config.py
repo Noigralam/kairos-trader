@@ -149,28 +149,28 @@ def get_shadow_overrides(name: str) -> dict:
     # fmt: off  (keep columns aligned for readability)
     _param_map: dict[str, tuple[str, type]] = {
         # ── Entry signal ──────────────────────────────────────────
-        "RSI_OVERSOLD":            ("spot_rsi_oversold",        int),
-        "RSI_OVERBOUGHT":          ("spot_rsi_overbought",      int),
-        "RSI_PERIOD":              ("spot_rsi_period",          int),
-        "EMA_GAP_PCT":             ("spot_ema_gap",             float),
+        "RSI_OVERSOLD":            ("spot_rsi_oversold",          int),
+        "RSI_OVERBOUGHT":          ("spot_rsi_overbought",        int),
+        "RSI_PERIOD":              ("spot_rsi_period",            int),
+        "EMA_GAP_PCT":             ("spot_ema_gap_pct",           float),
         # ── Exit / risk ───────────────────────────────────────────
-        "TRAILING_STOP_PCT":       ("spot_trail_pct",           float),
-        "PROFIT_FLOOR_PCT":        ("spot_floor_pct",           float),
-        "TAKE_PROFIT_PCT":         ("spot_tp_pct",              float),
-        "MIN_EXIT_PROFIT_PCT":     ("spot_min_exit",            float),
-        "TIME_STOP_DAYS":          ("spot_time_stop_days",      float),
-        "STOP_COOLDOWN_CANDLES":   ("spot_stop_cooldown",       int),
-        "REENTRY_DROP_PCT":        ("spot_reentry_drop_pct",   float),
-        "PARTIAL_CLOSE_PCT":       ("spot_partial_close_pct",   float),
-        "PARTIAL_CLOSE_TRAIL_PCT": ("spot_partial_close_trail", float),
+        "TRAILING_STOP_PCT":       ("spot_trailing_stop_pct",     float),
+        "PROFIT_FLOOR_PCT":        ("spot_profit_floor_pct",      float),
+        "TAKE_PROFIT_PCT":         ("spot_take_profit_pct",       float),
+        "MIN_EXIT_PROFIT_PCT":     ("spot_min_exit_profit_pct",   float),
+        "TIME_STOP_DAYS":          ("spot_time_stop_days",        float),
+        "STOP_COOLDOWN_CANDLES":   ("spot_stop_cooldown_candles", int),
+        "REENTRY_DROP_PCT":        ("spot_reentry_drop_pct",      float),
+        "PARTIAL_CLOSE_PCT":       ("spot_partial_close_pct",     float),
+        "PARTIAL_CLOSE_TRAIL_PCT": ("spot_partial_close_trail_pct", float),
         # ── Position sizing / DCA ─────────────────────────────────
-        "POSITION_SIZE_PCT":       ("spot_pos_pct",             float),
-        "DCA_DROP_PCT":            ("spot_dca_drop",            float),
-        "DCA_SIZE_PCT":            ("spot_dca_pct",             float),
-        "DCA_MAX":                 ("spot_dca_max",             int),
-        "DCA_STEP_PCT":            ("spot_dca_step",            float),
-        "VOLUME_FILTER_PERIOD":    ("spot_vol_period",          int),
-        "VOLUME_FILTER_MULT":      ("spot_vol_mult",            float),
+        "POSITION_SIZE_PCT":       ("spot_position_size_pct",     float),
+        "DCA_DROP_PCT":            ("spot_dca_drop_pct",          float),
+        "DCA_SIZE_PCT":            ("spot_dca_size_pct",          float),
+        "DCA_MAX":                 ("spot_dca_max",               int),
+        "DCA_STEP_PCT":            ("spot_dca_step_pct",          float),
+        "VOLUME_FILTER_PERIOD":    ("spot_volume_filter_period",  int),
+        "VOLUME_FILTER_MULT":      ("spot_volume_filter_mult",    float),
         # ── Sentiment filter ──────────────────────────────────────
         "FNG_MAX":                 ("spot_fng_max",             int),
         # ── Simulation / grid ─────────────────────────────────────
@@ -211,20 +211,20 @@ def get_futures_shadow_overrides(name: str) -> dict:
     # fmt: off
     _param_map: dict[str, tuple[str, type]] = {
         # ── Futures-specific ──────────────────────────────────────
-        "LEVERAGE":          ("futures_leverage",         int),
-        "POSITION_SIZE_PCT": ("futures_pos_pct",          float),
-        "MAX_FUNDING_RATE":  ("futures_max_funding_rate", float),
+        "LEVERAGE":          ("futures_leverage",            int),
+        "POSITION_SIZE_PCT": ("futures_position_size_pct",  float),
+        "MAX_FUNDING_RATE":  ("futures_max_funding_rate",   float),
         # ── Exit / risk ───────────────────────────────────────────
-        "TAKE_PROFIT_PCT":   ("futures_tp_pct",           float),
-        "TRAILING_STOP_PCT": ("futures_trail_pct",        float),
-        "PROFIT_FLOOR_PCT":  ("futures_floor_pct",        float),
-        "DCA_DROP_PCT":      ("futures_dca_drop",         float),
-        "DCA_SIZE_PCT":      ("futures_dca_pct",          float),
+        "TAKE_PROFIT_PCT":   ("futures_take_profit_pct",    float),
+        "TRAILING_STOP_PCT": ("futures_trailing_stop_pct",  float),
+        "PROFIT_FLOOR_PCT":  ("futures_profit_floor_pct",   float),
+        "DCA_DROP_PCT":      ("futures_dca_drop_pct",       float),
+        "DCA_SIZE_PCT":      ("futures_dca_size_pct",       float),
         # ── Entry signal ──────────────────────────────────────────
-        "RSI_OVERSOLD":      ("futures_rsi_oversold",     int),
-        "RSI_OVERBOUGHT":    ("futures_rsi_overbought",   int),
-        "RSI_PERIOD":        ("futures_rsi_period",       int),
-        "EMA_GAP_PCT":       ("futures_ema_gap",          float),
+        "RSI_OVERSOLD":      ("futures_rsi_oversold",       int),
+        "RSI_OVERBOUGHT":    ("futures_rsi_overbought",     int),
+        "RSI_PERIOD":        ("futures_rsi_period",         int),
+        "EMA_GAP_PCT":       ("futures_ema_gap_pct",        float),
         # ── Simulation ────────────────────────────────────────────
         "BALANCE":           ("futures_balance",          float),
     }

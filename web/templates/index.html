@@ -1379,7 +1379,7 @@
               <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
               <div style="display:flex;gap:6px">
                 ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${pair} position amount from Binance?')) controlSyncPosition('${pair}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
-                ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('override','${pair}')">Close</button></span>`}
+                ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('manual_close','${pair}')">Close</button></span>`}
               </div>
             </div>
           </div>`;
@@ -3183,7 +3183,7 @@
         const liqDist  = ((p.mark_price - p.liquidation_price) / p.mark_price * 100).toFixed(1);
         const liqColor = liqDist < 5 ? 'var(--red)' : liqDist < 15 ? 'var(--yellow)' : 'var(--muted)';
 
-        const dcaStr = p.dca_done
+        const dcaStr = p.dca_count > 0
           ? '<span style="color:var(--muted)">used</span>'
           : `$${Number(p.entry_price * (1 - p.dca_drop)).toLocaleString('fi-FI', {minimumFractionDigits: 4})}`;
 
@@ -3509,13 +3509,13 @@
       if (ov.futures_max_funding_rate === 0)        tags.push('no funding filter');
       else if (ov.futures_max_funding_rate != null)  tags.push(`funding max ${(ov.futures_max_funding_rate*100).toFixed(3)}%`);
       if (ov.futures_leverage != null)               tags.push(`${ov.futures_leverage}× lev`);
-      if (ov.futures_ema_gap === 0)                  tags.push('no EMA gap');
-      else if (ov.futures_ema_gap != null)           tags.push(`EMA gap ${(ov.futures_ema_gap*100).toFixed(1)}%`);
+      if (ov.futures_ema_gap_pct === 0)               tags.push('no EMA gap');
+      else if (ov.futures_ema_gap_pct != null)       tags.push(`EMA gap ${(ov.futures_ema_gap_pct*100).toFixed(1)}%`);
       if (ov.futures_rsi_oversold != null)           tags.push(`RSI<${ov.futures_rsi_oversold}`);
       if (ov.futures_rsi_period != null)             tags.push(`RSI(${ov.futures_rsi_period})`);
-      if (ov.futures_tp_pct != null)                 tags.push(`TP ${(ov.futures_tp_pct*100).toFixed(0)}%`);
-      if (ov.futures_trail_pct != null)              tags.push(`trail ${(ov.futures_trail_pct*100).toFixed(0)}%`);
-      if (ov.futures_dca_drop != null)               tags.push(`DCA @-${(ov.futures_dca_drop*100).toFixed(0)}%`);
+      if (ov.futures_take_profit_pct != null)        tags.push(`TP ${(ov.futures_take_profit_pct*100).toFixed(0)}%`);
+      if (ov.futures_trailing_stop_pct != null)      tags.push(`trail ${(ov.futures_trailing_stop_pct*100).toFixed(0)}%`);
+      if (ov.futures_dca_drop_pct != null)           tags.push(`DCA @-${(ov.futures_dca_drop_pct*100).toFixed(0)}%`);
       const note  = s.is_main ? 'baseline' : (tags.length ? tags.join(', ') : '—');
       const badge = s.is_main
         ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
@@ -4047,17 +4047,17 @@ function _renderConfigTable(cfg, overrides) {
     html += _settingsRow('RSI period',     p.rsi_period,    'spot_rsi_period'    in o);
     html += _settingsRow('RSI oversold',   p.rsi_oversold,  'spot_rsi_oversold'  in o);
     html += _settingsRow('RSI overbought', p.rsi_overbought,'spot_rsi_overbought'in o);
-    html += _settingsRow('EMA gap',        _pct(p.ema_gap_pct), 'spot_ema_gap'   in o);
+    html += _settingsRow('EMA gap',        _pct(p.ema_gap_pct), 'spot_ema_gap_pct'   in o);
     html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── DCA</td></tr>';
-    html += _settingsRow('First drop',  _pct(p.dca_drop_pct), 'spot_dca_drop' in o);
+    html += _settingsRow('First drop',  _pct(p.dca_drop_pct), 'spot_dca_drop_pct' in o);
     html += _settingsRow('Max tranches',p.dca_max,            'spot_dca_max'  in o);
     html += _settingsRow('Step',        _pct(p.dca_step_pct), false);
     html += _settingsRow('Size/tranche',_pct(p.dca_size_pct), false);
     html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── Exit</td></tr>';
-    html += _settingsRow('Take profit',    _pct(p.take_profit_pct),   'spot_take_profit'   in o);
-    html += _settingsRow('Trailing stop',  _pct(p.trailing_stop_pct), 'spot_trailing_stop' in o);
-    html += _settingsRow('Profit floor',   _pct(p.profit_floor_pct),  'spot_profit_floor'  in o);
-    html += _settingsRow('Min RSI exit',   _pct(p.min_exit_pct),      'spot_min_exit'      in o);
+    html += _settingsRow('Take profit',    _pct(p.take_profit_pct),   'spot_take_profit_pct'   in o);
+    html += _settingsRow('Trailing stop',  _pct(p.trailing_stop_pct), 'spot_trailing_stop_pct' in o);
+    html += _settingsRow('Profit floor',   _pct(p.profit_floor_pct),  'spot_profit_floor_pct'  in o);
+    html += _settingsRow('Min RSI exit',   _pct(p.min_exit_pct),      'spot_min_exit_profit_pct' in o);
   });
   html += '</table>';
   if (overrides && Object.keys(ov).length)
@@ -4084,10 +4084,10 @@ function _renderFuturesConfigTable(cfg, overrides) {
     html += _settingsRow('RSI period',      p.rsi_period,     'futures_rsi_period'     in ov);
     html += _settingsRow('RSI oversold',    p.rsi_oversold,   'futures_rsi_oversold'   in ov);
     html += _settingsRow('RSI overbought',  p.rsi_overbought, 'futures_rsi_overbought' in ov);
-    html += _settingsRow('EMA gap',         _pct(p.ema_gap_pct), 'futures_ema_gap'     in ov);
+    html += _settingsRow('EMA gap',         _pct(p.ema_gap_pct), 'futures_ema_gap_pct' in ov);
     html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── Position</td></tr>';
     html += _settingsRow('Leverage',        p.leverage + '×', 'futures_leverage' in ov);
-    html += _settingsRow('Size',            _pct(p.position_size_pct), 'futures_pos_pct' in ov);
+    html += _settingsRow('Size',            _pct(p.position_size_pct), 'futures_position_size_pct' in ov);
     html += '<tr><td colspan="2" style="padding:6px 0 3px;color:#30363d;font-size:11px">── DCA</td></tr>';
     html += _settingsRow('First drop',      _pct(p.dca_drop_pct), false);
     html += _settingsRow('Size/tranche',    _pct(p.dca_size_pct), false);

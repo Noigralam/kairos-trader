@@ -64,7 +64,7 @@ def _save():
                 "leverage":          p.leverage,
                 "take_profit_price": p.take_profit_price,
                 "highest_price":     p.highest_price,
-                "dca_done":          p.dca_done,
+                "dca_count":         p.dca_count,
                 "funding_paid":      p.funding_paid,
                 "opened_at":         p.opened_at,
             }
@@ -90,6 +90,8 @@ def _load():
         _state.portfolio_peak = data.get("portfolio_peak", 0.0)
         _state.positions = {}
         for sym, d in data.get("positions", {}).items():
+            if "dca_done" in d:
+                d["dca_count"] = 1 if d.pop("dca_done") else 0
             _state.positions[sym] = FuturesPosition(**d)
     except Exception:
         pass  # corrupt state — start fresh
@@ -204,7 +206,7 @@ def dca_long(symbol: str, price: float):
     if symbol not in _state.positions:
         return
     pos = _state.positions[symbol]
-    if pos.dca_done or pos.side != "LONG":
+    if pos.dca_count > 0 or pos.side != "LONG":
         return
 
     if config.FUTURES_MODE == "live":
@@ -408,17 +410,17 @@ class FuturesShadowSimulator:
     def _open(self, symbol: str, price: float):
         if symbol in self.positions:
             return
-        leverage = self._o("futures_leverage", config.FUTURES_LEVERAGE)
-        pct      = self._o("futures_pos_pct",  config.FUTURES_POSITION_SIZE_PCT)
+        leverage = self._o("futures_leverage",           config.FUTURES_LEVERAGE)
+        pct      = self._o("futures_position_size_pct", config.FUTURES_POSITION_SIZE_PCT)
         margin   = self.balance * pct
         notional = margin * leverage
         amount   = round_qty(symbol, notional / price)
         if amount <= 0 or margin < 1:
             return
         fee      = notional * FEE
-        tp_pct    = self._o("futures_tp_pct",    config.FUTURES_TAKE_PROFIT_PCT)
-        trail_pct = self._o("futures_trail_pct", 0.0)
-        floor_pct = self._o("futures_floor_pct", 0.0)
+        tp_pct    = self._o("futures_take_profit_pct",    config.FUTURES_TAKE_PROFIT_PCT)
+        trail_pct = self._o("futures_trailing_stop_pct",  0.0)
+        floor_pct = self._o("futures_profit_floor_pct",   0.0)
         pos = FuturesPosition(
             symbol=symbol, side="LONG",
             entry_price=price, amount=amount, margin=margin,
@@ -437,9 +439,9 @@ class FuturesShadowSimulator:
 
     def _dca(self, symbol: str, price: float):
         pos = self.positions.get(symbol)
-        if pos is None or pos.dca_done:
+        if pos is None or pos.dca_count > 0:
             return
-        margin   = min(self.balance * self._o("futures_dca_pct", config.FUTURES_DCA_SIZE_PCT), self.balance)
+        margin   = min(self.balance * self._o("futures_dca_size_pct", config.FUTURES_DCA_SIZE_PCT), self.balance)
         if margin < 1:
             return
         leverage = self._o("futures_leverage", config.FUTURES_LEVERAGE)
@@ -484,7 +486,7 @@ class FuturesShadowSimulator:
                     self._close(symbol, price, "trailing_stop")
                 else:
                     drop = (pos.entry_price - price) / pos.entry_price
-                    if not pos.dca_done and drop >= self._o("futures_dca_drop", config.FUTURES_DCA_DROP_PCT):
+                    if pos.dca_count == 0 and drop >= self._o("futures_dca_drop_pct", config.FUTURES_DCA_DROP_PCT):
                         self._dca(symbol, price)
             else:
                 result = compute_signal(
@@ -492,7 +494,7 @@ class FuturesShadowSimulator:
                     rsi_period     = self._o("futures_rsi_period",     config.futures_rsi_period_for(symbol)),
                     rsi_oversold   = self._o("futures_rsi_oversold",   config.futures_rsi_oversold_for(symbol)),
                     rsi_overbought = self._o("futures_rsi_overbought", config.futures_rsi_overbought_for(symbol)),
-                    ema_gap        = self._o("futures_ema_gap",        config.futures_ema_gap_for(symbol)),
+                    ema_gap        = self._o("futures_ema_gap_pct",    config.futures_ema_gap_for(symbol)),
                 )
                 if result.signal == Signal.BUY:
                     max_funding = self._o("futures_max_funding_rate", config.FUTURES_MAX_FUNDING_RATE)
@@ -567,7 +569,7 @@ class FuturesShadowSimulator:
                         "leverage":          p.leverage,
                         "take_profit_price": p.take_profit_price,
                         "highest_price":     p.highest_price,
-                        "dca_done":          p.dca_done,
+                        "dca_count":         p.dca_count,
                         "funding_paid":      p.funding_paid,
                         "opened_at":         p.opened_at,
                         "trail_pct":         p.trail_pct,
@@ -596,6 +598,8 @@ class FuturesShadowSimulator:
             for sym, d in data.get("positions", {}).items():
                 d.setdefault("trail_pct", 0.0)
                 d.setdefault("floor_pct", 0.0)
+                if "dca_done" in d:
+                    d["dca_count"] = 1 if d.pop("dca_done") else 0
                 self.positions[sym] = FuturesPosition(**d)
         except Exception:
             pass
