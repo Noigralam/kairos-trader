@@ -1,10 +1,14 @@
 import logging
 import os
-import time
+
+# Must be set before web.app is imported so control endpoints know they're in
+# dashboard-only mode and can't reach the engine process.
+os.environ["KAIROS_DASHBOARD_ONLY"] = "1"
+
 from bot import __version__
 from bot.db import init_db
 
-LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "kairos.log")
+LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "dashboard.log")
 
 
 def setup_logging():
@@ -36,16 +40,5 @@ def setup_logging():
 if __name__ == "__main__":
     setup_logging()
     init_db()
-    from bot.spot_simulator import init as init_state
-    from bot.spot_engine import start as start_engine
-    from bot.discord_bot import start as start_discord
-    from bot import config as _cfg
-    init_state()
-    start_engine()
-    start_discord()
-    if _cfg.FUTURES_ENABLED:
-        from bot.futures_engine import start as start_futures
-        start_futures()
-    # Keep the main thread alive — all engine threads are daemons
-    while True:
-        time.sleep(60)
+    from web.app import run
+    run()

@@ -100,23 +100,40 @@ In `.env` set `SPOT_MODE=live`, then restart:
 ./stop.sh && ./start.sh
 ```
 
-On startup in live mode the bot fetches your real EUR balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running.
+On startup in live mode the engine fetches your real EUR balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running.
 
 ## Running
 
+The trading engine and web dashboard run as **separate processes**. The engine writes status snapshots to `data/status_spot.json` and `data/status_futures.json` on every tick; the dashboard reads those files. This means the dashboard can be restarted independently without interrupting trading.
+
 ```bash
-./start.sh          # start bot + dashboard in background
-./stop.sh           # stop
-tail -f data/kairos.log
+./start.sh              # start both engine + dashboard (default)
+./start.sh engine       # start engine only
+./start.sh dashboard    # start dashboard only
+
+./stop.sh               # stop both
+./stop.sh engine        # stop engine only
+./stop.sh dashboard     # stop dashboard only
 ```
 
 `start.sh` prints the dashboard URL on startup. `watchdog.sh` can be used to auto-restart on crash.
 
+Logs are written to separate files:
+
+```bash
+tail -f data/kairos.log       # trading engine (all trade activity)
+tail -f data/dashboard.log    # web dashboard (Flask requests)
+```
+
+The dashboard's **Log** view also tails `data/kairos.log` directly, so engine activity is always visible even when the dashboard is a separate process.
+
 Two modes (set via `SPOT_MODE` / `FUTURES_MODE` in `.env`):
-- `simulation` — paper trades, virtual balance, no API keys needed
+- `simulation` — paper trades, virtual balance, no API keys needed; state file is written on first start so balance persists across restarts
 - `live` — places real orders on Binance
 
 Spot and futures are completely independent: separate balances, state files, and trade logs.
+
+> **Note:** The dashboard's engine control buttons (start/stop/pause, manual buy/close) require the engine to be running in the same process. In the default two-process setup those endpoints return HTTP 503. Use `start.sh` / `stop.sh` to manage the engine instead.
 
 ## Configuration (`.env`)
 
@@ -248,9 +265,28 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 | `DISCORD_GUILD_ID` | Guild ID for instant slash command registration |
 | `WEB_HOST` | Dashboard bind address (`0.0.0.0` to expose on LAN) |
 | `WEB_PORT` | Dashboard port (default 8888) |
-| `TAX_RATE_LOW` | Capital gains rate on net P&L up to `TAX_BRACKET` (default 0.30) |
-| `TAX_BRACKET` | EUR threshold between low and high tax rate (default 30000) |
-| `TAX_RATE_HIGH` | Capital gains rate on net P&L above `TAX_BRACKET` (default 0.34) |
+| `DASHBOARD_PIN` | Optional PIN to gate control actions in the web UI |
+| `TAX_RATE_LOW` / `TAX_BRACKET` / `TAX_RATE_HIGH` | FIFO tax rates — see Tax reporting section |
+
+## Tax reporting (FIFO)
+
+The dashboard's **Tax** tab tracks capital gains using Finnish FIFO rules (Vero). Every live trade automatically updates the ledger; the tab shows annual gains, losses, fees, net taxable amount, and an estimated tax liability based on the configured rates.
+
+The FIFO ledger is maintained in `data/trades.db`. It tracks cost-basis lots from BUY fills and disposes them against SELL fills in order. Fees are included in the cost basis.
+
+Tax rate configuration (in `.env`):
+
+| Variable | Default | Description |
+|---|---|---|
+| `TAX_RATE_LOW` | `0.30` | Rate on gains up to `TAX_BRACKET` |
+| `TAX_BRACKET` | `30000` | EUR threshold between low and high rate |
+| `TAX_RATE_HIGH` | `0.34` | Rate on gains above `TAX_BRACKET` |
+
+The **Rebuild** button in the Tax tab re-processes all historical live trades from scratch — useful after correcting a trade record or importing old data.
+
+The **Export CSV** button downloads a disposal-by-disposal report for the selected year, suitable for submitting to the tax authority.
+
+> The FIFO ledger only tracks `live` mode trades. Simulation trades are not included.
 
 ## Discord
 
@@ -272,6 +308,8 @@ Slash commands (requires `DISCORD_BOT_TOKEN`):
 ## Backtest
 
 Add `--cached` to any backtest command to skip candle syncing and use only the local cache (faster, reproducible).
+
+See [SWEEP_EXAMPLES.md](SWEEP_EXAMPLES.md) for worked examples showing how the current shadow profiles were found.
 
 ### Spot
 
@@ -331,32 +369,40 @@ Sweeps spacing × level combinations and ranks by realised P&L%.
 bot/
   config.py             — all settings from .env, per-pair helpers (spot + futures)
   spot_engine.py        — spot trading loop: candle alignment, signal execution, stop-check thread
-  spot_simulator.py     — spot shadow simulators + SpotShadowSimulator class
+                          writes data/status_spot.json on every tick
+  spot_simulator.py     — spot state + shadow simulators; lazy-inits shadows on first access
   spot_exchange.py      — Binance spot API wrapper
   spot_risk.py          — Position dataclass, trailing stop, DCA, PnL
+  tax.py                — FIFO capital gains tracking (Finnish Vero rules); hooks into db.log_trade()
   strategy.py           — RSI + EMA200 signal (shared by spot + futures)
   candles.py            — local SQLite candle cache, incremental sync (spot + futures)
   notifier.py           — Discord webhooks, tick embeds, alerts, log buffering
   discord_bot.py        — discord.py slash command bot
   db.py                 — trade log, balance history, candles (SQLite, WAL mode)
   futures_engine.py     — futures loop: 15m signal thread + 30s risk/funding thread
-  futures_simulator.py  — futures shadow simulators + FuturesShadowSimulator class
+                          writes data/status_futures.json on every tick
+  futures_simulator.py  — futures state + shadow simulators; lazy-inits shadows on first access
   futures_exchange.py   — Binance futures API wrapper
   futures_risk.py       — FuturesPosition dataclass, liquidation price, PnL
 web/
-  app.py                — Flask dashboard + REST API (spot + futures endpoints)
+  app.py                — Flask dashboard + REST API; reads status snapshots from data/
   templates/
     index.html          — single-page dashboard (Spot / Futures tabs)
 data/
   trades.db             — trade history, balance history, candle cache (WAL)
-  spot_state_*.json     — spot engine state (* = simulation or live; one active at a time)
-  futures_state_*.json  — futures engine state (* = simulation or live; one active at a time)
+  kairos.log            — engine log (all trading activity)
+  dashboard.log         — dashboard process log (Flask requests)
+  status_spot.json      — spot engine status snapshot; written by engine, read by dashboard
+  status_futures.json   — futures engine status snapshot; written by engine, read by dashboard
+  spot_state_*.json     — spot engine state (* = simulation or live; created on first start)
+  futures_state_*.json  — futures engine state (* = simulation or live; created on first start)
   spot_state_shadow_*.json    — per-shadow spot state
   futures_state_shadow_*.json — per-shadow futures state
 backtest.py             — spot backtest + parameter sweep tool
 backtest_futures.py     — futures backtest + parameter sweep tool
 pair_sweep.py           — full parameter sweep for any single EUR pair
-main.py                 — entry point: starts spot engine, futures engine, web dashboard
-start.sh / stop.sh      — process management
+main.py                 — engine entry point: spot engine, futures engine, Discord bot
+dashboard.py            — dashboard entry point: Flask web server only
+start.sh / stop.sh      — process management (engine, dashboard, or both)
 watchdog.sh             — auto-restart on crash
 ```

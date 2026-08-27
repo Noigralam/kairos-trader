@@ -117,6 +117,7 @@ def init():
         )
     else:
         _load()
+        _save()  # anchor starting balance on first run; no-op if file already exists with same state
 
 
 def get_state() -> FuturesSimState:
@@ -601,10 +602,12 @@ class FuturesShadowSimulator:
 
 
 _futures_shadows: list[FuturesShadowSimulator] = []
+_futures_shadows_initialized: bool = False
 
 
 def init_futures_shadows() -> list[FuturesShadowSimulator]:
-    global _futures_shadows
+    global _futures_shadows, _futures_shadows_initialized
+    _futures_shadows_initialized = True
     _futures_shadows = []
     for name in config.get_futures_shadow_profiles():
         overrides  = config.get_futures_shadow_overrides(name)
@@ -617,4 +620,6 @@ def init_futures_shadows() -> list[FuturesShadowSimulator]:
 
 
 def get_futures_shadows() -> list[FuturesShadowSimulator]:
+    if not _futures_shadows_initialized:
+        init_futures_shadows()
     return _futures_shadows

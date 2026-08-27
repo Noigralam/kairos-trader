@@ -1067,10 +1067,12 @@
     const ms   = Date.now() - new Date(isoTs).getTime();
     const days = Math.floor(ms / 86400000);
     const hrs  = Math.floor((ms % 86400000) / 3600000);
+    const mins = Math.floor((ms % 3600000) / 60000);
     if (days >= 365) { const y = Math.floor(days / 365), d = days % 365; return d > 0 ? `${y}y ${d}d` : `${y}y`; }
     if (days >= 30)  { const m = Math.floor(days / 30),  d = days % 30;  return d > 0 ? `${m}mo ${d}d` : `${m}mo`; }
     if (days >= 1)   return hrs > 0 ? `${days}d ${hrs}h` : `${days}d`;
-    return `${hrs}h`;
+    if (hrs >= 1)    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+    return `${mins}m`;
   }
 
   // ── tab switching ─────────────────────────────────────────────────────────
@@ -1510,9 +1512,10 @@
         loadBalanceChart();
         loadStats();
       }
-      if (s.uptime != null) {
-        const h = Math.floor(s.uptime / 3600);
-        const m = Math.floor((s.uptime % 3600) / 60);
+      if (s.started_at) {
+        const secs = Math.floor((Date.now() - new Date(s.started_at)) / 1000);
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
         document.getElementById('uptime').textContent =
           `Session: ${h}h ${String(m).padStart(2,'0')}m`;
       }

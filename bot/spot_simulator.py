@@ -106,6 +106,7 @@ def init():
             log.warning(f"[LIVE] Binance balance fetch failed at startup ({e}) — using last saved balance €{_state.balance:.2f}")
     else:
         _load()
+        _save()  # anchor starting balance on first run; no-op if file already exists with same state
 
 
 def get_state() -> SimState:
@@ -1158,10 +1159,12 @@ class GridShadowSimulator:
 # --- module-level shadow registry ---
 
 _shadows: list[SpotShadowSimulator] = []
+_shadows_initialized: bool = False
 
 
 def init_shadows() -> list[SpotShadowSimulator]:
-    global _shadows
+    global _shadows, _shadows_initialized
+    _shadows_initialized = True
     _shadows = []
     for name in config.get_shadow_profiles():
         overrides  = config.get_shadow_overrides(name)
@@ -1177,4 +1180,6 @@ def init_shadows() -> list[SpotShadowSimulator]:
 
 
 def get_shadows() -> list[SpotShadowSimulator]:
+    if not _shadows_initialized:
+        init_shadows()
     return _shadows

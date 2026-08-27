@@ -35,7 +35,8 @@ cp .env.example .env
 # Dashboard: http://<your-ip>:8888
 
 # 4. Watch logs
-tail -f data/kairos.log
+tail -f data/kairos.log       # trading engine
+tail -f data/dashboard.log    # web dashboard
 ```
 
 First candle tick fires within 15 minutes. When you're happy with simulation results, set `SPOT_MODE=live` in `.env`, add your Binance API keys, and restart.

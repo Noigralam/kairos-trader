@@ -76,8 +76,6 @@ def _maybe_apply_funding(symbol: str, price: float) -> None:
 def _loop():
     global _running, _last_tick
 
-    sim_init()
-    init_futures_shadows()
     notify(
         f"[FUTURES] Engine started — mode={config.FUTURES_MODE}  "
         f"pairs={', '.join(config.FUTURES_TRADING_PAIRS)}  "
@@ -314,6 +312,8 @@ def start():
             return
         _running = True
         _start_time = time.time()
+    sim_init()
+    init_futures_shadows()
     write_status_snapshot()
     _thread      = threading.Thread(target=_loop,       daemon=True, name="futures-engine")
     _stop_thread = threading.Thread(target=_stop_loop,  daemon=True, name="futures-stop-check")

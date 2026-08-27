@@ -1337,8 +1337,18 @@ def api_futures_chart(symbol):
     })
 
 
+_ENGINE_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kairos.log")
+
+
 @app.route("/api/log")
 def api_log():
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        try:
+            with open(_ENGINE_LOG_PATH, encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            return jsonify([l.rstrip("\n") for l in lines[-150:]])
+        except Exception:
+            return jsonify([])
     return jsonify(get_recent_logs())
 
 
@@ -1602,6 +1612,8 @@ def api_futures_status():
     snap["dca_drop"] = config.FUTURES_DCA_DROP_PCT
     snap["stop_check_interval"] = config.FUTURES_STOP_CHECK_INTERVAL
     snap["leverage"] = config.FUTURES_LEVERAGE
+    snap["running"] = snap.get("status") == "running"
+    snap["paused"]  = snap.get("status") == "paused"
     # rename trailing_stop → trailing_stop, take_profit → take_profit_price for dashboard compat
     for pos in snap.get("positions", {}).values():
         if "take_profit" in pos and "take_profit_price" not in pos:
@@ -1659,6 +1671,8 @@ def api_futures_control():
         return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
     if not ok:
         return jsonify({"error": "unauthorized"}), 403
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        return jsonify({"error": "engine runs in a separate process — control not available via dashboard"}), 503
     if not config.FUTURES_ENABLED:
         return jsonify({"error": "futures not enabled"}), 400
     from bot import futures_engine
@@ -1688,6 +1702,8 @@ def api_control():
         return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
     if not ok:
         return jsonify({"error": "unauthorized"}), 403
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        return jsonify({"error": "engine runs in a separate process — control not available via dashboard"}), 503
     data = request.get_json(force=True)
     action = data.get("action")
     pair = data.get("pair")
