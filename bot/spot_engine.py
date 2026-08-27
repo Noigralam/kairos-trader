@@ -12,7 +12,7 @@ log = logging.getLogger("cryptobot")
 from .spot_exchange import get_price
 from .strategy import compute_signal, Signal
 from .candles import initial_sync, sync as sync_candles, get_df
-from .spot_simulator import open_position, close_position, partial_close_position, dca_position, get_state, check_stops, manual_add, init_shadows, get_shadows
+from .spot_simulator import open_position, close_position, partial_close_position, dca_position, get_state, check_stops, manual_add, init_spot_shadows, get_spot_shadows
 from .notifier import notify, notify_tick, bot_status_alert, build_chart, daily_summary
 from . import db as _db
 
@@ -87,7 +87,7 @@ def _loop():
     sleep_sec = INTERVAL_SECONDS.get(config.SPOT_INTERVAL, 3600)
 
     all_pairs = list(config.SPOT_TRADING_PAIRS)
-    for s in get_shadows():
+    for s in get_spot_shadows():
         if s.pairs:
             for p in s.pairs:
                 if p not in all_pairs:
@@ -95,7 +95,7 @@ def _loop():
 
     # collect all (pair, interval) combos needed by shadows with non-default intervals
     shadow_intervals: list[tuple[str, str]] = []
-    for s in get_shadows():
+    for s in get_spot_shadows():
         if s.interval != config.SPOT_INTERVAL:
             for p in (s.pairs or config.SPOT_TRADING_PAIRS):
                 if (p, s.interval) not in shadow_intervals:
@@ -211,7 +211,7 @@ def _loop():
                         notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below min exit €{min_exit:,.2f} (entry €{pos.entry_price:,.2f} +{min_exit_pct*100:.1f}%)", discord=False)
 
             # tick all shadow simulators with the same candle data
-            for shadow in get_shadows():
+            for shadow in get_spot_shadows():
                 tick_pairs = shadow.pairs if shadow.pairs else config.SPOT_TRADING_PAIRS
                 for pair in tick_pairs:
                     shadow.tick(pair, prices)
@@ -253,7 +253,7 @@ def _stop_loop():
             if not state.positions:
                 continue
             pairs_needed = set(state.positions)
-            for shadow in get_shadows():
+            for shadow in get_spot_shadows():
                 pairs_needed.update(shadow.positions)
             prices = {}
             for pair in pairs_needed:
@@ -263,7 +263,7 @@ def _stop_loop():
                     log.warning(f"[SPOT STOP-CHECK] {pair} price fetch failed: {e}")
             if prices:
                 check_stops(prices)
-                for shadow in get_shadows():
+                for shadow in get_spot_shadows():
                     shadow.check_stops(prices)
                 write_status_snapshot(prices)
         except Exception as e:
@@ -361,7 +361,7 @@ def start():
     if _status == BotStatus.RUNNING:
         return
     _ensure_live_since()
-    init_shadows()
+    init_spot_shadows()
     _start_time = time.time()
     _set_status(BotStatus.RUNNING)
     write_status_snapshot()

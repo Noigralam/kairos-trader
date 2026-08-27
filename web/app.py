@@ -400,8 +400,8 @@ class _MainFuturesShim:
 
 @app.route("/api/shadows")
 def api_shadows():
-    from bot.spot_simulator import get_shadows
-    rows = [{"name": s.name, "overrides": s.overrides} for s in get_shadows()]
+    from bot.spot_simulator import get_spot_shadows
+    rows = [{"name": s.name, "overrides": s.overrides} for s in get_spot_shadows()]
     if config.SPOT_MODE == "simulation":
         rows.insert(0, {"name": "MAIN", "overrides": {}, "is_main": True})
     return jsonify(rows)
@@ -409,7 +409,7 @@ def api_shadows():
 
 @app.route("/api/shadows/ranking")
 def api_shadows_ranking():
-    from bot.spot_simulator import get_shadows
+    from bot.spot_simulator import get_spot_shadows
     from bot.spot_exchange import get_price
 
     snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
@@ -463,7 +463,7 @@ def api_shadows_ranking():
     rows = []
     if config.SPOT_MODE == "simulation":
         rows.append(_shadow_row(_MainSpotShim(snap), is_main=True))
-    for s in get_shadows():
+    for s in get_spot_shadows():
         rows.append(_shadow_row(s))
     rows.sort(key=lambda x: (not x["is_main"], -x["return_pct"]))
     return jsonify({"live_return_pct": live_return_pct, "shadows": rows})
@@ -471,7 +471,7 @@ def api_shadows_ranking():
 
 @app.route("/api/shadows/pnl_history")
 def api_shadows_pnl_history():
-    from bot.spot_simulator import get_shadows, get_state
+    from bot.spot_simulator import get_spot_shadows, get_state
     days = float(request.args.get("days", 30))
     out  = {}
 
@@ -491,16 +491,16 @@ def api_shadows_pnl_history():
 
     if config.SPOT_MODE == "simulation":
         out["MAIN"] = _series(config.SPOT_MODE, config.SPOT_SIMULATION_BALANCE)
-    for s in get_shadows():
+    for s in get_spot_shadows():
         out[s.name] = _series(s._db_mode, s.starting_balance)
     return jsonify(out)
 
 
 def _get_shadow(name: str):
-    from bot.spot_simulator import get_shadows, get_state
+    from bot.spot_simulator import get_spot_shadows, get_state
     if name.upper() == "MAIN" and config.SPOT_MODE == "simulation":
         return _MainSpotShim(get_state())
-    return next((s for s in get_shadows() if s.name.upper() == name.upper()), None)
+    return next((s for s in get_spot_shadows() if s.name.upper() == name.upper()), None)
 
 
 @app.route("/api/shadow/<name>/status")
@@ -1703,7 +1703,7 @@ def api_futures_control():
         futures_engine.manual_buy(symbol, size_pct)
     elif action == "manual_close" and symbol:
         futures_engine.manual_close(symbol)
-    return jsonify({"running": futures_engine.is_running(), "paused": futures_engine.is_paused()})
+    return jsonify({"status": futures_engine.get_status()})
 
 
 @app.route("/api/control", methods=["POST"])

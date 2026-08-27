@@ -1162,7 +1162,7 @@ _shadows: list[SpotShadowSimulator] = []
 _shadows_initialized: bool = False
 
 
-def init_shadows() -> list[SpotShadowSimulator]:
+def init_spot_shadows() -> list[SpotShadowSimulator]:
     global _shadows, _shadows_initialized
     _shadows_initialized = True
     _shadows = []
@@ -1179,7 +1179,7 @@ def init_shadows() -> list[SpotShadowSimulator]:
     return _shadows
 
 
-def get_shadows() -> list[SpotShadowSimulator]:
+def get_spot_shadows() -> list[SpotShadowSimulator]:
     if not _shadows_initialized:
-        init_shadows()
+        init_spot_shadows()
     return _shadows
