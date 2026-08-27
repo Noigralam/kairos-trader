@@ -358,6 +358,7 @@ def start():
     init_shadows()
     _start_time = time.time()
     _set_status(BotStatus.RUNNING)
+    write_status_snapshot()
     _thread      = threading.Thread(target=_loop,       daemon=True, name="spot-engine")
     _stop_thread = threading.Thread(target=_stop_loop,  daemon=True, name="spot-stop-check")
     _thread.start()

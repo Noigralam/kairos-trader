@@ -314,6 +314,7 @@ def start():
             return
         _running = True
         _start_time = time.time()
+    write_status_snapshot()
     _thread      = threading.Thread(target=_loop,       daemon=True, name="futures-engine")
     _stop_thread = threading.Thread(target=_stop_loop,  daemon=True, name="futures-stop-check")
     _thread.start()
