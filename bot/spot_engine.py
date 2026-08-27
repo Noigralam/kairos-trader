@@ -307,12 +307,18 @@ def write_status_snapshot(prices: dict | None = None):
             }
 
         starting = config.SPOT_INVESTED if config.SPOT_INVESTED > 0 else _db.get_starting_balance(config.SPOT_MODE)
+        sleep_sec = INTERVAL_SECONDS.get(config.SPOT_INTERVAL, 3600)
+        next_tick_secs = _seconds_until_next_candle(sleep_sec) if _status == BotStatus.RUNNING else None
+        next_tick_at = (
+            datetime.datetime.now(tz=tz) + datetime.timedelta(seconds=next_tick_secs)
+        ).isoformat() if next_tick_secs is not None else None
         snap = {
             "version":          __import__("bot").__version__,
             "mode":             config.SPOT_MODE,
             "status":           _status.value,
             "api_error":        _api_error,
             "last_tick":        _last_tick,
+            "next_tick_at":     next_tick_at,
             "live_since":       state.live_since,
             "started_at":       datetime.datetime.fromtimestamp(_start_time, tz=tz).isoformat() if _start_time else None,
             "interval":         config.SPOT_INTERVAL,

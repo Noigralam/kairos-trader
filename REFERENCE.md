@@ -82,15 +82,23 @@ tail -f data/kairos.log
 
 #### Get Binance API keys
 
-1. Log in to Binance → Profile → API Management → Create API
-2. Choose **System generated**
-3. Enable exactly these permissions:
-   - ✅ Enable Reading
-   - ✅ Enable Spot & Margin Trading
-   - ✅ Enable Futures (only if using futures live mode)
-   - ❌ Everything else (no withdrawals, no transfers)
-4. Restrict access to your server's IP for extra safety
-5. Add both keys to `.env` under `BINANCE_API_KEY` and `BINANCE_SECRET_KEY`
+1. Log in to Binance → top-right profile icon → **API Management**
+2. Click **Create API** → choose **System generated**
+3. Give it a label (e.g. `kairos-bot`) and complete the 2FA verification — Binance will also send a confirmation email; click the link in that email before the key activates
+4. On the permissions page, enable **exactly** these:
+   - ✅ **Enable Reading**
+   - ✅ **Enable Spot & Margin Trading**
+   - ✅ **Enable Futures** — only if you plan to use `FUTURES_MODE=live`
+   - ❌ Everything else — especially **no withdrawals, no transfers**
+5. Under **IP access restriction**, choose **Restrict access to trusted IPs only** and enter your server's public IP. If you don't know it: `curl ifconfig.me` on the server. This step is important — an unrestricted key is a security risk.
+6. Copy the API Key and Secret Key immediately — the secret is only shown once
+7. Add both to `.env`:
+   ```
+   BINANCE_API_KEY=your_key_here
+   BINANCE_SECRET_KEY=your_secret_here
+   ```
+
+> **Common gotcha:** if you see `APIError(code=-2015): Invalid API-key` after restarting, the IP restriction is blocking your server. Double-check the IP in Binance's API Management matches what `curl ifconfig.me` returns on the server.
 
 #### Switch to live
 
@@ -100,7 +108,13 @@ In `.env` set `SPOT_MODE=live`, then restart:
 ./stop.sh && ./start.sh
 ```
 
-On startup in live mode the engine fetches your real EUR balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running.
+On startup in live mode the engine fetches your real EUR balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running:
+
+```
+[LIVE] Started — Binance EUR balance: €XXX.XX  open positions: none
+```
+
+If that line doesn't appear within 30 seconds, check `data/kairos.log` for an error — it's almost always an API key or IP restriction issue.
 
 ## Running
 

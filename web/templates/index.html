@@ -430,6 +430,25 @@
       Simulation data is in the <a href="#" onclick="switchTab('spot-shadow');return false" style="color:#58a6ff">Spot Shadow</a> tab.
     </div>
 
+    <div id="spot-first-run-notice" style="display:none;background:#0d1117;border:1px solid #d29922;border-radius:6px;padding:12px 16px;margin-bottom:14px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          <strong style="color:#d29922;">👋 Welcome to Kairos</strong><br>
+          <span style="color:var(--muted);">You're paper trading with virtual money — no real orders are placed.
+          Watch the simulation run for a while before considering live mode.
+          Set <code>SPOT_MODE=live</code> in <code>.env</code> when ready.</span>
+        </div>
+        <button onclick="localStorage.setItem('kairos_welcome_dismissed','1');document.getElementById('spot-first-run-notice').style.display='none';"
+          style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 8px;cursor:pointer;white-space:nowrap;font-size:12px;">Dismiss</button>
+      </div>
+    </div>
+
+    <div id="spot-waiting-notice" style="display:none;background:#0d1117;border:1px solid #388bfd;border-radius:6px;padding:10px 14px;margin-bottom:14px;color:var(--muted);font-size:13px;">
+      ⏳ <strong style="color:#58a6ff;">Waiting for first tick</strong> —
+      next candle at <span id="spot-next-tick-time" style="color:#58a6ff;">—</span>.
+      This is normal on startup; the bot aligns to candle boundaries before processing signals.
+    </div>
+
     <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
       <button onclick="openSettingsModal('spot')" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">⚙ Settings</button>
     </div>
@@ -584,6 +603,12 @@
       Running in <strong style="color:#d29922">simulation</strong> mode — no live trades.
       Live performance will appear here when <code>FUTURES_MODE=live</code>.
       Simulation data is in the <a href="#" onclick="switchTab('futures-shadow');return false" style="color:#58a6ff">Futures Shadow</a> tab.
+    </div>
+
+    <div id="futures-waiting-notice" style="display:none;background:#0d1117;border:1px solid #388bfd;border-radius:6px;padding:10px 14px;margin-bottom:14px;color:var(--muted);font-size:13px;">
+      ⏳ <strong style="color:#58a6ff;">Waiting for first tick</strong> —
+      next candle at <span id="futures-next-tick-time" style="color:#58a6ff;">—</span>.
+      This is normal on startup; the bot aligns to candle boundaries before processing signals.
     </div>
 
     <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
@@ -1457,6 +1482,23 @@
 
       // Show simulation notice when not in live mode
       document.getElementById('spot-sim-notice').style.display = s.mode === 'simulation' ? '' : 'none';
+
+      // First-run welcome notice (simulation only, dismissible)
+      const _welcomed = localStorage.getItem('kairos_welcome_dismissed') === '1';
+      const _firstRunEl = document.getElementById('spot-first-run-notice');
+      if (_firstRunEl) _firstRunEl.style.display = (s.mode === 'simulation' && !_welcomed && s.total_trades === 0) ? '' : 'none';
+
+      // Waiting-for-first-tick notice
+      const _waitEl = document.getElementById('spot-waiting-notice');
+      if (_waitEl) {
+        const _noTick = !s.last_tick && s.status === 'running';
+        _waitEl.style.display = _noTick ? '' : 'none';
+        if (_noTick && s.next_tick_at) {
+          const _nt = new Date(s.next_tick_at);
+          document.getElementById('spot-next-tick-time').textContent =
+            _nt.toLocaleTimeString('fi-FI', {hour: '2-digit', minute: '2-digit'});
+        }
+      }
 
       // Stats
       document.getElementById('balance').textContent = fmt(s.balance);
@@ -3041,6 +3083,18 @@
       // Show simulation notice when not in live mode
       const fSimNotice = document.getElementById('futures-sim-notice');
       if (fSimNotice) fSimNotice.style.display = d.mode === 'simulation' ? '' : 'none';
+
+      // Waiting-for-first-tick notice
+      const _fWaitEl = document.getElementById('futures-waiting-notice');
+      if (_fWaitEl) {
+        const _fNoTick = !d.last_tick && d.running;
+        _fWaitEl.style.display = _fNoTick ? '' : 'none';
+        if (_fNoTick && d.next_tick_at) {
+          const _fNt = new Date(d.next_tick_at);
+          document.getElementById('futures-next-tick-time').textContent =
+            _fNt.toLocaleTimeString('fi-FI', {hour: '2-digit', minute: '2-digit'});
+        }
+      }
 
       // Summary stats
       document.getElementById('f-balance').textContent = fmtUsdt(d.balance);

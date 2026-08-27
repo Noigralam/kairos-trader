@@ -281,11 +281,17 @@ def write_status_snapshot(prices: dict | None = None):
             }
 
         starting = _db.get_starting_balance(f"futures_{config.FUTURES_MODE}")
+        sleep_sec = INTERVAL_SECONDS.get(_FUTURES_INTERVAL, 900)
+        next_tick_secs = _seconds_until_next_candle(sleep_sec) if _running and not _paused else None
+        next_tick_at = (
+            datetime.datetime.now(tz=tz) + datetime.timedelta(seconds=next_tick_secs)
+        ).isoformat() if next_tick_secs is not None else None
         snap = {
             "version":          __import__("bot").__version__,
             "mode":             config.FUTURES_MODE,
             "status":           "running" if _running and not _paused else ("paused" if _paused else "stopped"),
             "last_tick":        _last_tick,
+            "next_tick_at":     next_tick_at,
             "started_at":       datetime.datetime.fromtimestamp(_start_time, tz=tz).isoformat() if _start_time else None,
             "interval":         _FUTURES_INTERVAL,
             "balance":          round(state.balance, 2),
