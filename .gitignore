@@ -24,6 +24,9 @@ config.json
 logs/
 data/trades.db
 data/kairos.pid
+data/dashboard.pid
+data/status_spot.json
+data/status_futures.json
 data/discord_ids.json
 data/watchdog.log
 data/spot_state_simulation.json
