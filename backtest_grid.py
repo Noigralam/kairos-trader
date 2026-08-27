@@ -9,7 +9,9 @@ Usage:
 
 Sweeps spacing × levels and prints a ranked results table per pair.
 """
+import os
 import sys
+import datetime
 import itertools
 
 import numpy as np
@@ -20,6 +22,31 @@ load_dotenv()
 
 from bot import config
 from bot.candles import get_df, initial_sync
+
+RESULTS_DIR = "backtest_results"
+
+
+class _Tee:
+    """Mirror stdout to a file so results are never lost to scroll."""
+    def __init__(self, path: str):
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        self._file   = open(path, "w")
+        self._stdout = sys.stdout
+        sys.stdout   = self
+        print(f"  Output also saved to: {path}\n")
+
+    def write(self, data):
+        self._stdout.write(data)
+        self._file.write(data)
+
+    def flush(self):
+        self._stdout.flush()
+        self._file.flush()
+
+    def close(self):
+        sys.stdout = self._stdout
+        self._file.close()
+
 
 FEE        = 0.001   # 0.1% per side
 WARMUP     = 0       # grid needs no indicator warmup
@@ -210,6 +237,32 @@ def print_table(results: list, sort_by: str = "realised_pct", top_n: int = 20):
     return df
 
 
+def _legend():
+    print(f"\n  {'─'*93}")
+    print(f"  Legend")
+    print(f"    spacing     grid step % — distance between buy levels, and between buy and sell price")
+    print(f"                must exceed 2× fee (>{FEE*2*100:.2f}%) to be profitable per round-trip")
+    print(f"    levels      number of buy slots in the grid; balance is split equally across all slots")
+    print(f"    trades      completed round-trips (buy → sell pairs) during the backtest period")
+    print(f"    realised%   realized P&L as % of starting balance (closed trades only, excludes open slots)")
+    print(f"    return%     total portfolio value change including unrealized positions valued at last price")
+    print(f"    max_dd%     maximum peak-to-trough drawdown of total portfolio value during the period")
+    print(f"    stuck%      % of candles where ALL slots were filled — grid cannot buy, all capital at risk")
+    print(f"    recenters   times the grid repositioned after price rallied out of range above all buy levels")
+    print(f"    open_slots  filled (unrealized) positions remaining at the end of the backtest")
+    print(f"    fees        total exchange fees paid (buy + sell sides at {FEE*100:.1f}% per side)")
+    print(f"  {'─'*93}")
+    print(f"  How the grid strategy works:")
+    print(f"    Each slot gets balance/levels EUR. The grid centers on the first candle price.")
+    print(f"    Buy orders sit at center × (1 − i×spacing) for i=1..levels.")
+    print(f"    Each filled slot has a sell order at buy_price × (1 + spacing).")
+    print(f"    When price drops through a buy level the slot fills; when it rises to the sell")
+    print(f"    level the slot completes a round-trip and profits spacing% − fees%.")
+    print(f"    If price rallies above all buy levels while all slots are empty the grid recenters.")
+    print(f"{'━'*95}")
+    print()
+
+
 def analyse_volatility(df: pd.DataFrame, pair: str):
     """Print candle range stats to help interpret spacing choices."""
     ranges = (df["high"] - df["low"]) / df["close"] * 100
@@ -255,6 +308,8 @@ def run_for_pair(pair: str, days: int):
     for sp, val in by_sp.items():
         print(f"  {sp*100:.1f}%  →  avg realised {val:+.2f}%")
 
+    _legend()
+
 
 if __name__ == "__main__":
     cli_args  = sys.argv[1:]
@@ -263,5 +318,9 @@ if __name__ == "__main__":
     days      = day_args[0] if day_args else 180
     pairs     = [a.upper() for a in str_args] or config.SPOT_TRADING_PAIRS
 
+    _date      = datetime.date.today().isoformat()
+    _pairs_str = "+".join(pairs)
+    _tee = _Tee(f"{RESULTS_DIR}/grid_{_pairs_str}_{days}d_{_date}.txt")
     for pair in pairs:
         run_for_pair(pair, days)
+    _tee.close()

@@ -19,7 +19,9 @@ Usage:
 Add --cached to any command to skip candle syncing and use only local candles.db data.
 Days can be one or multiple values: python backtest.py sweep exit 365 180 90
 """
+import os
 import sys
+import datetime
 from dataclasses import dataclass
 
 import numpy as np
@@ -31,6 +33,31 @@ load_dotenv()
 from bot import config
 from bot.candles import get_df, initial_sync
 from bot.spot_risk import Position, apply_dca, update_peak, calc_pnl
+
+RESULTS_DIR = "backtest_results"
+
+
+class _Tee:
+    """Mirror stdout to a file so results are never lost to scroll."""
+    def __init__(self, path: str):
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        self._file   = open(path, "w")
+        self._stdout = sys.stdout
+        sys.stdout   = self
+        print(f"  Output also saved to: {path}\n")
+
+    def write(self, data):
+        self._stdout.write(data)
+        self._file.write(data)
+
+    def flush(self):
+        self._stdout.flush()
+        self._file.flush()
+
+    def close(self):
+        sys.stdout = self._stdout
+        self._file.close()
+
 
 INTERVAL = "15m"
 WARMUP   = 210
@@ -397,6 +424,19 @@ def run_pair(
 # Reporting
 # ---------------------------------------------------------------------------
 
+_EXIT_SHORT = {
+    "trailing_stop":  "trail",
+    "take_profit":    "TP",
+    "signal":         "RSI",
+    "time_stop":      "time",
+    "hard_stop":      "hard",
+    "partial_tp":     "partial",
+    "pyramid_tp":     "py-TP",
+    "pyramid_stop":   "py-trail",
+    "pyramid_signal": "py-RSI",
+}
+
+
 def summarise(label: str, trades: list[Trade], start: float, wide: bool = False):
     realized = [t for t in trades if t.exit_reason != "end_of_data"]
     open_eod = len(trades) - len(realized)
@@ -414,7 +454,7 @@ def summarise(label: str, trades: list[Trade], start: float, wide: bool = False)
     reasons = {}
     for t in realized:
         reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
-    exits = "  ".join(f"{k}×{v}" for k, v in reasons.items())
+    exits = "  ".join(f"{_EXIT_SHORT.get(k, k)}×{v}" for k, v in reasons.items())
 
     if wide:
         dca_n = sum(1 for t in realized if t.dca_used)
@@ -425,7 +465,7 @@ def summarise(label: str, trades: list[Trade], start: float, wide: bool = False)
         tax   = min(max(pnl, 0), 30000) * 0.30 + max(max(pnl, 0) - 30000, 0) * 0.34
         after = start + pnl - (tax if pnl > 0 else 0)
         print(f"  {label:<36}  n={n:>3}  {eod:>4}  W/L={wins}/{n-wins}"
-              f"  PnL={pnl:>+7.2f}  after-tax={after:>7.2f}"
+              f"  PnL={pnl:>+7.2f}  bal-aft-tax={after:>7.2f}"
               f"  worst={worst:>+7.2f}  fees={fees:.2f}  [{exits}]")
 
 
@@ -434,6 +474,38 @@ def _header(days: int, title: str, wide: bool = False):
     print(f"\n{'━'*width}")
     print(f"  {days}d — {title}")
     print(f"{'━'*width}")
+
+
+def _legend(wide: bool = True, description: str = ""):
+    width = 125 if wide else 105
+    print(f"  {'─'*( width - 2)}")
+    print(f"  Legend")
+    if wide:
+        print(f"    n           closed trades  (+N = position still open at backtest end, valued at last candle price)")
+        print(f"    W/L         winning / losing trades (profit > 0 counts as win)")
+        print(f"    PnL         total realized € profit/loss  |  avg = average € per closed trade")
+        print(f"    worst/best  single trade extremes in €  |  fees = total exchange fees paid (0.1% per side)")
+        print(f"    dca         number of trades where averaging-down (DCA) fired before the exit")
+        print(f"    exits       how positions were closed:")
+        print(f"                  trail   = trailing stop — price dropped X% from its peak while above profit floor")
+        print(f"                  TP      = hard take-profit — price reached entry × (1 + TP%) and closed immediately")
+        print(f"                  RSI     = overbought signal — RSI exceeded sell threshold while above min-exit profit")
+        print(f"                  time    = time stop — position held too long without profit, closed at market price")
+        print(f"                  hard    = hard stop loss — price fell X% below entry to cap the loss")
+        print(f"                  partial = partial take-profit — fraction sold at TP, remainder trailed with tighter stop")
+    else:
+        print(f"    n             closed trades  |  open column = positions still open at backtest end")
+        print(f"    W/L           winning / losing trades  |  PnL = total realized €  |  worst = worst single trade (€)")
+        print(f"    bal-aft-tax   final balance (start + PnL − tax) after Finnish capital gains tax")
+        print(f"                  (30% on gains up to €30 000, 34% on gains above €30 000)")
+        print(f"    exits         trail=trailing stop  TP=hard take-profit  RSI=overbought signal  time=time stop")
+    if description:
+        print(f"  {'─'*(width - 2)}")
+        print(f"  How this parameter affects trading logic:")
+        for line in description.strip().split("\n"):
+            print(f"    {line}")
+    print(f"{'━'*width}")
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -450,7 +522,7 @@ def _mark_current(scenarios: list[dict], **current):
             s["label"] += "  ◄ current"
 
 
-def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: list[str]):
+def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: list[str], description: str = ""):
     start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, title, wide=True)
@@ -465,6 +537,7 @@ def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: l
                 trades, _ = run_pair(pair, df, start, **kwargs)
                 summarise(s["label"], trades, start, wide=True)
         print()
+    _legend(wide=True, description=description)
 
 
 # ---------------------------------------------------------------------------
@@ -484,7 +557,12 @@ def sweep_exit(days_list: list[int]):
         dict(rsi_sell=75, tp_pct=0.10, label="sell>75  TP=10%"),
     ]
     _mark_current(scenarios, tp_pct=config.SPOT_TAKE_PROFIT_PCT)
-    _run_sweep(days_list, "Sell RSI + Take-profit sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Sell RSI + Take-profit sweep", scenarios, PAIRS,
+               description=(
+                   "sell>N  RSI must exceed N before the overbought signal can close a position.\n"
+                   "        Higher threshold = waits for a stronger recovery before exiting; fires fewer times.\n"
+                   "TP      Hard take-profit % above entry. Position closes the moment price touches this level,\n"
+                   "        before the trailing stop or RSI signal have a chance to fire."))
 
 
 def sweep_floor(days_list: list[int]):
@@ -496,7 +574,12 @@ def sweep_floor(days_list: list[int]):
         dict(floor_pct=0.05, label="floor=5%"),
     ]
     _mark_current(scenarios, floor_pct=config.SPOT_PROFIT_FLOOR_PCT)
-    _run_sweep(days_list, "Profit floor sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Profit floor sweep", scenarios, PAIRS,
+               description=(
+                   "floor  Minimum % gain above entry required before the trailing stop is allowed to fire.\n"
+                   "       While price is below entry × (1 + floor), the trailing stop is disarmed entirely —\n"
+                   "       the position can only exit via TP or RSI signal. Protects against stop-outs on\n"
+                   "       shallow dips after entry before a real move develops."))
 
 
 def sweep_trail(days_list: list[int]):
@@ -509,7 +592,12 @@ def sweep_trail(days_list: list[int]):
         dict(trail_pct=0.07, label="trail=7%"),
     ]
     _mark_current(scenarios, trail_pct=config.SPOT_TRAILING_STOP_PCT)
-    _run_sweep(days_list, "Trailing stop sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Trailing stop sweep", scenarios, PAIRS,
+               description=(
+                   "trail  Once the profit floor is cleared, the trailing stop tracks price at peak × (1 − trail%).\n"
+                   "       When price drops by trail% from its highest point, the position closes.\n"
+                   "       Tighter = exits sooner after the peak (more trades, smaller per-trade gains).\n"
+                   "       Looser  = rides larger pullbacks before closing (bigger potential gains, bigger drawdowns)."))
 
 
 def sweep_buyrsi(days_list: list[int]):
@@ -522,7 +610,12 @@ def sweep_buyrsi(days_list: list[int]):
         dict(rsi_buy=35, label="buy<35"),
     ]
     _mark_current(scenarios, rsi_buy=config.SPOT_RSI_OVERSOLD)
-    _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS,
+               description=(
+                   "RSI (Relative Strength Index) measures momentum on a 0–100 scale.\n"
+                   "buy<N  A buy is triggered only when RSI drops below N, indicating oversold conditions.\n"
+                   "       Lower threshold = fewer entries, only on deeper dips — higher quality but less frequent.\n"
+                   "       Higher threshold = more entries, catches shallower dips — more trades, noisier signals."))
 
 
 def sweep_min_exit(days_list: list[int]):
@@ -537,7 +630,11 @@ def sweep_min_exit(days_list: list[int]):
         dict(min_exit=0.040, label="min_exit=4%"),
     ]
     _mark_current(scenarios, min_exit=config.SPOT_MIN_EXIT_PROFIT_PCT)
-    _run_sweep(days_list, "Min exit profit sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Min exit profit sweep", scenarios, PAIRS,
+               description=(
+                   "min_exit  Minimum % profit above entry required before an RSI overbought signal can close the position.\n"
+                   "          Guards against selling too early when RSI briefly spikes on a small bounce.\n"
+                   "          Does NOT affect the trailing stop or hard take-profit — only the RSI signal exit."))
 
 
 def sweep_rsiperiod(days_list: list[int]):
@@ -567,6 +664,10 @@ def sweep_rsiperiod(days_list: list[int]):
                 trades, _ = run_pair(pair, df, start, rsi_period=s["rsi_period"])
                 summarise(label, trades, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "RSI period controls how many candles are used to calculate the Relative Strength Index.\n"
+        "Shorter period (RSI 5–7) = reacts faster to price moves, more entries but noisier.\n"
+        "Longer period (RSI 14+) = smoother signal, fewer but potentially higher-quality entries."))
 
 
 def sweep_timestop(days_list: list[int]):
@@ -579,7 +680,12 @@ def sweep_timestop(days_list: list[int]):
         dict(time_stop_days=60, label="time stop 60d"),
         dict(time_stop_days=90, label="time stop 90d"),
     ]
-    _run_sweep(days_list, "Time-based stop sweep (close if no profit floor within N days)", scenarios, PAIRS)
+    _run_sweep(days_list, "Time-based stop sweep (close if no profit floor within N days)", scenarios, PAIRS,
+               description=(
+                   "time_stop  If a position has been held for N days without ever reaching the profit floor,\n"
+                   "           it is closed at market price to free up capital for a better entry.\n"
+                   "           Prevents capital being locked in stalled trades. Only fires if price is still\n"
+                   "           below the floor — a position above the floor is managed by the trailing stop."))
 
 
 def sweep_maxdrawdown(days_list: list[int]):
@@ -591,7 +697,12 @@ def sweep_maxdrawdown(days_list: list[int]):
         dict(max_drawdown=0.25, label="pause buys >25% drawdown"),
         dict(max_drawdown=0.30, label="pause buys >30% drawdown"),
     ]
-    _run_sweep(days_list, "Max portfolio drawdown guard sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Max portfolio drawdown guard sweep", scenarios, PAIRS,
+               description=(
+                   "max_drawdown  If total portfolio value (cash + open positions) drops more than X% from its\n"
+                   "              all-time high, new buys are paused until the portfolio recovers.\n"
+                   "              Existing open positions are NOT closed — only new entries are blocked.\n"
+                   "              Helps avoid buying into a prolonged bear market while already underwater."))
 
 
 def sweep_ema_gap(days_list: list[int]):
@@ -605,7 +716,12 @@ def sweep_ema_gap(days_list: list[int]):
         dict(ema_gap=0.10, label="gap=10%  above EMA"),
         dict(ema_gap=0.15, label="gap=15%  above EMA"),
     ]
-    _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS)
+    _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS,
+               description=(
+                   "ema_gap  Price must be at least X% above EMA200 before a buy is allowed.\n"
+                   "         gap=0%: any price above EMA qualifies (widest entry filter).\n"
+                   "         gap=5%: price must have already recovered 5% above the moving average,\n"
+                   "         confirming trend strength before committing capital."))
 
 
 
@@ -618,7 +734,12 @@ def sweep_volume(days_list: list[int]):
         dict(vol_period=20, vol_mult=1.5, label="vol > 1.5× 20-bar avg"),
         dict(vol_period=20, vol_mult=2.0, label="vol > 2.0× 20-bar avg"),
     ]
-    _run_sweep(days_list, "Volume filter sweep (buy only on above-average volume)", scenarios, PAIRS)
+    _run_sweep(days_list, "Volume filter sweep (buy only on above-average volume)", scenarios, PAIRS,
+               description=(
+                   "vol_period  Rolling window length for the volume moving average.\n"
+                   "vol_mult    Entry is only allowed when current candle volume > vol_mult × rolling average.\n"
+                   "            High volume on an RSI dip suggests genuine demand; low volume dips may be noise.\n"
+                   "            Filtering these out reduces trade count but can improve signal quality."))
 
 
 def sweep_cooldown(days_list: list[int]):
@@ -631,7 +752,12 @@ def sweep_cooldown(days_list: list[int]):
         dict(stop_cooldown=96,  label="cooldown=96 bars  (~1d)"),
         dict(stop_cooldown=192, label="cooldown=192 bars (~2d)"),
     ]
-    _run_sweep(days_list, "Stop cooldown sweep (block re-entry N candles after trailing stop)", scenarios, PAIRS)
+    _run_sweep(days_list, "Stop cooldown sweep (block re-entry N candles after trailing stop)", scenarios, PAIRS,
+               description=(
+                   "stop_cooldown  After a trailing stop fires, new buys on that pair are blocked for N candles.\n"
+                   "               Prevents immediately buying back into a price that is still falling.\n"
+                   "               The cooldown expires after N × 15 minutes — a new RSI dip after that is required\n"
+                   "               before re-entry. Only applies after trailing stop exits, not TP or RSI exits."))
 
 
 def sweep_partialclose(days_list: list[int]):
@@ -645,7 +771,13 @@ def sweep_partialclose(days_list: list[int]):
         dict(partial_close_pct=0.75, partial_close_trail=0.03,        label="sell 75% at TP  trail=3%"),
         dict(partial_close_pct=0.75, partial_close_trail=0.05,        label="sell 75% at TP  trail=5%"),
     ]
-    _run_sweep(days_list, "Partial close sweep (sell fraction at TP, trail the remainder)", scenarios, PAIRS)
+    _run_sweep(days_list, "Partial close sweep (sell fraction at TP, trail the remainder)", scenarios, PAIRS,
+               description=(
+                   "partial_close_pct    Fraction of the position to sell when price hits the take-profit level.\n"
+                   "                     e.g. 0.50 = sell half at TP, keep the other half running.\n"
+                   "partial_close_trail  Tighter trailing stop applied to the remaining portion after the partial sell.\n"
+                   "                     The remainder has no profit floor — the trailing stop fires from peak immediately.\n"
+                   "                     Captures guaranteed profit on part of the position while letting winners run further."))
 
 
 def sweep_dca_partial(days_list: list[int]):
@@ -718,6 +850,10 @@ def sweep_combined_partial(days_list: list[int]):
             sol_t, _ = run_pair("SOLEUR", dfs["SOLEUR"], half, **kwargs)
             summarise(s["label"], eth_t + sol_t, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "Partial close + pyramid: at take-profit, sell a fraction and trail the remainder with a tighter stop.\n"
+        "Pyramid: immediately re-enter with a portion of the proceeds as a momentum continuation trade.\n"
+        "DCA reset: after a partial close, reset the DCA counter so the remaining position can average down again."))
 
 
 def sweep_divergence(days_list: list[int]):
@@ -730,7 +866,12 @@ def sweep_divergence(days_list: list[int]):
         dict(div_lookback=120, label="div lookback=120 bars (~30h)"),
         dict(div_lookback=192, label="div lookback=192 bars (~2d)"),
     ]
-    _run_sweep(days_list, "RSI divergence sweep (price LL + RSI HL = stronger entry)", scenarios, PAIRS)
+    _run_sweep(days_list, "RSI divergence sweep (price LL + RSI HL = stronger entry)", scenarios, PAIRS,
+               description=(
+                   "Bullish RSI divergence: price makes a lower low while RSI makes a higher low compared to\n"
+                   "the previous oversold candle within lookback bars. This pattern suggests selling pressure\n"
+                   "is weakening even as price falls — a stronger buy signal than a plain RSI dip.\n"
+                   "lookback  how many bars back to search for a prior oversold reference point."))
 
 
 def sweep_htf_rsi(days_list: list[int]):
@@ -760,6 +901,10 @@ def sweep_htf_rsi(days_list: list[int]):
                                          htf_rsi_threshold=thresh)
                     summarise(label, trades, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "Higher timeframe RSI confirmation: a buy on the 15m chart is only allowed when RSI on\n"
+        "a slower timeframe (1h or 4h) is also in oversold territory, filtering out counter-trend dips.\n"
+        "Threshold: the HTF RSI must be below this value at the time of the 15m entry signal."))
 
 
 def sweep_interval(days_list: list[int]):
@@ -791,6 +936,10 @@ def sweep_interval(days_list: list[int]):
                                              interval=ivl)
                         summarise(f"{ivl}  RSI({rp})", trades, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "Candle interval controls how frequently the strategy evaluates signals.\n"
+        "15m = checks every 15 minutes, more responsive; 1h/4h = slower, fewer but potentially calmer entries.\n"
+        "A shorter interval can catch dips earlier but also generates more noise and fees."))
 
 
 def sweep_daily_ema(days_list: list[int]):
@@ -815,6 +964,10 @@ def sweep_daily_ema(days_list: list[int]):
                                      daily_ema_arr=arr)
                 summarise(label, trades, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "Daily EMA filter: in addition to the 15m EMA200, require price to also be above a daily EMA.\n"
+        "This adds a second, slower trend guard — blocks entries during multi-week downtrends even\n"
+        "if the 15m chart temporarily looks bullish."))
 
 
 def run_pair_multipos(
@@ -941,6 +1094,10 @@ def sweep_multipos(days_list: list[int]):
                 label += "  (baseline)"
             summarise(label, eth_t + sol_t, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "Multi-position: instead of one position per pair with DCA, allow N independent simultaneous positions.\n"
+        "Each slot opens on its own RSI dip and exits independently — no averaging down within slots.\n"
+        "More slots = more capital deployed at once but also more exposure during drawdowns."))
 
 
 def sweep_multidca(days_list: list[int]):
@@ -954,7 +1111,13 @@ def sweep_multidca(days_list: list[int]):
         dict(max_dca=2, dca_pct=0.50,           label="2 DCAs @ -1% -2%  size=50%"),
         dict(max_dca=3, dca_pct=0.33,           label="3 DCAs @ -1% -2% -3%  size=33%"),
     ]
-    _run_sweep(days_list, "Multi-DCA sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Multi-DCA sweep", scenarios, PAIRS,
+               description=(
+                   "DCA (Dollar-Cost Averaging) = buying more of the same asset if price drops after entry,\n"
+                   "lowering the average cost basis so a smaller recovery is needed to reach profit.\n"
+                   "max_dca   maximum number of additional buys; each fires at a deeper price level.\n"
+                   "drop/step first DCA fires at entry − drop%; each subsequent one at an additional step% lower.\n"
+                   "size      fraction of remaining cash to spend on each DCA tranche."))
 
 
 def sweep_tieredsize(days_list: list[int]):
@@ -1000,7 +1163,12 @@ def sweep_hardstop(days_list: list[int]):
         dict(hard_stop=0.30,  label="hard stop -30%"),
         dict(hard_stop=0.40,  label="hard stop -40%"),
     ]
-    _run_sweep(days_list, "Hard stop loss sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "Hard stop loss sweep", scenarios, PAIRS,
+               description=(
+                   "hard_stop  If price drops X% below entry, the position is closed immediately at a loss.\n"
+                   "           Unlike the trailing stop (which requires profit floor clearance), this fires\n"
+                   "           unconditionally on the way down — it is a maximum-loss cap, not a profit lock.\n"
+                   "           Useful to prevent catastrophic drawdowns if DCA also fails to recover a position."))
 
 
 def sweep_ema(days_list: list[int]):
@@ -1012,7 +1180,12 @@ def sweep_ema(days_list: list[int]):
         dict(ema_span=250, label="EMA250"),
         dict(ema_span=300, label="EMA300"),
     ]
-    _run_sweep(days_list, "EMA trend filter sweep", scenarios, PAIRS)
+    _run_sweep(days_list, "EMA trend filter sweep", scenarios, PAIRS,
+               description=(
+                   "EMA (Exponential Moving Average) is used as a trend filter — buys are only allowed when price\n"
+                   "is above the EMA, confirming an uptrend. The span controls how many candles the average covers.\n"
+                   "Shorter span (EMA50) = reacts faster, allows entries sooner after dips but noisier.\n"
+                   "Longer span (EMA200) = smoother and slower, blocks entries during deeper corrections."))
 
 
 def sweep_dca(days_list: list[int]):
@@ -1035,6 +1208,11 @@ def sweep_dca(days_list: list[int]):
                     trades, _ = run_pair(pair, df, start, dca_drop=drop, dca_pct=size)
                     summarise(label, trades, start, wide=True)
         print()
+    _legend(wide=True, description=(
+        "DCA (Dollar-Cost Averaging) = buying more if price drops after the initial entry, lowering cost basis.\n"
+        "drop  price must fall this % from entry before the DCA buy fires.\n"
+        "size  fraction of remaining cash to spend on the DCA tranche.\n"
+        "Lower drop = averages sooner; larger size = heavier commitment on the dip."))
 
 
 # ---------------------------------------------------------------------------
@@ -1160,7 +1338,7 @@ def run_topup(start: float, monthly: float, days: int):
     half = start / 2
     dfs_full = {p: fetch(p, days) for p in PAIRS}
     print(f"\nPair comparison — {days}d  (start=€{start:.0f})")
-    print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'after-tax':>10}  {'worst':>8}  fees")
+    print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'bal-aft-tax':>11}  {'worst':>8}  fees")
     print(f"  {'─'*36}  {'─'*4}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*10}  {'─'*8}  {'─'*5}")
     eth_t, _ = run_pair("ETHEUR", dfs_full["ETHEUR"], start)
     sol_t, _ = run_pair("SOLEUR", dfs_full["SOLEUR"], start)
@@ -1212,7 +1390,7 @@ def run_combined(days_list: list[int]):
 
     for days in days_list:
         _header(days, "solo vs combined")
-        print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'after-tax':>10}  {'worst':>8}  fees")
+        print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'bal-aft-tax':>11}  {'worst':>8}  fees")
         print(f"  {'─'*36}  {'─'*4}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*10}  {'─'*8}  {'─'*5}")
         dfs = {p: fetch(p, days) for p in PAIRS}
         for pos_pct in [0.50, 0.75]:
@@ -1225,6 +1403,10 @@ def run_combined(days_list: list[int]):
             summarise(f"SOLEUR only      [{tag}]", sol_t, start)
             summarise(f"ETH+SOL combined [{tag}]", eth2 + sol2, start)
             print()
+    _legend(wide=False, description=(
+        "pos: fraction of available balance spent per entry.\n"
+        "solo: all capital in one pair; combined: capital split evenly between ETH and SOL.\n"
+        "Combined reduces single-pair risk but also caps upside if one pair strongly outperforms."))
 
 
 # ---------------------------------------------------------------------------
@@ -1382,12 +1564,13 @@ def run_shadow_backtest(days_list: list[int]):
             reasons: dict[str, int] = {}
             for t in realized:
                 reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
-            exits     = "  ".join(f"{k}×{v}" for k, v in reasons.items())
+            exits     = "  ".join(f"{_EXIT_SHORT.get(k, k)}×{v}" for k, v in reasons.items())
             pairs_str = "+".join(pairs)
             marker    = "  ◄ live" if pairs == config.SPOT_TRADING_PAIRS and name not in config.get_shadow_profiles() else ""
             print(f"  {rank:<3}  {name:<16}  {pairs_str:<22}  {ret:>+7.1f}%  {pnl:>+8.2f}"
                   f"  {n:>4}  {wl:<7}  {exits}{marker}")
         print()
+    _legend(wide=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1404,9 +1587,14 @@ if __name__ == "__main__":
     day_args = [int(a) for a in args if a.isdigit()]
     str_args = [a for a in args if not a.isdigit()]
 
+    _date = datetime.date.today().isoformat()
+
     if str_args and str_args[0] == "shadows":
         days_list = day_args or [365, 180]
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/spot_shadows_{_days_str}_{_date}.txt")
         run_shadow_backtest(days_list)
+        _tee.close()
     elif str_args and str_args[0] == "sweep":
         mode      = str_args[1].lower() if len(str_args) > 1 else "all"
         days_list = day_args or [730, 365]
@@ -1438,14 +1626,18 @@ if __name__ == "__main__":
             "multipos":    sweep_multipos,
             "solfocus":    sweep_solfocus,
         }
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/spot_sweep_{mode}_{_days_str}_{_date}.txt")
         if mode == "all":
             for fn in sweeps.values():
                 fn(days_list)
         elif mode in sweeps:
             sweeps[mode](days_list)
         else:
+            _tee.close()
             print(f"Unknown sweep '{mode}'. Options: {', '.join(sweeps)}, all")
             sys.exit(1)
+        _tee.close()
     elif str_args and str_args[0] == "topup":
         # positional floats after "topup": start monthly days
         num_args = [float(a) for a in str_args[1:] if a.replace(".", "").isdigit()]
@@ -1453,7 +1645,12 @@ if __name__ == "__main__":
         start   = num_args[0] if len(num_args) > 0 else config.SPOT_SIMULATION_BALANCE
         monthly = num_args[1] if len(num_args) > 1 else 25.0
         days    = int(num_args[2]) if len(num_args) > 2 else 730
+        _tee = _Tee(f"{RESULTS_DIR}/spot_topup_{int(days)}d_{_date}.txt")
         run_topup(start, monthly, days)
+        _tee.close()
     else:
         days_list = day_args or [730, 365]
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/spot_baseline_{_days_str}_{_date}.txt")
         run_combined(days_list)
+        _tee.close()

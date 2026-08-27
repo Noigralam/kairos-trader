@@ -16,7 +16,9 @@ Days can be one or multiple values: python backtest_futures.py sweep trail 365 1
 
 Add --cached to any command to skip candle syncing and use only local candles.db data.
 """
+import os
 import sys
+import datetime
 from dataclasses import dataclass
 
 import numpy as np
@@ -27,6 +29,31 @@ load_dotenv()
 
 from bot import config
 from bot.candles import get_df, initial_sync
+
+RESULTS_DIR = "backtest_results"
+
+
+class _Tee:
+    """Mirror stdout to a file so results are never lost to scroll."""
+    def __init__(self, path: str):
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        self._file   = open(path, "w")
+        self._stdout = sys.stdout
+        sys.stdout   = self
+        print(f"  Output also saved to: {path}\n")
+
+    def write(self, data):
+        self._stdout.write(data)
+        self._file.write(data)
+
+    def flush(self):
+        self._stdout.flush()
+        self._file.flush()
+
+    def close(self):
+        sys.stdout = self._stdout
+        self._file.close()
+
 
 PAIRS   = ["ETHUSDT", "SOLUSDT"]
 INTERVAL = "15m"
@@ -238,6 +265,13 @@ def run_pair(
 # Reporting
 # ---------------------------------------------------------------------------
 
+_EXIT_SHORT = {
+    "trailing_stop": "trail",
+    "take_profit":   "TP",
+    "liquidation":   "LIQ",
+}
+
+
 def summarise(label: str, trades: list[FTrade], start: float):
     realized = [t for t in trades if t.exit_reason != "end_of_data"]
     open_eod = len(trades) - len(realized)
@@ -257,7 +291,7 @@ def summarise(label: str, trades: list[FTrade], start: float):
     reasons  = {}
     for t in realized:
         reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
-    exits = "  ".join(f"{k}×{v}" for k, v in reasons.items())
+    exits = "  ".join(f"{_EXIT_SHORT.get(k, k)}×{v}" for k, v in reasons.items())
     liq_flag = f"  ⚠ {liq}×LIQ" if liq else ""
 
     print(f"  {label:<46}  n={n:>3}{eod}  W/L={wins}/{n-wins}"
@@ -276,6 +310,27 @@ def _header(days: int, title: str):
     print(f"  {'─'*46}  {'─'*3}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*6}  {'─'*5}  {'─'*7}")
 
 
+def _legend(description: str = ""):
+    print(f"  {'─'*133}")
+    print(f"  Legend")
+    print(f"    n           closed trades  (+N = position open at backtest end, valued at last candle price)")
+    print(f"    W/L         winning / losing trades (profit > 0 counts as win)")
+    print(f"    PnL         total realized $ profit/loss  |  avg = average $ per closed trade")
+    print(f"    worst/best  single trade extremes in $  |  fees = total exchange fees (taker rate × notional)")
+    print(f"    funding     cumulative 8h funding costs charged while holding long positions")
+    print(f"    exits       how positions closed:")
+    print(f"                  trail = trailing stop — price dropped X% from peak while above profit floor")
+    print(f"                  TP    = hard take-profit — price reached entry × (1 + TP%) and closed immediately")
+    print(f"                  LIQ   = liquidation — price fell to the liquidation level, margin wiped out  ⚠")
+    if description:
+        print(f"  {'─'*133}")
+        print(f"  How this parameter affects trading logic:")
+        for line in description.strip().split("\n"):
+            print(f"    {line}")
+    print(f"{'━'*135}")
+    print()
+
+
 def _mark_current(scenarios: list[dict], **current):
     for s in scenarios:
         match = all(
@@ -286,7 +341,7 @@ def _mark_current(scenarios: list[dict], **current):
             s["label"] += "  ◄ current"
 
 
-def _run_sweep(days_list: list[int], title: str, scenarios: list[dict]):
+def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], description: str = ""):
     start = config.FUTURES_SIMULATION_BALANCE
     for days in days_list:
         _header(days, title)
@@ -298,6 +353,7 @@ def _run_sweep(days_list: list[int], title: str, scenarios: list[dict]):
                 trades, _ = run_pair(pair, df, start, **kwargs)
                 summarise(s["label"], trades, start)
         print()
+    _legend(description=description)
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +371,11 @@ def sweep_trail(days_list: list[int]):
         dict(trail_pct=0.08, label="trail=8%"),
     ]
     _mark_current(scenarios, trail_pct=config.FUTURES_TRAILING_STOP_PCT)
-    _run_sweep(days_list, "Trailing stop sweep", scenarios)
+    _run_sweep(days_list, "Trailing stop sweep", scenarios,
+               description=(
+                   "trail  Once above the profit floor, the trailing stop tracks price at peak × (1 − trail%).\n"
+                   "       With leverage, a 5% price drop = 10% loss on 2x — tighter stops matter more than on spot.\n"
+                   "       Tighter = exits sooner after peak (safer, smaller gains); looser = more volatile outcomes."))
 
 
 def sweep_tp(days_list: list[int]):
@@ -330,7 +390,11 @@ def sweep_tp(days_list: list[int]):
         dict(tp_pct=0.12, label="TP=12%"),
     ]
     _mark_current(scenarios, tp_pct=config.FUTURES_TAKE_PROFIT_PCT)
-    _run_sweep(days_list, "Take-profit sweep", scenarios)
+    _run_sweep(days_list, "Take-profit sweep", scenarios,
+               description=(
+                   "TP  Hard take-profit % above entry price (on the notional value, amplified by leverage).\n"
+                   "    Position closes immediately when price hits entry × (1 + TP%), before trailing stop activates.\n"
+                   "    Higher TP = larger potential gain per trade but fires less often during smaller rallies."))
 
 
 def sweep_pos(days_list: list[int]):
@@ -343,7 +407,11 @@ def sweep_pos(days_list: list[int]):
         dict(pos_pct=1.00, label="pos=100% (all-in)"),
     ]
     _mark_current(scenarios, pos_pct=config.FUTURES_POSITION_SIZE_PCT)
-    _run_sweep(days_list, "Position size sweep (% of balance per trade)", scenarios)
+    _run_sweep(days_list, "Position size sweep (% of balance per trade)", scenarios,
+               description=(
+                   "pos  Fraction of available balance posted as margin for each position.\n"
+                   "     100% = all-in on every trade (maximum returns, maximum liquidation risk).\n"
+                   "     Lower pos_pct = smaller exposure, preserves cash for DCA or future entries."))
 
 
 def sweep_dca(days_list: list[int]):
@@ -364,6 +432,11 @@ def sweep_dca(days_list: list[int]):
                     trades, _ = run_pair(pair, df, start, dca_drop=drop, dca_pct=dca_pct)
                     summarise(label, trades, start)
         print()
+    _legend(description=(
+        "DCA (Dollar-Cost Averaging) = adding margin if price drops after entry, lowering the liquidation price.\n"
+        "drop      how far price must fall from entry before the DCA fires.\n"
+        "dca_size  fraction of remaining balance to add as extra margin.\n"
+        "With leverage, DCA also lowers the average entry — a smaller recovery brings the position to profit."))
 
 
 def sweep_floor(days_list: list[int]):
@@ -375,7 +448,11 @@ def sweep_floor(days_list: list[int]):
         dict(floor_pct=0.05, label="floor=5%"),
     ]
     _mark_current(scenarios, floor_pct=config.FUTURES_PROFIT_FLOOR_PCT)
-    _run_sweep(days_list, "Profit floor sweep (trailing stop rises once above this)", scenarios)
+    _run_sweep(days_list, "Profit floor sweep (trailing stop rises once above this)", scenarios,
+               description=(
+                   "floor  Minimum % gain (on notional) required before the trailing stop can fire.\n"
+                   "       Below this level the position can only exit via TP or liquidation.\n"
+                   "       Prevents getting stopped out on normal volatility immediately after entry."))
 
 
 def sweep_lev(days_list: list[int]):
@@ -387,7 +464,12 @@ def sweep_lev(days_list: list[int]):
         dict(leverage=10, label="10x"),
     ]
     _mark_current(scenarios, leverage=config.FUTURES_LEVERAGE)
-    _run_sweep(days_list, "Leverage sweep", scenarios)
+    _run_sweep(days_list, "Leverage sweep", scenarios,
+               description=(
+                   "leverage  Multiplier applied to posted margin — controls both gains and loss speed.\n"
+                   "          1x = spot-equivalent; 10x = a 10% price move equals ±100% of margin.\n"
+                   "          Higher leverage also moves the liquidation price closer to entry,\n"
+                   "          making liquidation a realistic exit rather than a theoretical one."))
 
 
 def sweep_rsi(days_list: list[int]):
@@ -406,7 +488,12 @@ def sweep_rsi(days_list: list[int]):
         if (abs(s["rsi_buy"] - config.futures_rsi_oversold_for(pair)) < 1e-9 and
                 abs(s["rsi_sell"] - config.futures_rsi_overbought_for(pair)) < 1e-9):
             s["label"] += "  ◄ current"
-    _run_sweep(days_list, "RSI thresholds sweep (buy oversold / sell overbought)", scenarios)
+    _run_sweep(days_list, "RSI thresholds sweep (buy oversold / sell overbought)", scenarios,
+               description=(
+                   "rsi_buy   RSI must be BELOW this level to trigger a long entry — lower = more oversold required.\n"
+                   "          Stricter buy threshold = fewer entries, but at stronger oversold conditions.\n"
+                   "rsi_sell  RSI must have been ABOVE this level before entering (not used as exit in futures).\n"
+                   "          Adjust per-pair via config; ETH and SOL may have different optimal thresholds."))
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +519,7 @@ def run_baseline(days_list: list[int]):
             trades, final = run_pair(pair, df, start)
             summarise(f"current config", trades, start)
         print()
+    _legend()
 
 
 # ---------------------------------------------------------------------------
@@ -495,11 +583,12 @@ def run_shadow_backtest(days_list: list[int]):
             reasons: dict[str, int] = {}
             for t in realized:
                 reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
-            exits     = "  ".join(f"{k}×{v}" for k, v in reasons.items())
+            exits     = "  ".join(f"{_EXIT_SHORT.get(k, k)}×{v}" for k, v in reasons.items())
             pairs_str = "+".join(pairs)
             print(f"  {rank:<3}  {name:<18}  {pairs_str:<22}  {ret:>+7.1f}%  {pnl:>+8.2f}"
                   f"  {n:>4}  {wl:<7}  {exits}")
         print()
+    _legend()
 
 
 # ---------------------------------------------------------------------------
@@ -515,6 +604,7 @@ if __name__ == "__main__":
     str_args = [a for a in args if not a.isdigit()]
 
     days_list = day_args or [730, 365]
+    _date = datetime.date.today().isoformat()
 
     if str_args and str_args[0] == "sweep":
         mode = str_args[1].lower() if len(str_args) > 1 else "all"
@@ -527,16 +617,26 @@ if __name__ == "__main__":
             "lev":   sweep_lev,
             "rsi":   sweep_rsi,
         }
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/futures_sweep_{mode}_{_days_str}_{_date}.txt")
         if mode == "all":
             for fn in sweeps.values():
                 fn(days_list)
         elif mode in sweeps:
             sweeps[mode](days_list)
         else:
+            _tee.close()
             print(f"Unknown sweep '{mode}'. Options: {', '.join(sweeps)}, all")
             sys.exit(1)
+        _tee.close()
     elif str_args and str_args[0] == "shadows":
         days_list = day_args or [365, 180]
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/futures_shadows_{_days_str}_{_date}.txt")
         run_shadow_backtest(days_list)
+        _tee.close()
     else:
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/futures_baseline_{_days_str}_{_date}.txt")
         run_baseline(days_list)
+        _tee.close()
