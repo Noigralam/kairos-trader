@@ -77,7 +77,7 @@
     details.bot-controls {
       margin-bottom: 16px;
     }
-    .pin-gated { display: none; }
+    .pin-locked { display: none !important; }
     details.bot-controls summary {
       display: inline-flex; align-items: center; gap: 5px;
       font-size: 12px; color: var(--muted); cursor: pointer;
@@ -469,7 +469,7 @@
     </div>
 
     {% if not dashboard_only %}
-    <details class="bot-controls pin-gated" id="spot-controls-details">
+    <details class="bot-controls pin-gated{% if config.DASHBOARD_PIN %} pin-locked{% endif %}" id="spot-controls-details">
       <summary>Controls</summary>
       <div class="controls">
         <button class="primary" onclick="control('start')">▶ Start</button>
@@ -582,7 +582,7 @@
       <div class="tbl-wrap" style="margin-bottom:10px">
         <table>
           <thead>
-            <tr><th>Year</th><th>Provider</th><th>Gains (EUR)</th><th>Losses (EUR)</th><th>Fees (EUR)</th><th>Net (EUR)</th><th>Trades</th></tr>
+            <tr><th>Year</th><th>Provider</th><th>Gains ({{ config.SPOT_QUOTE_CURRENCY }})</th><th>Losses ({{ config.SPOT_QUOTE_CURRENCY }})</th><th>Net ({{ config.SPOT_QUOTE_CURRENCY }})</th><th>Fees incl. ({{ config.SPOT_QUOTE_CURRENCY }})</th><th>Trades</th></tr>
           </thead>
           <tbody id="fifo-body">
             <tr><td colspan="7" class="empty">Click Rebuild to generate FIFO report</td></tr>
@@ -632,7 +632,7 @@
     </div>
 
     {% if not dashboard_only %}
-    <details class="bot-controls pin-gated" id="futures-controls-details">
+    <details class="bot-controls pin-gated{% if config.DASHBOARD_PIN %} pin-locked{% endif %}" id="futures-controls-details">
       <summary>Controls</summary>
       <div class="controls">
         <button class="primary" onclick="futuresControl('start')">▶ Start</button>
@@ -742,7 +742,7 @@
       <div class="tbl-wrap">
         <table>
           <thead>
-            <tr><th>Year</th><th>Gains (USDT)</th><th>Losses (USDT)</th><th>Gross P&L (USDT)</th><th>Tax due (EUR)</th><th>Net P&L (USDT)</th></tr>
+            <tr><th>Year</th><th>Gains (USDT)</th><th>Losses (USDT)</th><th>Gross P&L (USDT)</th><th>Tax due ({{ config.SPOT_QUOTE_CURRENCY }})</th><th>Net P&L (USDT)</th></tr>
           </thead>
           <tbody id="f-tax-body">
             <tr><td colspan="6" class="empty">No data</td></tr>
@@ -1165,7 +1165,7 @@
 
   function _applyLockState() {
     const gated = document.querySelectorAll('.pin-gated');
-    gated.forEach(el => el.style.display = _pinUnlocked ? '' : 'none');
+    gated.forEach(el => el.classList.toggle('pin-locked', !_pinUnlocked));
     const lockBtn = document.getElementById('lock-btn');
     if (lockBtn) lockBtn.textContent = _pinUnlocked ? '🔓' : '🔒';
   }
@@ -1227,23 +1227,33 @@
   async function control(action, pair) {
     const body = { action };
     if (pair) body.pair = pair;
-    await fetch('/api/control', {
+    const res = await fetch('/api/control', {
       method: 'POST',
       headers: _pinHeaders(),
       body: JSON.stringify(body),
     });
-    await refresh();
+    const data = await res.json();
+    if (data.queued) {
+      alert('Command queued — will execute within 30s');
+    } else {
+      await refresh();
+    }
   }
 
   async function controlBuy(pair, size_pct) {
     _requirePinThen(async () => {
-      await fetch('/api/control', {
+      const res = await fetch('/api/control', {
         method: 'POST',
         headers: _pinHeaders(),
         body: JSON.stringify({ action: 'manual_buy', pair, size_pct }),
       });
-      await refresh();
-      await refreshSignals();
+      const data = await res.json();
+      if (data.queued) {
+        alert('Command queued — will execute within 30s');
+      } else {
+        await refresh();
+        await refreshSignals();
+      }
     });
   }
 
@@ -1384,7 +1394,7 @@
               <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} ${CURRENCY_SYMBOL}</span>
               <div style="display:flex;gap:6px">
                 ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${escHtml(pair)} position amount from Binance?')) controlSyncPosition('${escHtml(pair)}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
-                ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(pair)} position at market price?')) control('manual_close','${escHtml(pair)}')">Close</button></span>`}
+                <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(pair)} position at market price?')) control('manual_close','${escHtml(pair)}')">Close</button></span>
               </div>
             </div>
           </div>`;
@@ -1419,12 +1429,12 @@
           </div>
           <div class="commentary">${escHtml(d.commentary)}</div>
           ${posBlock}
-          ${DASHBOARD_ONLY ? '' : `<div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+          <div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
               onclick="if(confirm('Buy ${escHtml(pair)} with 50% of balance?')) controlBuy('${escHtml(pair)}', 0.5)">Buy 50%</button>
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
               onclick="if(confirm('Buy ${escHtml(pair)} with 100% of balance?')) controlBuy('${escHtml(pair)}', 1.0)">Buy 100%</button>
-          </div>`}
+          </div>
         </div>`;
       }).join('');
       _applyLockState();
@@ -1605,8 +1615,8 @@
         <td style="color:var(--muted)">${r.provider}</td>
         <td class="pos">${r.gains.toFixed(2)}</td>
         <td class="neg">${r.losses > 0 ? r.losses.toFixed(2) : '—'}</td>
-        <td style="color:var(--muted)">${r.fee_total.toFixed(2)}</td>
         <td>${r.net >= 0 ? '<span class="pos">+' : '<span class="neg">'}${r.net.toFixed(2)}</span></td>
+        <td style="color:var(--muted)">${r.fee_total.toFixed(2)}</td>
         <td style="color:var(--muted)">${r.trades}</td>
       </tr>`).join('');
 
@@ -2899,7 +2909,7 @@
             </div>
             <div class="pos-row" style="margin-top:8px">
               <span class="plabel">${Number(pos.amount).toFixed(4)} units</span>
-              ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(sym)} futures position at market?')) futuresControl('manual_close','${escHtml(sym)}')">Close</button></span>`}
+              <span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(sym)} futures position at market?')) futuresControl('manual_close','${escHtml(sym)}')">Close</button></span>
             </div>
           </div>`;
         }
@@ -3054,11 +3064,16 @@
     _requirePinThen(async () => {
       const body = { action };
       if (symbol) body.symbol = symbol;
-      await fetch('/api/futures/control', {
+      const res = await fetch('/api/futures/control', {
         method: 'POST',
         headers: _pinHeaders(),
         body: JSON.stringify(body),
       });
+      const data = await res.json();
+      if (data.queued) {
+        alert('Command queued — will execute within 30s');
+        return;
+      }
       await refreshFutures();
     });
   }

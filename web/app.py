@@ -18,6 +18,8 @@ from bot.strategy import compute_signal, Signal, rsi_series
 _SPOT_SNAPSHOT_PATH    = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_spot.json")
 _FUTURES_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_futures.json")
 _SNAPSHOT_STALE_SECS   = 300  # warn if snapshot older than 5 min
+_SPOT_COMMANDS_PATH    = os.path.join("data", "spot_commands.json")
+_FUTURES_COMMANDS_PATH = os.path.join("data", "futures_commands.json")
 
 
 def _read_snapshot(path: str) -> dict:
@@ -38,6 +40,20 @@ def _snapshot_stale(snap: dict) -> bool:
         return age > _SNAPSHOT_STALE_SECS
     except Exception:
         return True
+
+def _queue_command(path: str, cmd: dict):
+    existing = []
+    try:
+        with open(path) as f:
+            existing = json.load(f)
+    except Exception:
+        pass
+    existing.append(cmd)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(existing, f)
+    os.replace(tmp, path)
+
 
 _TZ = zoneinfo.ZoneInfo("Europe/Helsinki")
 
@@ -1783,14 +1799,20 @@ def api_futures_control():
         return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
     if not ok:
         return jsonify({"error": "unauthorized"}), 403
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
-        return jsonify({"error": "engine runs in a separate process — control not available via dashboard"}), 503
     if not config.FUTURES_ENABLED:
         return jsonify({"error": "futures not enabled"}), 400
     from bot import futures_engine
     data   = request.get_json(force=True)
     action = data.get("action")
     symbol = data.get("symbol", "").upper()
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        if action in ("manual_buy", "manual_close") and symbol:
+            cmd = {"action": action, "symbol": symbol}
+            if action == "manual_buy":
+                cmd["size_pct"] = float(data.get("size_pct", config.FUTURES_POSITION_SIZE_PCT))
+            _queue_command(_FUTURES_COMMANDS_PATH, cmd)
+            return jsonify({"ok": True, "queued": True})
+        return jsonify({"error": "engine runs in a separate process — control not available via dashboard"}), 503
     if action == "start":
         futures_engine.start()
     elif action == "pause":
@@ -1814,11 +1836,17 @@ def api_control():
         return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
     if not ok:
         return jsonify({"error": "unauthorized"}), 403
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
-        return jsonify({"error": "engine runs in a separate process — control not available via dashboard"}), 503
     data = request.get_json(force=True)
     action = data.get("action")
     pair = data.get("pair")
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        if action in ("manual_buy", "manual_close") and pair:
+            cmd = {"action": action, "pair": pair}
+            if action == "manual_buy":
+                cmd["size_pct"] = float(data.get("size_pct", 0.5))
+            _queue_command(_SPOT_COMMANDS_PATH, cmd)
+            return jsonify({"ok": True, "queued": True})
+        return jsonify({"error": "engine runs in a separate process — control not available via dashboard"}), 503
 
     if action == "ping":
         return jsonify({"ok": True})

@@ -232,6 +232,8 @@ def _stop_loop():
         time.sleep(_STOP_CHECK_INTERVAL)
         if not _running or _paused:
             continue
+        _process_futures_commands()
+
         try:
             state = get_state()
             shadow_has_positions = any(sh.positions for sh in get_futures_shadows())
@@ -259,6 +261,38 @@ def _stop_loop():
 
 
 _STATUS_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_futures.json")
+_FUTURES_COMMANDS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_commands.json")
+
+
+def _process_futures_commands():
+    try:
+        if not os.path.exists(_FUTURES_COMMANDS_PATH):
+            return
+        processing = _FUTURES_COMMANDS_PATH + ".processing"
+        os.replace(_FUTURES_COMMANDS_PATH, processing)
+        try:
+            with open(processing) as f:
+                commands = json.load(f)
+        finally:
+            try:
+                os.remove(processing)
+            except Exception:
+                pass
+        for cmd in commands:
+            try:
+                action   = cmd.get("action")
+                symbol   = cmd.get("symbol")
+                size_pct = cmd.get("size_pct")
+                if action == "manual_buy":
+                    manual_buy(symbol, size_pct)
+                elif action == "manual_close":
+                    manual_close(symbol)
+                else:
+                    log.warning(f"[FUTURES CMD] Unknown action: {action!r}")
+            except Exception as e:
+                log.error(f"[FUTURES CMD] Error executing {cmd}: {e}", exc_info=True)
+    except Exception as e:
+        log.error(f"[FUTURES CMD] Error processing commands: {e}", exc_info=True)
 
 
 def write_status_snapshot(prices: dict | None = None):

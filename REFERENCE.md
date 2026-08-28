@@ -148,7 +148,7 @@ Two modes (set via `SPOT_MODE` / `FUTURES_MODE` in `.env`):
 
 Spot and futures are completely independent: separate balances, state files, and trade logs.
 
-> **Note:** The dashboard's engine control buttons (start/stop/pause, manual buy/close) require the engine to be running in the same process. In the default two-process setup those endpoints return HTTP 503. Use `start.sh` / `stop.sh` to manage the engine instead.
+> **Note:** Manual buy and close are available in the dashboard regardless of setup. In the default two-process mode the dashboard writes a command file that the engine picks up within 30 s on its next stop-check loop.
 
 ## Configuration (`.env`)
 

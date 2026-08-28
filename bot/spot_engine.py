@@ -256,6 +256,8 @@ def _stop_loop():
                 notify(f"⚠️ Missed tick — no successful candle processed for {overdue/60:.0f} min (expected every {threshold//60:.0f} min)")
                 _missed_tick_alerted = True
 
+        _process_commands()
+
         try:
             state = get_state()
             if not state.positions:
@@ -279,6 +281,38 @@ def _stop_loop():
 
 
 _STATUS_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "status_spot.json")
+_COMMANDS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_commands.json")
+
+
+def _process_commands():
+    try:
+        if not os.path.exists(_COMMANDS_PATH):
+            return
+        processing = _COMMANDS_PATH + ".processing"
+        os.replace(_COMMANDS_PATH, processing)
+        try:
+            with open(processing) as f:
+                commands = json.load(f)
+        finally:
+            try:
+                os.remove(processing)
+            except Exception:
+                pass
+        for cmd in commands:
+            try:
+                action   = cmd.get("action")
+                pair     = cmd.get("pair")
+                size_pct = cmd.get("size_pct")
+                if action == "manual_buy":
+                    manual_buy(pair, size_pct)
+                elif action == "manual_close":
+                    manual_close(pair)
+                else:
+                    log.warning(f"[SPOT CMD] Unknown action: {action!r}")
+            except Exception as e:
+                log.error(f"[SPOT CMD] Error executing {cmd}: {e}", exc_info=True)
+    except Exception as e:
+        log.error(f"[SPOT CMD] Error processing commands: {e}", exc_info=True)
 
 
 def write_status_snapshot(prices: dict | None = None):
