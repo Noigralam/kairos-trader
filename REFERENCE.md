@@ -217,7 +217,7 @@ When `SPOT_DCA_MAX` is 0 for a pair, the bot goes all-in on entry. The last DCA 
 
 ### Shadow simulation profiles
 
-Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance, state file, and parameter set.
+Shadow profiles run paper-trade simulations alongside the live bot using the same candle feed. Each profile has its own virtual balance, state file, and parameter set. This makes them the ideal way to validate candidate settings in real market conditions before promoting them to live — add a shadow with your proposed parameters, let it run for a few days, and compare its equity curve and trade log against the live bot in the dashboard's Shadow tab.
 
 Enable with `SPOT_SHADOW_PROFILES=PROFILE1,PROFILE2,...`. Each profile supports the following overrides (prefix `SPOT_SHADOW_<NAME>_`):
 
@@ -277,6 +277,7 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 | `DISCORD_WEBHOOK_URL` | Trade alerts and tick embeds |
 | `DISCORD_BOT_TOKEN` | Slash command bot (optional) |
 | `DISCORD_GUILD_ID` | Guild ID for instant slash command registration |
+| `DISCORD_ALLOWED_USER_IDS` | Comma-separated Discord user IDs allowed to run mutating slash commands (`crp_buy`, `crp_close`, `crp_pause`, `crp_resume`, `crp_clear`). **If unset or empty, all mutating commands are denied for everyone.** Find your ID in Discord: Settings → Advanced → Developer Mode, then right-click your username → Copy User ID. |
 | `DISCORD_NOTIFY_TICKS` | `true` — set to `false` to suppress 15m tick embeds (trade alerts still sent) |
 | `DISCORD_MENTION_ON_TRADE` | `true` — set to `false` to suppress `@everyone` on live trade alerts |
 | `DISCORD_TICK_HISTORY` | `5` — how many tick messages to keep before deleting the oldest |
@@ -286,6 +287,76 @@ Futures shadows use `FUTURES_SHADOW_PROFILES` and `FUTURES_SHADOW_<NAME>_` prefi
 | `WEB_SSL_CERT` | Path to SSL certificate file — enables HTTPS when set together with `WEB_SSL_KEY` |
 | `WEB_SSL_KEY` | Path to SSL private key file |
 | `TAX_RATE_LOW` / `TAX_BRACKET` / `TAX_RATE_HIGH` | FIFO tax rates — see Tax reporting section |
+
+## Tuning guide
+
+Most parameters can be left at their defaults. The ones below have the biggest impact on results and are worth understanding before going live.
+
+### The five parameters that matter most
+
+**`SPOT_RSI_PERIOD`** — how many candles the RSI looks back over.
+- Shorter (7) = reacts faster, more entries, catches quick dips — good for volatile pairs like SOL.
+- Longer (14) = smoother, fewer entries, better for less volatile pairs.
+- Start with 7 for anything you'd describe as "fast/volatile", 14 for everything else.
+
+**`SPOT_RSI_OVERSOLD`** — RSI level that triggers a buy.
+- Lower (25–30) = only buys on sharp dips, fewer trades, higher confidence per entry.
+- Higher (33–38) = buys earlier in pullbacks, more trades, more exposure.
+- 30 is a reasonable default. Move to 33 if you want more activity, 25 if you want to wait for real panic.
+
+**`SPOT_TRAILING_STOP_PCT`** — how far price can drop from its peak before the position closes.
+- Tight (1.5–2%) = locks in gains quickly, cuts losses fast, exits more trades that later recover.
+- Wide (4–5%) = rides trends longer, gives back more on the way down.
+- 2.5% works well on 15m candles. Go tighter on scalp setups, wider on 1h/4h.
+
+**`SPOT_PROFIT_FLOOR_PCT`** — trailing stop only fires once profit exceeds this.
+- Prevents the stop from triggering on a normal early dip right after entry.
+- Should be roughly half of `SPOT_TRAILING_STOP_PCT`. If your stop is 2.5%, set the floor at 1–1.5%.
+- Too low = gets stopped out on normal noise. Too high = won't protect you until very late.
+
+**`SPOT_DCA_DROP_PCT`** — how far price must fall from entry before the first DCA tranche fires.
+- Small (1–2%) = averages down quickly, good for volatile pairs that bounce fast.
+- Large (4–6%) = waits for a real dip, uses fewer tranches, less exposure overall.
+- If you're unsure, start with DCA disabled (`SPOT_DCA_MAX=0`) until you understand the pair's behaviour.
+
+### The workflow for finding good values
+
+1. **Run the baseline backtest** on your pair over 365 days to understand how the current defaults perform:
+   ```bash
+   .venv/bin/python backtest.py 365
+   ```
+
+2. **Sweep the parameters that matter** — each sweep tests a range of values and ranks them by net PnL, win rate, and max drawdown:
+   ```bash
+   .venv/bin/python backtest.py sweep buyrsi   # find the best RSI buy threshold
+   .venv/bin/python backtest.py sweep trail    # find the best trailing stop %
+   .venv/bin/python backtest.py sweep floor    # find the best profit floor %
+   .venv/bin/python backtest.py sweep dca      # find the best DCA settings
+   .venv/bin/python backtest.py sweep all      # run everything at once
+   ```
+   For a new pair, `pair_sweep.py` does a full sweep in one command:
+   ```bash
+   .venv/bin/python pair_sweep.py XRPEUR
+   ```
+
+3. **Watch out for overfitting** — a setting that ranks first over one 180-day window may not generalise. Run the same sweep over multiple windows (365d, 730d) and prefer values that are consistently good rather than occasionally excellent.
+
+4. **Validate with shadows before going live** — once you have candidate settings, add a shadow profile in `.env` with those values and let it run alongside the live bot for a few days in simulation. The dashboard's Shadow tab shows its equity curve and trades in real time. Only promote to live once it's behaving as expected.
+
+### Pairs: how to choose
+
+Any Binance spot pair ending in EUR works. Practical considerations:
+
+- **Volume matters** — low-volume pairs have wide spreads and slippage the backtest doesn't model. Stick to pairs where the 24h volume is consistently above €1–2M.
+- **Volatility and RSI period go together** — high-volatility pairs need a shorter RSI period to react before the move is over.
+- **Start with one pair** — running multiple pairs ties up more capital per DCA tranche and makes it harder to understand what's driving results.
+- To evaluate a new pair before adding it to the live bot, add it as a shadow (`SPOT_SHADOW_MYPAIR_PAIRS=XRPEUR`) and backtest it with `pair_sweep.py XRPEUR`.
+
+### What not to change
+
+- **`SPOT_INTERVAL`** — 15m is the sweet spot for this strategy. 1h gives fewer, slower signals; 5m generates too much noise and fees. Only change this if you have a specific reason.
+- **`SPOT_FEE`** — set to match your actual Binance fee tier. If you hold BNB for the 25% discount, set `0.00075`.
+- **`SPOT_POSITION_SIZE_PCT`** — start at 0.75 (75%). Going higher than that leaves very little buffer for DCA tranches.
 
 ## Tax reporting (FIFO)
 
@@ -326,16 +397,18 @@ When `DISCORD_WEBHOOK_URL` is set the bot posts tick embeds, trade alerts, extre
 
 Slash commands (requires `DISCORD_BOT_TOKEN`):
 
-| Command | Description |
-|---|---|
-| `/crp_status` | Status, balance, and open positions |
-| `/crp_pause` | Pause trading (no new entries) |
-| `/crp_resume` | Resume after a pause |
-| `/crp_buy` | Manually open a position |
-| `/crp_close` | Manually close an open position |
-| `/crp_summary` | Post a performance summary |
-| `/crp_config` | Show current configuration |
-| `/crp_clear` | Delete all messages in the channel |
+| Command | Who can use | Description |
+|---|---|---|
+| `/crp_status` | anyone | Status, balance, and open positions |
+| `/crp_config` | anyone | Show current configuration |
+| `/crp_summary` | anyone | Post a performance summary |
+| `/crp_pause` | allowed users only | Pause trading (no new entries) |
+| `/crp_resume` | allowed users only | Resume after a pause |
+| `/crp_buy` | allowed users only | Manually open a position |
+| `/crp_close` | allowed users only | Manually close an open position |
+| `/crp_clear` | allowed users only | Delete all messages in the channel |
+
+Mutating commands (`crp_pause`, `crp_resume`, `crp_buy`, `crp_close`, `crp_clear`) require the caller's Discord user ID to be listed in `DISCORD_ALLOWED_USER_IDS`. If that variable is unset or empty, these commands are denied for everyone — set it before enabling the bot in live mode.
 
 ## Backtest
 
