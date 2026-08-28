@@ -13,11 +13,57 @@ from .db import log_trade, log_balance, clear_shadow_trades
 from .spot_exchange import round_qty, get_min_notional, get_eur_balance, get_free_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
-_check_lock = threading.Lock()
+# Reentrant so nested calls (e.g. check_stops → close_position) don't deadlock.
+_state_lock = threading.RLock()
 
 _SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_state_simulation.json")
 _LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "spot_state_live.json")
 STATE_PATH = _LIVE_STATE_PATH if config.SPOT_MODE == "live" else _SIM_STATE_PATH
+
+_DATA_DIR_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+_PENDING_PATH  = os.path.join(_DATA_DIR_ROOT, "spot_pending_order.json")
+
+
+def _write_pending(pair: str, side: str, size_eur: float):
+    """Write a pending-order sidecar before calling place_order in live mode.
+    On startup, presence of this file indicates a possibly unrecorded live trade."""
+    try:
+        os.makedirs(_DATA_DIR_ROOT, exist_ok=True)
+        tmp = _PENDING_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"pair": pair, "side": side, "size_eur": size_eur, "ts": _time.time()}, f)
+        os.replace(tmp, _PENDING_PATH)
+    except Exception as e:
+        log.warning(f"[PENDING] Failed to write pending-order ledger: {e}")
+
+
+def _clear_pending():
+    try:
+        os.remove(_PENDING_PATH)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log.warning(f"[PENDING] Failed to remove pending-order ledger: {e}")
+
+
+def _sum_fills_fee_eur(fills: list) -> float:
+    """Sum commission from Binance order fills, but only when commissionAsset is EUR.
+    Non-EUR commissions (e.g. BNB discount) can't be converted here — we skip them,
+    which conservatively under-counts fees rather than mis-attribute them."""
+    total = 0.0
+    for f in fills:
+        asset = str(f.get("commissionAsset", "")).upper()
+        if asset == "EUR":
+            try:
+                total += float(f.get("commission", 0))
+            except (TypeError, ValueError):
+                pass
+        else:
+            log.info(
+                "[FEE] Skipping non-EUR commission asset %s (%.8g) — cannot convert to EUR",
+                asset, float(f.get("commission", 0) or 0),
+            )
+    return total
 
 
 @dataclass
@@ -62,12 +108,20 @@ def _save():
             for pair, pos in _state.positions.items()
         },
     }
-    with open(STATE_PATH, "w") as f:
+    tmp = STATE_PATH + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp, STATE_PATH)
 
 
 def _load():
     global _state
+    if os.path.exists(_PENDING_PATH):
+        log.critical(
+            "UNRESOLVED PENDING ORDER detected in %s — a previous trade may not have been "
+            "recorded to state. Check Binance for open positions and reconcile manually.",
+            _PENDING_PATH,
+        )
     if not os.path.exists(STATE_PATH):
         return
     try:
@@ -90,8 +144,12 @@ def _load():
             if p.highest_price == 0.0:
                 p.highest_price = p.entry_price
             _state.positions[pair] = p
-    except Exception:
-        pass  # corrupt state file — start fresh
+    except Exception as e:
+        log.critical(
+            "State file %s is corrupt and could not be loaded: %s. "
+            "Starting with empty state — check Binance for open positions!",
+            STATE_PATH, e,
+        )
 
 
 def init():
@@ -134,13 +192,20 @@ def sync_position_from_binance(pair: str) -> dict:
         return {"error": f"Binance reports 0 free {asset}"}
 
     delta = actual - old_amount
-    # Recalculate cost basis so entry_price stays proportional
-    pos.value_eur = pos.value_eur * (actual / old_amount) if old_amount else pos.value_eur
-    pos.amount    = actual
+    # Only update the held amount — do not rewrite value_eur (the original cost basis).
+    # Rewriting cost basis here would corrupt tax records; the entry_price stays correct
+    # as the average price paid for the originally purchased quantity.
+    pos.amount = actual
     _save()
 
     log.info(f"[SYNC] {pair} position amount updated: {old_amount:.6f} → {actual:.6f} ({delta:+.6f} {asset})")
-    return {"pair": pair, "asset": asset, "old": old_amount, "new": actual, "delta": delta}
+    warning = None
+    if delta < 0:
+        warning = ("value_eur and entry_price reflect the original purchase cost. "
+                   "PnL on close will be calculated against the original cost basis — "
+                   "update your tax records separately for any manually sold quantity.")
+    return {"pair": pair, "asset": asset, "old": old_amount, "new": actual, "delta": delta,
+            "warning": warning}
 
 
 def reset():
@@ -163,6 +228,11 @@ def _portfolio_value(balance: float, prices: dict | None) -> float:
 
 
 def open_position(pair: str, price: float, size_pct: float = None, prices: dict | None = None):
+    with _state_lock:
+        return _open_position_locked(pair, price, size_pct, prices)
+
+
+def _open_position_locked(pair: str, price: float, size_pct: float = None, prices: dict | None = None):
     if pair in _state.positions:
         return
     cooldown_until = _state.stop_cooldowns.get(pair, 0)
@@ -199,23 +269,27 @@ def open_position(pair: str, price: float, size_pct: float = None, prices: dict 
 
     if config.SPOT_MODE == "live":
         amount = round_qty(pair, size / price)
-        order  = place_order(pair, "BUY", amount)
-        fills  = order.get("fills", [])
-        if fills:
-            avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
-            amount    = sum(float(f["qty"]) for f in fills)
-            buy_fee   = sum(float(f["commission"]) for f in fills)
-        else:
-            avg_price = price
-            buy_fee   = amount * avg_price * SPOT_FEE
-        value    = amount * avg_price
-        tp_price = avg_price * (1 + config.take_profit_for(pair))
-        log_trade(pair, "BUY", avg_price, amount, value, buy_fee, mode="live")
-        pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
-        _state.positions[pair] = pos
-        _state.total_fees += buy_fee
-        _state.balance = get_eur_balance()
-        _save()
+        _write_pending(pair, "BUY", size)
+        try:
+            order  = place_order(pair, "BUY", amount)
+            fills  = order.get("fills", [])
+            if fills:
+                avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
+                amount    = sum(float(f["qty"]) for f in fills)
+                buy_fee   = _sum_fills_fee_eur(fills)
+            else:
+                avg_price = price
+                buy_fee   = amount * avg_price * SPOT_FEE
+            value    = amount * avg_price
+            tp_price = avg_price * (1 + config.take_profit_for(pair))
+            log_trade(pair, "BUY", avg_price, amount, value, buy_fee, mode="live")
+            pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
+            _state.positions[pair] = pos
+            _state.total_fees += buy_fee
+            _state.balance = get_eur_balance()
+            _save()
+        finally:
+            _clear_pending()
         trade_alert("BUY", pair, avg_price, amount, value, fee=buy_fee)
     else:
         amount   = size / price
@@ -233,6 +307,11 @@ def open_position(pair: str, price: float, size_pct: float = None, prices: dict 
 
 
 def manual_add(pair: str, price: float, size_pct: float):
+    with _state_lock:
+        return _manual_add_locked(pair, price, size_pct)
+
+
+def _manual_add_locked(pair: str, price: float, size_pct: float):
     """Manual buy — opens new position or merges into existing one."""
     if config.SPOT_MODE == "live":
         balance = get_eur_balance()
@@ -249,25 +328,29 @@ def manual_add(pair: str, price: float, size_pct: float):
 
     if config.SPOT_MODE == "live":
         amount = round_qty(pair, size / price)
-        order  = place_order(pair, "BUY", amount)
-        fills  = order.get("fills", [])
-        if fills:
-            avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
-            amount    = sum(float(f["qty"]) for f in fills)
-            buy_fee   = sum(float(f["commission"]) for f in fills)
-        else:
-            avg_price = price
-            buy_fee   = amount * avg_price * SPOT_FEE
-        value = amount * avg_price
-        if pair not in _state.positions:
-            tp_price = avg_price * (1 + config.take_profit_for(pair))
-            pos = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
-            _state.positions[pair] = pos
-        else:
-            apply_dca(_state.positions[pair], avg_price, value)
-        _state.total_fees += buy_fee
-        _state.balance = get_eur_balance()
-        _save()
+        _write_pending(pair, "BUY", size)
+        try:
+            order  = place_order(pair, "BUY", amount)
+            fills  = order.get("fills", [])
+            if fills:
+                avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
+                amount    = sum(float(f["qty"]) for f in fills)
+                buy_fee   = _sum_fills_fee_eur(fills)
+            else:
+                avg_price = price
+                buy_fee   = amount * avg_price * SPOT_FEE
+            value = amount * avg_price
+            if pair not in _state.positions:
+                tp_price = avg_price * (1 + config.take_profit_for(pair))
+                pos = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
+                _state.positions[pair] = pos
+            else:
+                apply_dca(_state.positions[pair], avg_price, value)
+            _state.total_fees += buy_fee
+            _state.balance = get_eur_balance()
+            _save()
+        finally:
+            _clear_pending()
         trade_alert("BUY", pair, avg_price, amount, value, fee=buy_fee)
         log_trade(pair, "BUY", avg_price, amount, value, buy_fee, mode="live", notes="manual_add")
     else:
@@ -295,6 +378,11 @@ def manual_add(pair: str, price: float, size_pct: float):
 
 
 def dca_position(pair: str, price: float, prices: dict | None = None):
+    with _state_lock:
+        return _dca_position_locked(pair, price, prices)
+
+
+def _dca_position_locked(pair: str, price: float, prices: dict | None = None):
     if pair not in _state.positions:
         return
     pos = _state.positions[pair]
@@ -327,22 +415,26 @@ def dca_position(pair: str, price: float, prices: dict | None = None):
 
     if config.SPOT_MODE == "live":
         amount = round_qty(pair, dca_value / price)
-        order  = place_order(pair, "BUY", amount)
-        fills  = order.get("fills", [])
-        if fills:
-            avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
-            bought    = sum(float(f["qty"]) for f in fills)
-            buy_fee   = sum(float(f["commission"]) for f in fills)
-            dca_value = bought * avg_price
-        else:
-            avg_price = price
-            bought    = amount
-            buy_fee   = dca_value * SPOT_FEE
-        log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
-        apply_dca(pos, avg_price, dca_value, tp_pct=config.take_profit_for(pair))
-        _state.total_fees += buy_fee
-        _state.balance = get_eur_balance()
-        _save()
+        _write_pending(pair, "DCA", dca_value)
+        try:
+            order  = place_order(pair, "BUY", amount)
+            fills  = order.get("fills", [])
+            if fills:
+                avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
+                bought    = sum(float(f["qty"]) for f in fills)
+                buy_fee   = _sum_fills_fee_eur(fills)
+                dca_value = bought * avg_price
+            else:
+                avg_price = price
+                bought    = amount
+                buy_fee   = dca_value * SPOT_FEE
+            log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
+            apply_dca(pos, avg_price, dca_value, tp_pct=config.take_profit_for(pair))
+            _state.total_fees += buy_fee
+            _state.balance = get_eur_balance()
+            _save()
+        finally:
+            _clear_pending()
         trade_alert("DCA", pair, avg_price, bought, dca_value, fee=buy_fee)
     else:
         buy_fee = dca_value * SPOT_FEE
@@ -368,25 +460,32 @@ def _set_stop_cooldown(pair: str):
 
 
 def close_position(pair: str, price: float, reason: str = "signal"):
+    with _state_lock:
+        return _close_position_locked(pair, price, reason)
+
+
+def _close_position_locked(pair: str, price: float, reason: str = "signal"):
     if pair not in _state.positions:
         return
 
     pos = _state.positions.pop(pair)
 
     if config.SPOT_MODE == "live":
+        base_asset  = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
+        free        = get_free_balance(base_asset)
+        sell_amount = min(pos.amount, free)
+        _write_pending(pair, "SELL", sell_amount * price)
         try:
-            base_asset  = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
-            free        = get_free_balance(base_asset)
-            sell_amount = min(pos.amount, free)
             order = place_order(pair, "SELL", sell_amount)
         except Exception:
             _state.positions[pair] = pos  # restore — order never reached exchange
+            _clear_pending()
             raise
         fills  = order.get("fills", [])
         if fills:
             avg_price  = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
             sold_qty   = sum(float(f["qty"]) for f in fills)
-            sell_fee   = sum(float(f["commission"]) for f in fills)
+            sell_fee   = _sum_fills_fee_eur(fills)
         else:
             avg_price = price
             sold_qty  = pos.amount
@@ -402,6 +501,7 @@ def close_position(pair: str, price: float, reason: str = "signal"):
         if reason == "trailing_stop":
             _set_stop_cooldown(pair)
         _save()
+        _clear_pending()
         if reason == "trailing_stop":
             trailing_stop_alert(pair, avg_price, pnl)
         else:
@@ -427,6 +527,11 @@ def close_position(pair: str, price: float, reason: str = "signal"):
 
 
 def partial_close_position(pair: str, price: float):
+    with _state_lock:
+        return _partial_close_position_locked(pair, price)
+
+
+def _partial_close_position_locked(pair: str, price: float):
     """Sell a configured fraction of position at TP; leave remainder running on tighter trail."""
     if pair not in _state.positions:
         return
@@ -441,12 +546,17 @@ def partial_close_position(pair: str, price: float):
         base_asset = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
         free       = get_free_balance(base_asset)
         sell_amt   = min(sell_amt, round_qty(pair, free * pct))
-        order = place_order(pair, "SELL", sell_amt)
+        _write_pending(pair, "SELL_PARTIAL", sell_amt * price)
+        try:
+            order = place_order(pair, "SELL", sell_amt)
+        except Exception:
+            _clear_pending()
+            raise
         fills = order.get("fills", [])
         if fills:
             avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / sum(float(f["qty"]) for f in fills)
             sell_amt  = sum(float(f["qty"]) for f in fills)
-            sell_fee  = sum(float(f["commission"]) for f in fills)
+            sell_fee  = _sum_fills_fee_eur(fills)
         else:
             avg_price = price
             sell_fee  = sell_amt * price * SPOT_FEE
@@ -475,11 +585,13 @@ def partial_close_position(pair: str, price: float):
     pos.take_profit_price = 0.0
     pos.partial_closed    = True
     _save()
+    if config.SPOT_MODE == "live":
+        _clear_pending()
     trade_alert("SELL", pair, avg_price, sell_amt, exit_value, pnl=pnl, fee=sell_fee)
 
 
 def check_stops(prices: dict):
-    with _check_lock:
+    with _state_lock:
         now = _time.time()
         for pair, pos in list(_state.positions.items()):
             if pair not in prices:
@@ -633,8 +745,10 @@ class SpotShadowSimulator:
                 for pair, pos in self.positions.items()
             },
         }
-        with open(self.state_path, "w") as f:
+        tmp = self.state_path + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(data, f, indent=2)
+        os.replace(tmp, self.state_path)
 
     def _load(self):
         if not os.path.exists(self.state_path):
@@ -667,8 +781,12 @@ class SpotShadowSimulator:
                 if p.highest_price == 0.0:
                     p.highest_price = p.entry_price
                 self.positions[pair] = p
-        except Exception:
-            pass
+        except Exception as e:
+            log.critical(
+                "Shadow state file %s is corrupt and could not be loaded: %s. "
+                "Starting shadow %s with empty state.",
+                self.state_path, e, self.name,
+            )
 
     @property
     def _db_mode(self) -> str:
@@ -1097,7 +1215,8 @@ class GridShadowSimulator:
 
     def _save(self):
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
-        with open(self.state_path, "w") as f:
+        tmp = self.state_path + ".tmp"
+        with open(tmp, "w") as f:
             json.dump({
                 "name":             self.name,
                 "started_at":       self.started_at,
@@ -1114,6 +1233,7 @@ class GridShadowSimulator:
                 "highest_price":  self._highest_price,
                 "slots":          self._slots,
             }, f, indent=2)
+        os.replace(tmp, self.state_path)
 
     def _load(self):
         if not os.path.exists(self.state_path):
@@ -1140,8 +1260,11 @@ class GridShadowSimulator:
             self._grid_center   = data.get("grid_center",    None)
             self._highest_price = data.get("highest_price",  0.0)
             self._slots         = data.get("slots",          [])
-        except Exception:
-            pass
+        except Exception as e:
+            log.critical(
+                "Grid shadow state file %s is corrupt: %s. Starting %s with empty state.",
+                self.state_path, e, self.name,
+            )
 
     def get_state(self) -> dict:
         return {

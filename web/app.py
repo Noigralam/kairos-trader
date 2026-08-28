@@ -42,6 +42,31 @@ def _snapshot_stale(snap: dict) -> bool:
 _TZ = zoneinfo.ZoneInfo("Europe/Helsinki")
 
 app = Flask(__name__, static_folder="static")
+# Use a persistent secret from env; fall back to a per-process random key.
+# Sessions are not actively used today, but setting this prevents Flask from
+# emitting a warning and avoids the latent risk of an unset key.
+app.secret_key = os.environ.get("WEB_SECRET_KEY") or os.urandom(32)
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter for public GET endpoints that hit Binance
+# ---------------------------------------------------------------------------
+import collections
+_RATE_LIMIT_WINDOW = 60        # seconds
+_RATE_LIMIT_MAX    = 20        # requests per window per IP
+_rate_counters: dict[str, collections.deque] = collections.defaultdict(collections.deque)
+
+def _rate_limited() -> bool:
+    """Return True (and drop the request) if the calling IP exceeds the limit."""
+    ip  = request.remote_addr or "unknown"
+    now = _time.monotonic()
+    dq  = _rate_counters[ip]
+    cutoff = now - _RATE_LIMIT_WINDOW
+    while dq and dq[0] < cutoff:
+        dq.popleft()
+    if len(dq) >= _RATE_LIMIT_MAX:
+        return True
+    dq.append(now)
+    return False
 
 
 @app.route("/favicon.ico")
@@ -260,6 +285,8 @@ def _daily_ema_val(pair: str):
 
 @app.route("/api/signals")
 def api_signals():
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     out = {}
     snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
     snap_positions = snap.get("positions", {})
@@ -621,6 +648,8 @@ def api_shadow_stats(name):
 
 @app.route("/api/shadow/<name>/signals")
 def api_shadow_signals(name):
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     s = _get_shadow(name)
     if s is None:
         return jsonify({"error": "not found"}), 404
@@ -695,6 +724,8 @@ def api_shadow_signals(name):
 
 @app.route("/api/shadow/<name>/chart/<pair>")
 def api_shadow_chart(name, pair):
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     s = _get_shadow(name)
     if s is None:
         return jsonify({"error": "not found"}), 404
@@ -869,6 +900,8 @@ def api_futures_shadow_config(name):
 
 @app.route("/api/futures/shadow/<name>/signals")
 def api_futures_shadow_signals(name):
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     sh = _get_futures_shadow(name)
     if sh is None:
         return jsonify({"error": "not found"}), 404
@@ -946,6 +979,8 @@ def api_futures_shadow_signals(name):
 
 @app.route("/api/futures/shadow/<name>/chart/<symbol>")
 def api_futures_shadow_chart(name, symbol):
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     sh = _get_futures_shadow(name)
     if sh is None:
         return jsonify({"error": "not found"}), 404
@@ -1043,6 +1078,8 @@ def api_futures_shadow_chart(name, symbol):
 
 @app.route("/api/futures/signals")
 def api_futures_signals():
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     if not config.FUTURES_ENABLED:
         return jsonify({})
     from bot.futures_exchange import get_klines as f_klines, get_mark_price
@@ -1141,6 +1178,8 @@ def api_futures_signals():
 
 @app.route("/api/chart/<pair>")
 def api_chart(pair):
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     span_candles = {"4h": 16, "1d": 96, "3d": 288, "1w": 672, "2w": 1344, "1m": 2880}
     span  = request.args.get("span", "1d")
     limit = span_candles.get(span, 96)
@@ -1249,6 +1288,8 @@ def api_chart(pair):
 
 @app.route("/api/futures/chart/<symbol>")
 def api_futures_chart(symbol):
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     if not config.FUTURES_ENABLED:
         return jsonify({"labels": [], "prices": [], "ema200": [], "rsi": [], "buys": [], "sells": []})
     from bot.candles import get_df as _get_df
@@ -1344,24 +1385,36 @@ def api_futures_chart(symbol):
 _ENGINE_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kairos.log")
 
 
+def _tail_log(path: str, n: int = 150, chunk: int = 8192) -> list[str]:
+    """Read the last `n` lines of a file without loading it all into memory."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            buf  = b""
+            pos  = size
+            while len(buf.splitlines()) <= n and pos > 0:
+                pos = max(pos - chunk, 0)
+                f.seek(pos)
+                buf = f.read(size - pos)
+            lines = buf.decode("utf-8", errors="replace").splitlines()
+            return lines[-n:]
+    except Exception:
+        return []
+
+
 @app.route("/api/log")
 def api_log():
     if os.environ.get("KAIROS_DASHBOARD_ONLY"):
-        try:
-            with open(_ENGINE_LOG_PATH, encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
-            out = []
-            for l in lines[-150:]:
-                l = l.rstrip("\n")
-                # format: "YYYY-MM-DD HH:MM:SS  vX.X.X  LEVEL  message"
-                parts = l.split("  ", 3)
-                if len(parts) >= 4:
-                    out.append({"time": parts[0].replace(" ", "T"), "msg": parts[3]})
-                elif l:
-                    out.append({"time": "", "msg": l})
-            return jsonify(list(reversed(out)))
-        except Exception:
-            return jsonify([])
+        out = []
+        for l in _tail_log(_ENGINE_LOG_PATH):
+            # format: "YYYY-MM-DD HH:MM:SS  vX.X.X  LEVEL  message"
+            parts = l.split("  ", 3)
+            if len(parts) >= 4:
+                out.append({"time": parts[0].replace(" ", "T"), "msg": parts[3]})
+            elif l:
+                out.append({"time": "", "msg": l})
+        return jsonify(list(reversed(out)))
     return jsonify(get_recent_logs())
 
 

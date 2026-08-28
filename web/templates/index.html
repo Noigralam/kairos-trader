@@ -1075,6 +1075,10 @@
 <script>
   const DASHBOARD_ONLY = {{ dashboard_only | tojson }};
 
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   const _fi = (n, decimals=2) =>
     Number(n).toLocaleString('fi-FI', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
   function fmt(n, decimals=2) {
@@ -1291,7 +1295,7 @@
       const signals = await res.json();
       const grid = document.getElementById('signals-grid');
       grid.innerHTML = Object.entries(signals).map(([pair, d]) => {
-        if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${escHtml(d.error)}</div></div>`;
 
         const p = _prev[pair] || {};
         const priceArrow = arrow(d.price,  p.price);
@@ -1412,7 +1416,7 @@
             <div class="mlabel">Trend</div>
             <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
           </div>
-          <div class="commentary">${d.commentary}</div>
+          <div class="commentary">${escHtml(d.commentary)}</div>
           ${posBlock}
           ${DASHBOARD_ONLY ? '' : `<div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
@@ -1443,14 +1447,14 @@
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
           <td>${t.timestamp.slice(5,16).replace('T',' ')}</td>
-          <td>${t.pair}</td>
-          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${escHtml(t.pair)}</td>
+          <td class="${t.side.toLowerCase()}">${escHtml(t.side)}</td>
           <td>${fmt(t.price)}</td>
           <td>${Number(t.amount).toFixed(4)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
           <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
-          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+          <td style="color:var(--muted)">${t.notes ? escHtml(t.notes).toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
       _renderTradesPagination(_spotTradesPage, _spotTradesPages, 'spot-trades-prev', 'spot-trades-next', 'spot-trades-page-info');
@@ -2079,7 +2083,7 @@
 
       grid.innerHTML = pairs.map(pair => {
         const d = _shSignals[pair];
-        if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${pair}</div><div class="commentary" style="color:var(--red)">${escHtml(d.error)}</div></div>`;
 
         const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
         const trendLabel = d.above_trend
@@ -2144,7 +2148,7 @@
             <div class="mlabel">Trend</div>
             <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
           </div>
-          <div class="commentary">${d.commentary}</div>
+          <div class="commentary">${escHtml(d.commentary)}</div>
           ${posBlock}
         </div>`;
       }).join('');
@@ -2161,14 +2165,14 @@
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
           <td>${t.timestamp.slice(5,16).replace('T',' ')}</td>
-          <td>${t.pair}</td>
-          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${escHtml(t.pair)}</td>
+          <td class="${t.side.toLowerCase()}">${escHtml(t.side)}</td>
           <td>${fmt(t.price)}</td>
           <td>${Number(t.amount).toFixed(4)}</td>
           <td>${fmt(t.value_eur)}</td>
           <td>${fmtPnl(t.pnl)}</td>
           <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
-          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+          <td style="color:var(--muted)">${t.notes ? escHtml(t.notes).toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
       _renderTradesPagination(_shTradesPage, _shTradesPages, 'sh-trades-prev', 'sh-trades-next', 'sh-trades-page-info');
@@ -2832,7 +2836,7 @@
       const signals = await res.json();
       const grid    = document.getElementById('f-signals-grid');
       grid.innerHTML = Object.entries(signals).map(([sym, d]) => {
-        if (d.error) return `<div class="signal-card"><div class="pair-name">${sym}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${sym}</div><div class="commentary" style="color:var(--red)">${escHtml(d.error)}</div></div>`;
 
         const p          = _fPrev[sym] || {};
         const priceArrow = arrow(d.price, p.price);
@@ -2926,7 +2930,7 @@
             <div class="mlabel">Trend</div>
             <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
           </div>
-          <div class="commentary">${d.commentary}</div>
+          <div class="commentary">${escHtml(d.commentary)}</div>
           ${posBlock}
         </div>`;
       }).join('');
@@ -2992,13 +2996,13 @@
       } else {
         tb.innerHTML = data.trades.map(t => `<tr>
           <td>${t.timestamp.slice(5,16).replace('T',' ')}</td>
-          <td>${t.pair}</td>
-          <td class="${t.side.toLowerCase()}">${t.side}</td>
+          <td>${escHtml(t.pair)}</td>
+          <td class="${t.side.toLowerCase()}">${escHtml(t.side)}</td>
           <td>${fmtUsdt(t.price)}</td>
           <td>${Number(t.amount).toFixed(4)}</td>
           <td>${fmtUsdt(t.value_eur)}</td>
           <td>${t.pnl != null ? fmtPnlUsdt(t.pnl) : '—'}</td>
-          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+          <td style="color:var(--muted)">${t.notes ? escHtml(t.notes).toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
       _renderTradesPagination(_futTradesPage, _futTradesPages, 'fut-trades-prev', 'fut-trades-next', 'fut-trades-page-info');
@@ -3567,7 +3571,7 @@
 
       grid.innerHTML = syms.map(sym => {
         const d = _fshSignals[sym];
-        if (d.error) return `<div class="signal-card"><div class="pair-name">${sym}</div><div class="commentary" style="color:var(--red)">${d.error}</div></div>`;
+        if (d.error) return `<div class="signal-card"><div class="pair-name">${sym}</div><div class="commentary" style="color:var(--red)">${escHtml(d.error)}</div></div>`;
 
         const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
         const trendLabel = d.above_trend
@@ -3629,7 +3633,7 @@
             <div class="mlabel">Trend</div>
             <div class="mvalue ${trendCls}" style="font-size:13px">${trendLabel}</div>
           </div>
-          <div class="commentary">${d.commentary}</div>
+          <div class="commentary">${escHtml(d.commentary)}</div>
           ${posBlock}
         </div>`;
       }).join('');
@@ -3875,14 +3879,14 @@
       } else {
         tbody.innerHTML = data.trades.map(t => `<tr>
           <td style="color:var(--muted);font-size:12px">${t.timestamp.slice(5,16).replace('T',' ')}</td>
-          <td>${t.pair}</td>
-          <td class="${t.side === 'BUY' ? 'pos' : 'neg'}">${t.side}</td>
+          <td>${escHtml(t.pair)}</td>
+          <td class="${t.side === 'BUY' ? 'pos' : 'neg'}">${escHtml(t.side)}</td>
           <td>$${Number(t.price).toFixed(2)}</td>
           <td>${Number(t.amount).toFixed(4)}</td>
           <td>$${Number(t.value_eur || 0).toFixed(2)}</td>
           <td>${_fmtPnlUsdt(t.pnl)}</td>
           <td style="color:var(--muted)">${t.side === 'SELL' ? fmtHold(t.hold_h) : '—'}</td>
-          <td style="color:var(--muted)">${t.notes ? t.notes.toUpperCase() : '—'}</td>
+          <td style="color:var(--muted)">${t.notes ? escHtml(t.notes).toUpperCase() : '—'}</td>
         </tr>`).join('');
       }
       _renderTradesPagination(_fshTradesPage, _fshTradesPages, 'fsh-trades-prev', 'fsh-trades-next', 'fsh-trades-page-info');
