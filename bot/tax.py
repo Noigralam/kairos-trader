@@ -97,8 +97,8 @@ def _dispose_fifo(conn, trade_id, asset, pair, disposed_at, quantity, proceeds_e
     """
     FIFO-match `quantity` of `asset` against oldest lots.
     Creates one tax_disposals row per lot consumed.
-    proceeds_eur_gross: raw EUR received before fee deduction.
-    fee_eur: disposal fee in EUR (reduces proceeds proportionally per lot).
+    proceeds_eur_gross: raw quote-currency proceeds before fee deduction.
+    fee_eur: disposal fee in quote currency (reduces proceeds proportionally per lot).
     """
     proceeds_net = proceeds_eur_gross - fee_eur
 

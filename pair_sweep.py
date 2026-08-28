@@ -1,5 +1,5 @@
 """
-Full parameter sweep for a single EUR spot pair.
+Full parameter sweep for a single spot pair.
 
 Usage:
     python pair_sweep.py XRPEUR [--cached]
