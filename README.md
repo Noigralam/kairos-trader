@@ -57,3 +57,14 @@ First candle tick fires within 15 minutes. When you're happy with simulation res
 ## Documentation
 
 See [REFERENCE.md](REFERENCE.md) for the full configuration reference, per-pair overrides, shadow profile setup, backtest usage, and project layout.
+
+
+## Support
+
+Kairos is free and open source. If it's been useful to you, tips are appreciated but never expected.
+
+| Coin | Address |
+|------|---------|
+| BTC | `bc1qasr52a27ejdyjyv2qya9ms9gzyd3vhc8tq66lu` |
+| ETH | `0x1d54dd5A208311935D9297dBDbbD4813F25394Da` |
+| SOL | `3WTsRikq7PBxW4Ys9xBDAQS1djqfjhJnije69n5opRB2` |
