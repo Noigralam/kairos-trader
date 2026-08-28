@@ -53,6 +53,11 @@ First candle tick fires within 15 minutes. When you're happy with simulation res
 - Python 3.10+
 - `flask`, `python-binance`, `pandas`, `python-dotenv`, `requests`, `discord.py`
 - Linux — the start/stop/watchdog scripts are bash. Windows is not currently supported.
+- Any Binance quote currency — set `SPOT_QUOTE_CURRENCY` to match the suffix of your pairs (EUR, GBP, USDT, USDC, BRL, TRY, AUD, BNB, …)
+
+## Screenshots
+
+See the [`screenshots/`](screenshots/) directory for dashboard and alert examples.
 
 ## Documentation
 

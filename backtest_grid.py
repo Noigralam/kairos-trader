@@ -231,7 +231,7 @@ def print_table(results: list, sort_by: str = "realised_pct", top_n: int = 20):
         print(f"{sp_str:>8} {int(r.levels):>6} {int(r.trades):>7} "
               f"{r.realised_pct:>+10.2f}% {r.return_pct:>+8.2f}% "
               f"{r.max_dd_pct:>7.1f}% {r.stuck_pct:>6.1f}% {int(r.recenters):>10} "
-              f"{int(r.open_slots):>11} €{r.total_fees:>6.2f}")
+              f"{int(r.open_slots):>11} {config.SPOT_CURRENCY_SYMBOL}{r.total_fees:>6.2f}")
 
     print(f"\n(sorted by realised P&L%, top {top_n} of {len(results)})")
     return df
@@ -281,7 +281,7 @@ def analyse_volatility(df: pd.DataFrame, pair: str):
 
 def run_for_pair(pair: str, days: int):
     print(f"\n{'━'*70}")
-    print(f"  Grid backtest sweep — {pair}  {days}d  balance=€{BALANCE}")
+    print(f"  Grid backtest sweep — {pair}  {days}d  balance={config.SPOT_CURRENCY_SYMBOL}{BALANCE}")
     print(f"{'━'*70}")
     print(f"Spacing values: {[f'{s*100:.1f}%' for s in SPACINGS]}")
     print(f"Level  values:  {LEVELS}")

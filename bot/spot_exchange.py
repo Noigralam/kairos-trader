@@ -68,11 +68,11 @@ def round_qty(pair: str, amount: float) -> float:
     return round(math.floor(amount / step) * step, precision)
 
 
-def get_eur_balance() -> float:
-    """Return free EUR balance from Binance account."""
+def get_quote_balance() -> float:
+    """Return free quote-currency balance from Binance account."""
     account = get_client().get_account()
     for b in account["balances"]:
-        if b["asset"] == "EUR":
+        if b["asset"] == config.SPOT_QUOTE_CURRENCY:
             return float(b["free"])
     return 0.0
 

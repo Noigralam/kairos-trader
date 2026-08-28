@@ -29,8 +29,10 @@ def _load_ids() -> list:
 def _save_ids(ids: list):
     try:
         os.makedirs(os.path.dirname(_IDS_PATH), exist_ok=True)
-        with open(_IDS_PATH, "w") as f:
+        tmp = _IDS_PATH + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(ids, f)
+        os.replace(tmp, _IDS_PATH)
     except Exception:
         pass
 
@@ -187,7 +189,7 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
         else:
             rsi_zone = "neutral"
 
-        trend = f"{'↑' if above else '↓'} {'above' if above else 'below'} EMA200 €{abs(gap):,.2f}"
+        trend = f"{'↑' if above else '↓'} {'above' if above else 'below'} EMA200 {config.SPOT_CURRENCY_SYMBOL}{abs(gap):,.2f}"
 
         if result.signal == Signal.BUY and not pos:
             action = "**🟢 BUYING**"
@@ -200,19 +202,19 @@ def notify_tick(pairs: list, prices: dict, results: dict, state, chart_buf=None)
         else:
             action = "⏸ HOLD"
 
-        val = f"€{price:,.2f}\nRSI({config.rsi_period_for(pair)}): {result.rsi:.1f} {rsi_zone}\n{trend}\n{action}"
+        val = f"{config.SPOT_CURRENCY_SYMBOL}{price:,.2f}\nRSI({config.rsi_period_for(pair)}): {result.rsi:.1f} {rsi_zone}\n{trend}\n{action}"
         if pos:
             pct = (price - pos.entry_price) / pos.entry_price * 100
-            val += f"\nEntry €{pos.entry_price:,.2f} ({pct:+.1f}%)"
+            val += f"\nEntry {config.SPOT_CURRENCY_SYMBOL}{pos.entry_price:,.2f} ({pct:+.1f}%)"
 
         fields.append({"name": pair, "value": val, "inline": True})
         log_parts.append(f"{pair} RSI={result.rsi:.1f} → {result.signal.value}")
 
     footer_parts = [
-        f"Balance: €{state.balance:.2f}",
-        f"PnL: €{state.total_pnl:+.2f}",
+        f"Balance: {config.SPOT_CURRENCY_SYMBOL}{state.balance:.2f}",
+        f"PnL: {config.SPOT_CURRENCY_SYMBOL}{state.total_pnl:+.2f}",
         f"Trades: {state.total_trades}",
-        f"Fees: €{state.total_fees:.4f}",
+        f"Fees: {config.SPOT_CURRENCY_SYMBOL}{state.total_fees:.4f}",
     ]
     if fng_val is not None:
         footer_parts.append(f"F&G: {fng_val} — {fng_lbl}")
@@ -240,18 +242,18 @@ def daily_summary(state, pairs: list, prices: dict, results: dict):
     total    = state.balance + open_val
 
     fields = [
-        {"name": "Cash balance",   "value": f"€{state.balance:,.2f}", "inline": True},
-        {"name": "Open positions", "value": f"€{open_val:,.2f}",      "inline": True},
-        {"name": "Total value",    "value": f"€{total:,.2f}",         "inline": True},
-        {"name": "Realized PnL",   "value": f"€{state.total_pnl:+.2f}", "inline": True},
+        {"name": "Cash balance",   "value": f"{config.SPOT_CURRENCY_SYMBOL}{state.balance:,.2f}", "inline": True},
+        {"name": "Open positions", "value": f"{config.SPOT_CURRENCY_SYMBOL}{open_val:,.2f}",      "inline": True},
+        {"name": "Total value",    "value": f"{config.SPOT_CURRENCY_SYMBOL}{total:,.2f}",         "inline": True},
+        {"name": "Realized PnL",   "value": f"{config.SPOT_CURRENCY_SYMBOL}{state.total_pnl:+.2f}", "inline": True},
         {"name": "Trades",         "value": str(state.total_trades),  "inline": True},
-        {"name": "Fees",           "value": f"€{state.total_fees:.4f}", "inline": True},
+        {"name": "Fees",           "value": f"{config.SPOT_CURRENCY_SYMBOL}{state.total_fees:.4f}", "inline": True},
     ]
     if stats:
         fields += [
             {"name": "Win rate",     "value": f"{stats['win_rate']}%  ({stats['wins']}W / {stats['losses']}L)", "inline": True},
-            {"name": "Avg PnL",      "value": f"€{stats['avg_pnl']:+.2f}", "inline": True},
-            {"name": "Best / Worst", "value": f"€{stats['best']:+.2f} / €{stats['worst']:+.2f}", "inline": True},
+            {"name": "Avg PnL",      "value": f"{config.SPOT_CURRENCY_SYMBOL}{stats['avg_pnl']:+.2f}", "inline": True},
+            {"name": "Best / Worst", "value": f"{config.SPOT_CURRENCY_SYMBOL}{stats['best']:+.2f} / {config.SPOT_CURRENCY_SYMBOL}{stats['worst']:+.2f}", "inline": True},
         ]
     if fng_val is not None:
         fields.append({"name": "Fear & Greed", "value": f"{fng_val} — {fng_lbl}", "inline": True})
@@ -271,14 +273,14 @@ def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: fl
     color = 0x3fb950 if side == "BUY" else 0xf85149
     emoji = "🟢" if side == "BUY" else "🔴"
     fields = [
-        {"name": "Price",  "value": f"€{price:,.2f}",   "inline": True},
+        {"name": "Price",  "value": f"{config.SPOT_CURRENCY_SYMBOL}{price:,.2f}",   "inline": True},
         {"name": "Amount", "value": f"{amount:.6f}",     "inline": True},
-        {"name": "Value",  "value": f"€{value_eur:,.2f}", "inline": True},
+        {"name": "Value",  "value": f"{config.SPOT_CURRENCY_SYMBOL}{value_eur:,.2f}", "inline": True},
     ]
     if fee  is not None:
-        fields.append({"name": "Fee", "value": f"€{fee:.4f}", "inline": True})
+        fields.append({"name": "Fee", "value": f"{config.SPOT_CURRENCY_SYMBOL}{fee:.4f}", "inline": True})
     if pnl  is not None:
-        fields.append({"name": "PnL", "value": f"€{pnl:+.2f}", "inline": True})
+        fields.append({"name": "PnL", "value": f"{config.SPOT_CURRENCY_SYMBOL}{pnl:+.2f}", "inline": True})
 
     content = "@everyone" if (config.SPOT_MODE == "live" and config.DISCORD_MENTION_ON_TRADE) else ""
     embed = {
@@ -288,8 +290,8 @@ def trade_alert(side: str, pair: str, price: float, amount: float, value_eur: fl
         "timestamp": _utcnow_iso(),
     }
     _send({"content": content, "embeds": [embed]})
-    _terminal(f"[{side}] {pair} @ €{price:.2f} | {amount:.6f} | €{value_eur:.2f}"
-              + (f" | PnL: €{pnl:+.2f}" if pnl is not None else ""))
+    _terminal(f"[{side}] {pair} @ {config.SPOT_CURRENCY_SYMBOL}{price:.2f} | {amount:.6f} | {config.SPOT_CURRENCY_SYMBOL}{value_eur:.2f}"
+              + (f" | PnL: {config.SPOT_CURRENCY_SYMBOL}{pnl:+.2f}" if pnl is not None else ""))
 
 
 def trailing_stop_alert(pair: str, price: float, pnl: float):
@@ -298,13 +300,13 @@ def trailing_stop_alert(pair: str, price: float, pnl: float):
         "title":     f"🛑 TRAILING STOP — {pair}",
         "color":     0x3fb950 if pnl >= 0 else 0xf85149,
         "fields": [
-            {"name": "Exit price", "value": f"€{price:,.2f}", "inline": True},
-            {"name": "PnL",        "value": f"€{pnl:+.2f}",  "inline": True},
+            {"name": "Exit price", "value": f"{config.SPOT_CURRENCY_SYMBOL}{price:,.2f}", "inline": True},
+            {"name": "PnL",        "value": f"{config.SPOT_CURRENCY_SYMBOL}{pnl:+.2f}",  "inline": True},
         ],
         "timestamp": _utcnow_iso(),
     }
     _send({"content": content, "embeds": [embed]})
-    _terminal(f"[TRAILING STOP] {pair} @ €{price:.2f} | PnL: €{pnl:+.2f}")
+    _terminal(f"[TRAILING STOP] {pair} @ {config.SPOT_CURRENCY_SYMBOL}{price:.2f} | PnL: {config.SPOT_CURRENCY_SYMBOL}{pnl:+.2f}")
 
 
 def bot_status_alert(status: str):
@@ -346,9 +348,9 @@ def build_chart(pairs: list, prices: dict, results: dict) -> io.BytesIO | None:
             result = results.get(pair)
             if result:
                 gap   = prices[pair] - result.ema_trend
-                trend = f"{'above' if gap >= 0 else 'below'} EMA200 by €{abs(gap):,.2f}"
+                trend = f"{'above' if gap >= 0 else 'below'} EMA200 by {config.SPOT_CURRENCY_SYMBOL}{abs(gap):,.2f}"
                 ax.set_title(
-                    f"{pair}  €{prices[pair]:,.2f}  |  RSI {result.rsi:.1f}  |  {trend}",
+                    f"{pair}  {config.SPOT_CURRENCY_SYMBOL}{prices[pair]:,.2f}  |  RSI {result.rsi:.1f}  |  {trend}",
                     color="#e6edf3", fontsize=9, pad=6,
                 )
 

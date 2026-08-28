@@ -71,6 +71,19 @@ tree    = _client.tree
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+def _is_allowed(interaction: discord.Interaction) -> bool:
+    """True when the invoking user's ID is in DISCORD_ALLOWED_USER_IDS.
+    If the set is empty (unset env var) all mutating commands are denied."""
+    allowed = config.DISCORD_ALLOWED_USER_IDS
+    if not allowed:
+        return False
+    return interaction.user.id in allowed
+
+
+async def _deny(interaction: discord.Interaction):
+    await interaction.response.send_message("⛔ Not authorised.", ephemeral=True)
+
+
 def _pair_choices():
     return [app_commands.Choice(name=p, value=p) for p in config.SPOT_TRADING_PAIRS]
 
@@ -81,10 +94,10 @@ def _status_embed() -> discord.Embed:
     embed = discord.Embed(title="📊 Bot Status", color=color)
     embed.add_field(name="Status",  value=engine.get_status().upper(), inline=True)
     embed.add_field(name="Mode",    value=config.SPOT_MODE.upper(),         inline=True)
-    embed.add_field(name="Balance", value=f"€{state.balance:,.2f}",   inline=True)
-    embed.add_field(name="PnL",     value=f"€{state.total_pnl:+.2f}", inline=True)
+    embed.add_field(name="Balance", value=f"{config.SPOT_CURRENCY_SYMBOL}{state.balance:,.2f}",   inline=True)
+    embed.add_field(name="PnL",     value=f"{config.SPOT_CURRENCY_SYMBOL}{state.total_pnl:+.2f}", inline=True)
     embed.add_field(name="Trades",  value=str(state.total_trades),    inline=True)
-    embed.add_field(name="Fees",    value=f"€{state.total_fees:.4f}", inline=True)
+    embed.add_field(name="Fees",    value=f"{config.SPOT_CURRENCY_SYMBOL}{state.total_fees:.4f}", inline=True)
     embed.add_field(name="Last tick", value=engine.get_last_tick() or "—", inline=True)
 
     for pair, pos in state.positions.items():
@@ -93,9 +106,9 @@ def _status_embed() -> discord.Embed:
             pct   = (price - pos.entry_price) / pos.entry_price * 100
             embed.add_field(
                 name=f"📌 {pair}",
-                value=(f"Entry €{pos.entry_price:,.2f}\n"
-                       f"Now   €{price:,.2f} ({pct:+.1f}%)\n"
-                       f"Stop  €{pos.trailing_stop_level():,.2f}"),
+                value=(f"Entry {config.SPOT_CURRENCY_SYMBOL}{pos.entry_price:,.2f}\n"
+                       f"Now   {config.SPOT_CURRENCY_SYMBOL}{price:,.2f} ({pct:+.1f}%)\n"
+                       f"Stop  {config.SPOT_CURRENCY_SYMBOL}{pos.trailing_stop_level():,.2f}"),
                 inline=True,
             )
         except Exception:
@@ -112,18 +125,24 @@ async def cmd_status(interaction: discord.Interaction):
 
 @tree.command(name="crp_pause", description="Pause trading (bot keeps running, no new trades)")
 async def cmd_pause(interaction: discord.Interaction):
+    if not _is_allowed(interaction):
+        await _deny(interaction); return
     engine.pause()
     await interaction.response.send_message("⏸ Bot paused.", ephemeral=True)
 
 
 @tree.command(name="crp_resume", description="Resume trading after a pause")
 async def cmd_resume(interaction: discord.Interaction):
+    if not _is_allowed(interaction):
+        await _deny(interaction); return
     engine.resume()
     await interaction.response.send_message("▶️ Bot resumed.", ephemeral=True)
 
 
 @tree.command(name="crp_summary", description="Send a performance summary to this channel")
 async def cmd_summary(interaction: discord.Interaction):
+    if not _is_allowed(interaction):
+        await _deny(interaction); return
     await interaction.response.defer(ephemeral=True)
     state   = get_state()
     prices  = {}
@@ -161,6 +180,8 @@ async def cmd_config(interaction: discord.Interaction):
 @app_commands.describe(pair="Trading pair to close")
 @app_commands.choices(pair=_pair_choices())
 async def cmd_close(interaction: discord.Interaction, pair: str):
+    if not _is_allowed(interaction):
+        await _deny(interaction); return
     state = get_state()
     if pair not in state.positions:
         await interaction.response.send_message(f"No open position for {pair}.", ephemeral=True)
@@ -172,11 +193,11 @@ async def cmd_close(interaction: discord.Interaction, pair: str):
 
     def do_close():
         engine.manual_close(pair)
-        return f"Closed {pair} @ €{price:,.2f} ({pct:+.1f}%)"
+        return f"Closed {pair} @ {config.SPOT_CURRENCY_SYMBOL}{price:,.2f} ({pct:+.1f}%)"
 
     view = ConfirmView(do_close, f"Close {pair}")
     await interaction.response.send_message(
-        f"Close **{pair}** position?\nEntry €{pos.entry_price:,.2f} → now €{price:,.2f} ({pct:+.1f}%)",
+        f"Close **{pair}** position?\nEntry {config.SPOT_CURRENCY_SYMBOL}{pos.entry_price:,.2f} → now {config.SPOT_CURRENCY_SYMBOL}{price:,.2f} ({pct:+.1f}%)",
         view=view,
         ephemeral=True,
     )
@@ -186,6 +207,8 @@ async def cmd_close(interaction: discord.Interaction, pair: str):
 @app_commands.describe(pair="Trading pair to buy", size="Position size as % of balance (default: 75)")
 @app_commands.choices(pair=_pair_choices())
 async def cmd_buy(interaction: discord.Interaction, pair: str, size: int = 75):
+    if not _is_allowed(interaction):
+        await _deny(interaction); return
     state = get_state()
     if pair in state.positions:
         await interaction.response.send_message(f"Already in a position for {pair}.", ephemeral=True)
@@ -200,11 +223,11 @@ async def cmd_buy(interaction: discord.Interaction, pair: str, size: int = 75):
 
     def do_buy():
         engine.manual_buy(pair, size_pct)
-        return f"Bought {pair} @ €{price:,.2f} ({size}% = ~€{value:,.2f})"
+        return f"Bought {pair} @ {config.SPOT_CURRENCY_SYMBOL}{price:,.2f} ({size}% = ~{config.SPOT_CURRENCY_SYMBOL}{value:,.2f})"
 
     view = ConfirmView(do_buy, f"Buy {pair}")
     await interaction.response.send_message(
-        f"Buy **{pair}** @ €{price:,.2f} using {size}% of balance (~€{value:,.2f})?",
+        f"Buy **{pair}** @ {config.SPOT_CURRENCY_SYMBOL}{price:,.2f} using {size}% of balance (~{config.SPOT_CURRENCY_SYMBOL}{value:,.2f})?",
         view=view,
         ephemeral=True,
     )
@@ -212,6 +235,8 @@ async def cmd_buy(interaction: discord.Interaction, pair: str, size: int = 75):
 
 @tree.command(name="crp_clear", description="Delete all messages in this channel (keeps pinned messages)")
 async def cmd_clear(interaction: discord.Interaction):
+    if not _is_allowed(interaction):
+        await _deny(interaction); return
     class ClearView(discord.ui.View):
         def __init__(self):
             super().__init__(timeout=30)

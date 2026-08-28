@@ -794,7 +794,7 @@
           </div>
           <div class="btn-group" id="sh-pnl-mode-btns">
             <button onclick="setShPnlMode('pct')" data-mode="pct" class="active">% return</button>
-            <button onclick="setShPnlMode('eur')" data-mode="eur">€ PnL</button>
+            <button onclick="setShPnlMode('eur')" data-mode="eur">{{ currency_symbol }} PnL</button>
           </div>
         </div>
       </div>
@@ -1074,6 +1074,7 @@
 
 <script>
   const DASHBOARD_ONLY = {{ dashboard_only | tojson }};
+  const CURRENCY_SYMBOL = {{ currency_symbol | tojson }};
 
   function escHtml(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -1083,12 +1084,12 @@
     Number(n).toLocaleString('fi-FI', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
   function fmt(n, decimals=2) {
     if (n === null || n === undefined) return '—';
-    return _fi(n, decimals) + ' €';
+    return _fi(n, decimals) + ' ' + CURRENCY_SYMBOL;
   }
   function fmtPnl(n) {
     if (n === null || n === undefined) return '—';
     const cls = n >= 0 ? 'pos' : 'neg';
-    return `<span class="${cls}">${n >= 0 ? '+' : ''}${_fi(n)} €</span>`;
+    return `<span class="${cls}">${n >= 0 ? '+' : ''}${_fi(n)} ${CURRENCY_SYMBOL}</span>`;
   }
   function fmtHold(h) {
     if (h === null || h === undefined) return '—';
@@ -1305,8 +1306,8 @@
 
         const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
         const trendLabel = d.above_trend
-          ? `↑ ${_fi(Math.abs(d.gap))} € above EMA200`
-          : `↓ ${_fi(Math.abs(d.gap))} € below EMA200`;
+          ? `↑ ${_fi(Math.abs(d.gap))} ${CURRENCY_SYMBOL} above EMA200`
+          : `↓ ${_fi(Math.abs(d.gap))} ${CURRENCY_SYMBOL} below EMA200`;
         const rsiPct      = Math.min(100, Math.max(0, d.rsi));
         const rsiBarColor = d.rsi < 30 ? 'var(--green)' : d.rsi > (d.rsi_overbought ?? 75) ? 'var(--red)' : 'var(--blue)';
 
@@ -1350,26 +1351,26 @@
             </div>`;
 
           const dcaStr  = pos.dca_trigger !== null
-            ? `${_fi(pos.dca_trigger)} € <span style="color:var(--muted);font-size:12px">(${pos.dca_count + 1}/${pos.dca_max})</span>`
+            ? `${_fi(pos.dca_trigger)} ${CURRENCY_SYMBOL}<span style="color:var(--muted);font-size:12px">(${pos.dca_count + 1}/${pos.dca_max})</span>`
             : `<span style="color:var(--muted)">used (${pos.dca_count}/${pos.dca_max})</span>`;
           posBlock = `
           <div class="position-block">
             <div class="pos-row">
               <span class="plabel">Entry</span>
-              <span class="pvalue">${_fi(pos.entry_price)} €</span>
+              <span class="pvalue">${_fi(pos.entry_price)} ${CURRENCY_SYMBOL}</span>
             </div>
             ${ladder}
             <div class="pos-row">
               <span class="plabel">Peak</span>
-              <span class="pvalue">${_fi(pos.highest_price)} € <span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span>
+              <span class="pvalue">${_fi(pos.highest_price)} ${CURRENCY_SYMBOL}<span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span>
             </div>
             <div class="pos-row">
               <span class="plabel">Break even</span>
-              <span class="pvalue">${_fi(pos.break_even)} € <span class="${pnlCls}" style="font-size:12px">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · ${pnlEur >= 0 ? '+' : ''}${_fi(Math.abs(pnlEur))} €)</span></span>
+              <span class="pvalue">${_fi(pos.break_even)} ${CURRENCY_SYMBOL}<span class="${pnlCls}" style="font-size:12px">(${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% · ${pnlEur >= 0 ? '+' : ''}${_fi(Math.abs(pnlEur))} ${CURRENCY_SYMBOL})</span></span>
             </div>
             <div class="pos-row">
               <span class="plabel">Min exit</span>
-              <span class="pvalue">${_fi(pos.trailing_stop)} €</span>
+              <span class="pvalue">${_fi(pos.trailing_stop)} ${CURRENCY_SYMBOL}</span>
             </div>
             <div class="pos-row">
               <span class="plabel">DCA trigger</span>
@@ -1377,13 +1378,13 @@
             </div>
             <div class="pos-row" style="opacity:0.45;font-size:12px">
               <span class="plabel">TP (spike catch)</span>
-              <span class="pvalue">${_fi(pos.take_profit)} €</span>
+              <span class="pvalue">${_fi(pos.take_profit)} ${CURRENCY_SYMBOL}</span>
             </div>
             <div class="pos-row" style="margin-top:8px">
-              <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span>
+              <span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} ${CURRENCY_SYMBOL}</span>
               <div style="display:flex;gap:6px">
-                ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${pair} position amount from Binance?')) controlSyncPosition('${pair}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
-                ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${pair} position at market price?')) control('manual_close','${pair}')">Close</button></span>`}
+                ${_spotMode === 'live' ? `<button class="override" style="font-size:11px;padding:3px 8px" onclick="if(confirm('Sync ${escHtml(pair)} position amount from Binance?')) controlSyncPosition('${escHtml(pair)}')" title="Update tracked amount to match actual Binance balance">Sync</button>` : ''}
+                ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(pair)} position at market price?')) control('manual_close','${escHtml(pair)}')">Close</button></span>`}
               </div>
             </div>
           </div>`;
@@ -1394,7 +1395,7 @@
           <div class="metrics">
             <div class="metric">
               <div class="mlabel">Price</div>
-              <div class="mvalue">${_fi(d.price)} €${priceArrow}</div>
+              <div class="mvalue">${_fi(d.price)} ${CURRENCY_SYMBOL}${priceArrow}</div>
             </div>
             <div class="metric">
               <div class="mlabel">RSI (${d.rsi_period})</div>
@@ -1402,7 +1403,7 @@
             </div>
             <div class="metric">
               <div class="mlabel">EMA200</div>
-              <div class="mvalue">${_fi(d.ema200)} €${emaArrow}</div>
+              <div class="mvalue">${_fi(d.ema200)} ${CURRENCY_SYMBOL}${emaArrow}</div>
             </div>
           </div>
           <div class="rsi-bar-wrap">
@@ -1420,9 +1421,9 @@
           ${posBlock}
           ${DASHBOARD_ONLY ? '' : `<div class="pin-gated" style="display:flex;gap:8px;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
-              onclick="if(confirm('Buy ${pair} with 50% of balance?')) controlBuy('${pair}', 0.5)">Buy 50%</button>
+              onclick="if(confirm('Buy ${escHtml(pair)} with 50% of balance?')) controlBuy('${escHtml(pair)}', 0.5)">Buy 50%</button>
             <button class="primary" style="flex:1;font-size:13px;padding:6px"
-              onclick="if(confirm('Buy ${pair} with 100% of balance?')) controlBuy('${pair}', 1.0)">Buy 100%</button>
+              onclick="if(confirm('Buy ${escHtml(pair)} with 100% of balance?')) controlBuy('${escHtml(pair)}', 1.0)">Buy 100%</button>
           </div>`}
         </div>`;
       }).join('');
@@ -1533,11 +1534,11 @@
       hModeEl.style.color = s.mode === 'live' ? 'var(--blue)' : '#bc8cff';
       if (s.starting_balance != null) {
         const hPct = (portVal - s.starting_balance) / s.starting_balance * 100;
-        document.getElementById('hdr-spot-port').textContent = `€${fmt(portVal)} (${hPct >= 0 ? '+' : ''}${hPct.toFixed(1)}%)`;
+        document.getElementById('hdr-spot-port').textContent = `${CURRENCY_SYMBOL}${fmt(portVal)} (${hPct >= 0 ? '+' : ''}${hPct.toFixed(1)}%)`;
       }
       const hPnl = s.total_pnl ?? 0;
       const hPnlEl = document.getElementById('hdr-spot-pnl');
-      hPnlEl.textContent  = `${hPnl >= 0 ? '+' : ''}€${fmt(Math.abs(hPnl))} PnL`;
+      hPnlEl.textContent  = `${hPnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${fmt(Math.abs(hPnl))} PnL`;
       hPnlEl.style.color  = hPnl >= 0 ? 'var(--green)' : 'var(--red)';
       if (s.live_since) document.getElementById('hdr-spot-since').textContent = _fmtDuration(s.live_since);
       _positions = s.positions;
@@ -1834,8 +1835,8 @@
           const trEl    = document.getElementById(`sh-hdr-trades-${name}${sfx}`);
           const sinceEl = document.getElementById(`sh-hdr-since-${name}${sfx}`);
           if (!portEl) continue;
-          portEl.textContent = `€${fmt(s.portfolio_value)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
-          pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}€${fmt(Math.abs(pnl))} PnL`;
+          portEl.textContent = `${CURRENCY_SYMBOL}${fmt(s.portfolio_value)} (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
+          pnlEl.textContent  = `${pnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${fmt(Math.abs(pnl))} PnL`;
           pnlEl.style.color  = pnlColor;
           trEl.textContent   = `${s.total_trades} trades`;
           if (sinceEl && s.started_at) sinceEl.textContent = _fmtDuration(s.started_at);
@@ -1935,10 +1936,10 @@
       const isPct = _shPnlMode === 'pct';
       const yTick    = isPct
         ? v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%'
-        : v => (v >= 0 ? '+' : '') + v.toFixed(0) + ' €';
+        : v => (v >= 0 ? '+' : '') + v.toFixed(0) + ' ' + CURRENCY_SYMBOL;
       const tooltipFn = isPct
         ? c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}${Number(c.raw).toFixed(2)}%`
-        : c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}€${Number(c.raw).toFixed(2)}`;
+        : c => ` ${c.dataset.label}: ${c.raw >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${Number(c.raw).toFixed(2)}`;
 
       if (_shPnlChart) {
         _shPnlChart.data.labels   = allTimes;
@@ -2008,11 +2009,11 @@
         : `<span style="font-size:11px;background:var(--card);color:#3fb950;padding:1px 6px;border-radius:3px;margin-right:6px">SPOT</span>`;
       return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
         <td style="color:var(--muted)">${i + 1}</td>
-        <td>${badge}<span style="${nameStyle}" onclick="switchShadow('${s.name}')">${s.name}</span></td>
+        <td>${badge}<span style="${nameStyle}" onclick="switchShadow('${escHtml(s.name)}')">${escHtml(s.name)}</span></td>
         <td style="color:var(--muted);font-size:12px">${s.pairs.join(', ')}</td>
         <td style="color:${retColor}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
         <td style="color:${vsColor}">${vsText}</td>
-        <td style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}€${s.pnl.toFixed(2)}</td>
+        <td style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${s.pnl.toFixed(2)}</td>
         <td>${s.trades}</td>
         <td>${s.win_rate !== null ? s.win_rate + '%' : '—'}</td>
       </tr>`;
@@ -2074,7 +2075,7 @@
       // rebuild pair buttons whenever the set of pairs changes; always reload chart on shadow switch
       const currentPairBtns = [...pb.querySelectorAll('button')].map(b => b.dataset.pair).join(',');
       if (currentPairBtns !== pairs.join(',')) {
-        pb.innerHTML = pairs.map(p => `<button onclick="setShPair('${p}')" data-pair="${p}">${p}</button>`).join('');
+        pb.innerHTML = pairs.map(p => `<button onclick="setShPair('${escHtml(p)}')" data-pair="${escHtml(p)}">${escHtml(p)}</button>`).join('');
         const keep = pairs.includes(_shChartPair) ? _shChartPair : pairs[0];
         if (keep) setShPair(keep);
       } else if (!_shPriceChart && _shChartPair) {
@@ -2087,8 +2088,8 @@
 
         const trendCls   = d.above_trend ? 'above-trend' : 'below-trend';
         const trendLabel = d.above_trend
-          ? `↑ ${_fi(Math.abs(d.gap))} € above EMA200`
-          : `↓ ${_fi(Math.abs(d.gap))} € below EMA200`;
+          ? `↑ ${_fi(Math.abs(d.gap))} ${CURRENCY_SYMBOL} above EMA200`
+          : `↓ ${_fi(Math.abs(d.gap))} ${CURRENCY_SYMBOL} below EMA200`;
         const rsiPct      = Math.min(100, Math.max(0, d.rsi));
         const rsiBarColor = d.rsi < d.rsi_oversold ? 'var(--green)' : d.rsi > d.rsi_overbought ? 'var(--red)' : 'var(--blue)';
 
@@ -2116,26 +2117,26 @@
             <div class="ladder-pin pin-top" style="left:${lp(tpPct)}%;color:#d29922;opacity:0.5"><div class="pin-dot"></div><div class="pin-label">TP +${tpPct.toFixed(1)}%</div></div>
           </div>`;
           const dcaStr = pos.dca_trigger !== null
-            ? `${_fi(pos.dca_trigger)} € <span style="color:var(--muted);font-size:12px">(${pos.dca_count+1}/${pos.dca_max})</span>`
+            ? `${_fi(pos.dca_trigger)} ${CURRENCY_SYMBOL}<span style="color:var(--muted);font-size:12px">(${pos.dca_count+1}/${pos.dca_max})</span>`
             : `<span style="color:var(--muted)">used (${pos.dca_count}/${pos.dca_max})</span>`;
           posBlock = `<div class="position-block">
-            <div class="pos-row"><span class="plabel">Entry</span><span class="pvalue">${_fi(pos.entry_price)} €</span></div>
+            <div class="pos-row"><span class="plabel">Entry</span><span class="pvalue">${_fi(pos.entry_price)} ${CURRENCY_SYMBOL}</span></div>
             ${ladder}
-            <div class="pos-row"><span class="plabel">Peak</span><span class="pvalue">${_fi(pos.highest_price)} € <span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span></div>
-            <div class="pos-row"><span class="plabel">Break even</span><span class="pvalue">${_fi(pos.break_even)} € <span class="${pnlCls}" style="font-size:12px">(${pct>=0?'+':''}${pct.toFixed(2)}% · ${pnlEur>=0?'+':''}${_fi(Math.abs(pnlEur))} €)</span></span></div>
-            <div class="pos-row"><span class="plabel">Min exit</span><span class="pvalue">${_fi(pos.trailing_stop)} €</span></div>
+            <div class="pos-row"><span class="plabel">Peak</span><span class="pvalue">${_fi(pos.highest_price)} ${CURRENCY_SYMBOL}<span style="color:var(--muted);font-size:12px">(+${peakPct.toFixed(2)}%)</span></span></div>
+            <div class="pos-row"><span class="plabel">Break even</span><span class="pvalue">${_fi(pos.break_even)} ${CURRENCY_SYMBOL}<span class="${pnlCls}" style="font-size:12px">(${pct>=0?'+':''}${pct.toFixed(2)}% · ${pnlEur>=0?'+':''}${_fi(Math.abs(pnlEur))} ${CURRENCY_SYMBOL})</span></span></div>
+            <div class="pos-row"><span class="plabel">Min exit</span><span class="pvalue">${_fi(pos.trailing_stop)} ${CURRENCY_SYMBOL}</span></div>
             <div class="pos-row"><span class="plabel">DCA trigger</span><span class="pvalue">${dcaStr}</span></div>
-            <div class="pos-row" style="opacity:0.45;font-size:12px"><span class="plabel">TP (spike catch)</span><span class="pvalue">${_fi(pos.take_profit)} €</span></div>
-            <div class="pos-row" style="margin-top:8px"><span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} €</span></div>
+            <div class="pos-row" style="opacity:0.45;font-size:12px"><span class="plabel">TP (spike catch)</span><span class="pvalue">${_fi(pos.take_profit)} ${CURRENCY_SYMBOL}</span></div>
+            <div class="pos-row" style="margin-top:8px"><span class="plabel">${pos.amount.toFixed(6)} units · ${_fi(pos.value_eur)} ${CURRENCY_SYMBOL}</span></div>
           </div>`;
         }
 
         return `<div class="signal-card">
           <div class="pair-name">${pair} <span class="sig-badge ${d.signal}">${d.signal}</span></div>
           <div class="metrics">
-            <div class="metric"><div class="mlabel">Price</div><div class="mvalue">${_fi(d.price)} €</div></div>
+            <div class="metric"><div class="mlabel">Price</div><div class="mvalue">${_fi(d.price)} ${CURRENCY_SYMBOL}</div></div>
             <div class="metric"><div class="mlabel">RSI (${d.rsi_period})</div><div class="mvalue" style="color:${rsiColor(d.rsi, d.rsi_overbought)}">${d.rsi}</div></div>
-            <div class="metric"><div class="mlabel">EMA200</div><div class="mvalue">${_fi(d.ema200)} €</div></div>
+            <div class="metric"><div class="mlabel">EMA200</div><div class="mvalue">${_fi(d.ema200)} ${CURRENCY_SYMBOL}</div></div>
           </div>
           <div class="rsi-bar-wrap">
             <div class="fill" style="width:${rsiPct}%;background:${rsiBarColor}"></div>
@@ -2191,11 +2192,11 @@
       if (stat && stat.total) {
         document.getElementById('sh-stat-winrate').textContent = `${stat.win_rate}%  (${stat.wins}W / ${stat.losses}L)`;
         document.getElementById('sh-stat-winrate').style.color = stat.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
-        document.getElementById('sh-stat-avgpnl').textContent  = `${stat.avg_pnl > 0 ? '+' : ''}${stat.avg_pnl.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+        document.getElementById('sh-stat-avgpnl').textContent  = `${stat.avg_pnl > 0 ? '+' : ''}${stat.avg_pnl.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} ${CURRENCY_SYMBOL}`;
         document.getElementById('sh-stat-avgpnl').style.color  = stat.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-        document.getElementById('sh-stat-best').textContent    = `${stat.best >= 0 ? '+' : ''}${stat.best.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+        document.getElementById('sh-stat-best').textContent    = `${stat.best >= 0 ? '+' : ''}${stat.best.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} ${CURRENCY_SYMBOL}`;
         document.getElementById('sh-stat-best').style.color    = stat.best >= 0 ? 'var(--green)' : 'var(--red)';
-        document.getElementById('sh-stat-worst').textContent   = `${stat.worst >= 0 ? '+' : ''}${stat.worst.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} €`;
+        document.getElementById('sh-stat-worst').textContent   = `${stat.worst >= 0 ? '+' : ''}${stat.worst.toLocaleString('fi-FI', {minimumFractionDigits:2,maximumFractionDigits:2})} ${CURRENCY_SYMBOL}`;
         document.getElementById('sh-stat-worst').style.color   = stat.worst >= 0 ? 'var(--green)' : 'var(--red)';
         document.getElementById('sh-stat-hold').textContent    = stat.avg_hold_h != null ? `${stat.avg_hold_h}h` : '—';
       } else {
@@ -2237,10 +2238,10 @@
           options: { ...CHART_OPTS,
             plugins: { ...CHART_OPTS.plugins, legend: { display: false },
               tooltip: { ...CHART_OPTS.plugins.tooltip,
-                callbacks: { label: c => ` €${Number(c.raw).toLocaleString('fi-FI',{minimumFractionDigits:2,maximumFractionDigits:2})}` } } },
+                callbacks: { label: c => ` ${CURRENCY_SYMBOL}${Number(c.raw).toLocaleString('fi-FI',{minimumFractionDigits:2,maximumFractionDigits:2})}` } } },
             scales: { x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks,
-                callback: v => Number(v).toLocaleString('fi-FI') + ' €' } } },
+                callback: v => Number(v).toLocaleString('fi-FI') + ' ' + CURRENCY_SYMBOL } } },
           },
         });
       }
@@ -2336,15 +2337,15 @@
             plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
               callbacks: { label: c => {
                 if (c.dataset.label === 'Volume')  return ` Vol: ${Number(c.raw).toLocaleString('fi-FI', {maximumFractionDigits: 2})}`;
-                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: ${CURRENCY_SYMBOL}${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
                 return c.dataset.type === 'scatter'
-                  ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
-                  : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                  ? ` ${c.dataset.label} @ ${CURRENCY_SYMBOL}${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+                  : ` ${c.dataset.label}: ${CURRENCY_SYMBOL}${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
               }}
             }},
             scales: {
               x: CHART_OPTS.scales.x,
-              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' } },
+              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' ' + CURRENCY_SYMBOL } },
               y1: { display: false, position: 'right', grid: { drawOnChartArea: false },
                     afterDataLimits: axis => { axis.max = axis.max * 4; } },
             },
@@ -2377,7 +2378,7 @@
               x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y,
                 min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' },
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' ' + CURRENCY_SYMBOL },
               },
             },
           },
@@ -2560,15 +2561,15 @@
             plugins: { ...CHART_OPTS.plugins, tooltip: { ...CHART_OPTS.plugins.tooltip,
               callbacks: { label: c => {
                 if (c.dataset.label === 'Volume')  return ` Vol: ${Number(c.raw).toLocaleString('fi-FI', {maximumFractionDigits: 2})}`;
-                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                if (c.dataset.label.startsWith('BB')) return ` ${c.dataset.label}: ${CURRENCY_SYMBOL}${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
                 return c.dataset.type === 'scatter'
-                  ? ` ${c.dataset.label} @ €${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
-                  : ` ${c.dataset.label}: €${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
+                  ? ` ${c.dataset.label} @ ${CURRENCY_SYMBOL}${Number(c.raw.y).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`
+                  : ` ${c.dataset.label}: ${CURRENCY_SYMBOL}${Number(c.raw).toLocaleString('fi-FI', {minimumFractionDigits: 2})}`;
               }}
             }},
             scales: {
               x: CHART_OPTS.scales.x,
-              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' } },
+              y:  { ...CHART_OPTS.scales.y, ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' ' + CURRENCY_SYMBOL } },
               y1: { display: false, position: 'right', grid: { drawOnChartArea: false },
                     afterDataLimits: axis => { axis.max = axis.max * 4; } },
             },
@@ -2600,7 +2601,7 @@
               x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y,
                 min: ohlcMin - ohlcPad, max: ohlcMax + ohlcPad,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' },
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' ' + CURRENCY_SYMBOL },
               },
             },
           },
@@ -2650,7 +2651,7 @@
     _signals      = await res.json();
     const pairs   = Object.keys(_signals);
     const pb      = document.getElementById('pair-btns');
-    pb.innerHTML  = pairs.map(p => `<button onclick="setPair('${p}')" data-pair="${p}">${p}</button>`).join('');
+    pb.innerHTML  = pairs.map(p => `<button onclick="setPair('${escHtml(p)}')" data-pair="${escHtml(p)}">${escHtml(p)}</button>`).join('');
     if (pairs.length) setPair(pairs[0]);
   }
 
@@ -2676,11 +2677,11 @@
       if (!s) return;
       document.getElementById('stat-winrate').textContent = `${s.win_rate}%  (${s.wins}W / ${s.losses}L)`;
       document.getElementById('stat-winrate').style.color = s.win_rate >= 50 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('stat-avgpnl').textContent  = `${s.avg_pnl > 0 ? '+' : ''}${_fi(s.avg_pnl)} €`;
+      document.getElementById('stat-avgpnl').textContent  = `${s.avg_pnl > 0 ? '+' : ''}${_fi(s.avg_pnl)} ${CURRENCY_SYMBOL}`;
       document.getElementById('stat-avgpnl').style.color  = s.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('stat-best').textContent    = `${s.best >= 0 ? '+' : ''}${_fi(s.best)} €`;
+      document.getElementById('stat-best').textContent    = `${s.best >= 0 ? '+' : ''}${_fi(s.best)} ${CURRENCY_SYMBOL}`;
       document.getElementById('stat-best').style.color    = s.best >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('stat-worst').textContent   = `${s.worst >= 0 ? '+' : ''}${_fi(s.worst)} €`;
+      document.getElementById('stat-worst').textContent   = `${s.worst >= 0 ? '+' : ''}${_fi(s.worst)} ${CURRENCY_SYMBOL}`;
       document.getElementById('stat-worst').style.color   = s.worst >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('stat-hold').textContent    = s.avg_hold_h != null ? `${s.avg_hold_h}h` : '—';
     } catch(e) { console.error(e); }
@@ -2787,13 +2788,13 @@
             plugins: { ...CHART_OPTS.plugins,
               legend: { display: false },
               tooltip: { ...CHART_OPTS.plugins.tooltip,
-                callbacks: { label: c => ` ${_fi(c.raw)} €` }
+                callbacks: { label: c => ` ${_fi(c.raw)} ${CURRENCY_SYMBOL}` }
               },
             },
             scales: {
               x: CHART_OPTS.scales.x,
               y: { ...CHART_OPTS.scales.y,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' €' }
+                ticks: { ...CHART_OPTS.scales.y.ticks, callback: v => Number(v).toLocaleString('fi-FI') + ' ' + CURRENCY_SYMBOL }
               },
             },
           },
@@ -2898,7 +2899,7 @@
             </div>
             <div class="pos-row" style="margin-top:8px">
               <span class="plabel">${Number(pos.amount).toFixed(4)} units</span>
-              ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>`}
+              ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(sym)} futures position at market?')) futuresControl('manual_close','${escHtml(sym)}')">Close</button></span>`}
             </div>
           </div>`;
         }
@@ -3042,7 +3043,7 @@
           <td class="pos">+${fmtUsdt(r.gains)}</td>
           <td class="neg">-${fmtUsdt(r.losses)}</td>
           <td class="${r.net_pnl >= 0 ? 'pos' : 'neg'}">${r.net_pnl >= 0 ? '+' : ''}${fmtUsdt(r.net_pnl)}</td>
-          <td class="${r.tax > 0 ? 'neg' : ''}">${r.tax > 0 ? '-€' + fmt(r.tax) : '—'}</td>
+          <td class="${r.tax > 0 ? 'neg' : ''}">${r.tax > 0 ? '-' + CURRENCY_SYMBOL + fmt(r.tax) : '—'}</td>
           <td class="${r.net_pnl - r.tax >= 0 ? 'pos' : 'neg'}">${r.net_pnl - r.tax >= 0 ? '+' : ''}${fmtUsdt(r.net_pnl - r.tax)}</td>
         </tr>`).join('');
       }
@@ -3225,7 +3226,7 @@
           </div>
           <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;color:var(--muted)">${Number(p.amount).toFixed(4)} units</span>
-            ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${sym} futures position at market?')) futuresControl('manual_close','${sym}')">Close</button></span>`}
+            ${DASHBOARD_ONLY ? '' : `<span class="pin-gated"><button class="override danger" onclick="if(confirm('Close ${escHtml(sym)} futures position at market?')) futuresControl('manual_close','${escHtml(sym)}')">Close</button></span>`}
           </div>
         </div>`;
       }).join('');
@@ -3398,7 +3399,7 @@
       _fSignals   = await res.json();
       const pairs = Object.keys(_fSignals);
       const pb    = document.getElementById('f-pair-btns');
-      pb.innerHTML = pairs.map(p => `<button onclick="setFPair('${p}')" data-pair="${p}">${p}</button>`).join('');
+      pb.innerHTML = pairs.map(p => `<button onclick="setFPair('${escHtml(p)}')" data-pair="${escHtml(p)}">${escHtml(p)}</button>`).join('');
       if (pairs.length) setFPair(pairs[0]);
     } catch(e) { console.error(e); }
   }
@@ -3527,7 +3528,7 @@
       const fundSign = s.funding <= 0 ? '' : '+';
       return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
         <td style="color:var(--muted)">${i + 1}</td>
-        <td>${badge}<span style="${nameStyle}" onclick="switchFShadow('${s.name}')">${s.name}</span></td>
+        <td>${badge}<span style="${nameStyle}" onclick="switchFShadow('${escHtml(s.name)}')">${escHtml(s.name)}</span></td>
         <td style="color:var(--muted);font-size:12px">${(s.symbols || []).join(', ')}</td>
         <td class="${retCls}">${s.return_pct >= 0 ? '+' : ''}${s.return_pct.toFixed(2)}%</td>
         <td style="color:${s.vs_main === null ? 'var(--muted)' : s.vs_main > 0 ? 'var(--green)' : s.vs_main < 0 ? 'var(--red)' : 'var(--muted)'}">${s.vs_main === null ? '—' : (s.vs_main > 0 ? '+' : '') + s.vs_main.toFixed(2) + '%'}</td>
@@ -3562,7 +3563,7 @@
 
       const currentSymBtns = [...pb.querySelectorAll('button')].map(b => b.dataset.sym).join(',');
       if (currentSymBtns !== syms.join(',')) {
-        pb.innerHTML = syms.map(s => `<button onclick="setFShSym('${s}')" data-sym="${s}">${s}</button>`).join('');
+        pb.innerHTML = syms.map(s => `<button onclick="setFShSym('${escHtml(s)}')" data-sym="${escHtml(s)}">${escHtml(s)}</button>`).join('');
         const keep = syms.includes(_fshChartSym) ? _fshChartSym : syms[0];
         if (keep) setFShSym(keep);
       } else if (!_fshPriceChart && _fshChartSym) {
@@ -3647,7 +3648,7 @@
       _fshSignals = await res.json();
       const syms  = Object.keys(_fshSignals);
       const pb    = document.getElementById('fsh-sym-btns');
-      pb.innerHTML = syms.map(s => `<button onclick="setFShSym('${s}')" data-sym="${s}">${s}</button>`).join('');
+      pb.innerHTML = syms.map(s => `<button onclick="setFShSym('${escHtml(s)}')" data-sym="${escHtml(s)}">${escHtml(s)}</button>`).join('');
       if (syms.length) setFShSym(syms[0]);
     } catch(e) { console.error('fsh chart init', e); }
   }

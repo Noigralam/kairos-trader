@@ -30,6 +30,7 @@ Includes a web dashboard, Discord integration, shadow simulators, and backtest/s
 
 ## Requirements
 
+- Linux (the start/stop/watchdog scripts are bash — Windows is not currently supported)
 - Python 3.10+
 - Dependencies: `flask`, `python-binance`, `pandas`, `python-dotenv`, `requests`, `discord.py`
 

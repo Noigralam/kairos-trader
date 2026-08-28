@@ -77,6 +77,7 @@ def favicon():
 @app.route("/")
 def index():
     return render_template("index.html", config=config,
+                           currency_symbol=config.SPOT_CURRENCY_SYMBOL,
                            dashboard_only=bool(os.environ.get("KAIROS_DASHBOARD_ONLY")))
 
 
@@ -314,20 +315,20 @@ def api_signals():
             elif not above_trend:
                 if has_position:
                     commentary = (
-                        f"Price is €{abs(gap):,.2f} below EMA200 — holding position, "
+                        f"Price is {config.SPOT_CURRENCY_SYMBOL}{abs(gap):,.2f} below EMA200 — holding position, "
                         f"watching for RSI to reach {config.rsi_overbought_for(pair)} for exit."
                     )
                 elif price >= result.ema_trend:
                     commentary = (
                         f"Price is above EMA200 but within the {config.ema_gap_for(pair)*100:.0f}% gap filter "
-                        f"(need €{ema_threshold:,.2f}, currently €{price:,.2f}). "
+                        f"(need {config.SPOT_CURRENCY_SYMBOL}{ema_threshold:,.2f}, currently {config.SPOT_CURRENCY_SYMBOL}{price:,.2f}). "
                         f"Waiting for stronger trend confirmation."
                     )
                 else:
                     commentary = (
-                        f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active. "
-                        f"No buys until price recovers above €{ema_threshold:,.2f} "
-                        f"(EMA200 €{result.ema_trend:,.2f} + {config.ema_gap_for(pair)*100:.0f}% gap)."
+                        f"Price is {config.SPOT_CURRENCY_SYMBOL}{abs(gap):,.2f} below EMA200 — downtrend guard active. "
+                        f"No buys until price recovers above {config.SPOT_CURRENCY_SYMBOL}{ema_threshold:,.2f} "
+                        f"(EMA200 {config.SPOT_CURRENCY_SYMBOL}{result.ema_trend:,.2f} + {config.ema_gap_for(pair)*100:.0f}% gap)."
                     )
             elif result.rsi >= config.rsi_oversold_for(pair):
                 if has_position:
@@ -337,7 +338,7 @@ def api_signals():
                     )
                 else:
                     commentary = (
-                        f"Trend is healthy (price above EMA200 by €{gap:,.2f}), "
+                        f"Trend is healthy (price above EMA200 by {config.SPOT_CURRENCY_SYMBOL}{gap:,.2f}), "
                         f"but RSI is {result.rsi:.1f} — waiting for a dip below {config.rsi_oversold_for(pair)}."
                     )
             else:
@@ -507,6 +508,16 @@ def api_shadows_pnl_history():
     def _series(db_mode, starting):
         rows = db.get_balance_history(db_mode, max(days, 0))
         result = []
+        # Prepend a synthetic origin point when history predates starting_balance
+        # (happens when a shadow was created before a balance reset, or history was
+        # cleared but the first real log entry reflects an already-deployed position)
+        if rows and rows[0][1] < starting * 0.95:
+            first_ts, _ = rows[0]
+            try:
+                dt0 = datetime.datetime.fromisoformat(first_ts).astimezone(_TZ) - datetime.timedelta(minutes=1)
+                result.append({"t": dt0.strftime("%d.%m. %H:%M"), "sk": dt0.timestamp(), "pnl": 0.0, "pct": 0.0})
+            except Exception:
+                pass
         for ts, bal in rows:
             try:
                 dt = datetime.datetime.fromisoformat(ts).astimezone(_TZ)
@@ -674,7 +685,7 @@ def api_shadow_signals(name):
             elif result.signal == Signal.SELL and has_position:
                 commentary = f"RSI recovered ({result.rsi:.1f}) — sell signal."
             elif not above_trend:
-                commentary = (f"Price is €{abs(gap):,.2f} below EMA200 — downtrend guard active."
+                commentary = (f"Price is {config.SPOT_CURRENCY_SYMBOL}{abs(gap):,.2f} below EMA200 — downtrend guard active."
                               if price < result.ema_trend else
                               f"Price above EMA200 but within {ema_gap*100:.0f}% gap filter.")
             elif result.rsi >= rsi_oversold:
@@ -1478,6 +1489,8 @@ def api_futures_stats():
 def api_futures_shadows():
     if not config.FUTURES_ENABLED:
         return jsonify([])
+    if _rate_limited():
+        return jsonify({"error": "rate limited"}), 429
     from bot.futures_simulator import get_futures_shadows
     from bot.futures_exchange import get_mark_price as _gmp
     main_shim = _MainFuturesShim(_read_snapshot(_FUTURES_SNAPSHOT_PATH))
@@ -1650,6 +1663,13 @@ def api_futures_shadows_pnl_history():
     def _series(db_mode, starting):
         rows = db.get_balance_history(db_mode, max(days, 0))
         result = []
+        if rows and rows[0][1] < starting * 0.95:
+            first_ts, _ = rows[0]
+            try:
+                dt0 = datetime.datetime.fromisoformat(first_ts).astimezone(_TZ) - datetime.timedelta(minutes=1)
+                result.append({"t": dt0.strftime("%d.%m. %H:%M"), "sk": dt0.timestamp(), "pnl": 0.0, "pct": 0.0})
+            except Exception:
+                pass
         for ts, bal in rows:
             try:
                 dt = datetime.datetime.fromisoformat(ts).astimezone(_TZ)

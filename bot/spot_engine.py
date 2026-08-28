@@ -145,7 +145,7 @@ def _loop():
             _last_tick_time = time.time()
             _missed_tick_alerted = False
             notify(
-                "[TICK] Prices — " + "  |  ".join(f"{p} €{v:,.2f}" for p, v in prices.items()),
+                "[TICK] Prices — " + "  |  ".join(f"{p} {config.SPOT_CURRENCY_SYMBOL}{v:,.2f}" for p, v in prices.items()),
                 discord=False,
             )
 
@@ -209,7 +209,7 @@ def _loop():
                     if prices[pair] >= min_exit:
                         close_position(pair, prices[pair], reason="signal")
                     else:
-                        notify(f"[HOLD] {pair} SELL signal suppressed — price €{prices[pair]:,.2f} below min exit €{min_exit:,.2f} (entry €{pos.entry_price:,.2f} +{min_exit_pct*100:.1f}%)", discord=False)
+                        notify(f"[HOLD] {pair} SELL signal suppressed — price {config.SPOT_CURRENCY_SYMBOL}{prices[pair]:,.2f} below min exit {config.SPOT_CURRENCY_SYMBOL}{min_exit:,.2f} (entry {config.SPOT_CURRENCY_SYMBOL}{pos.entry_price:,.2f} +{min_exit_pct*100:.1f}%)", discord=False)
 
             # tick all shadow simulators with the same candle data
             for shadow in get_spot_shadows():
@@ -407,7 +407,7 @@ def manual_close(pair: str):
     try:
         price = get_price(pair)
         close_position(pair, price, reason="manual_override")
-        notify(f"[MANUAL CLOSE] {pair} @ €{price:.2f}")
+        notify(f"[MANUAL CLOSE] {pair} @ {config.SPOT_CURRENCY_SYMBOL}{price:.2f}")
     except Exception as e:
         notify(f"[MANUAL CLOSE ERROR] {config.scrub_err(e)}")
 
@@ -417,6 +417,6 @@ def manual_buy(pair: str, size_pct: float):
     try:
         price = get_price(pair)
         manual_add(pair, price, size_pct)
-        notify(f"[MANUAL BUY] {pair} @ €{price:.2f} ({size_pct*100:.0f}% of balance)")
+        notify(f"[MANUAL BUY] {pair} @ {config.SPOT_CURRENCY_SYMBOL}{price:.2f} ({size_pct*100:.0f}% of balance)")
     except Exception as e:
         notify(f"[MANUAL BUY ERROR] {config.scrub_err(e)}")

@@ -10,7 +10,7 @@ from .notifier import trade_alert, trailing_stop_alert, notify
 
 log = logging.getLogger("cryptobot")
 from .db import log_trade, log_balance, clear_shadow_trades
-from .spot_exchange import round_qty, get_min_notional, get_eur_balance, get_free_balance, place_order
+from .spot_exchange import round_qty, get_min_notional, get_quote_balance, get_free_balance, place_order
 
 SPOT_FEE = config.SPOT_FEE
 # Reentrant so nested calls (e.g. check_stops → close_position) don't deadlock.
@@ -47,20 +47,20 @@ def _clear_pending():
 
 
 def _sum_fills_fee_eur(fills: list) -> float:
-    """Sum commission from Binance order fills, but only when commissionAsset is EUR.
-    Non-EUR commissions (e.g. BNB discount) can't be converted here — we skip them,
+    """Sum commission from Binance order fills, but only when commissionAsset matches the quote currency.
+    Non-quote commissions (e.g. BNB discount) can't be converted here — we skip them,
     which conservatively under-counts fees rather than mis-attribute them."""
     total = 0.0
     for f in fills:
         asset = str(f.get("commissionAsset", "")).upper()
-        if asset == "EUR":
+        if asset == config.SPOT_QUOTE_CURRENCY:
             try:
                 total += float(f.get("commission", 0))
             except (TypeError, ValueError):
                 pass
         else:
             log.info(
-                "[FEE] Skipping non-EUR commission asset %s (%.8g) — cannot convert to EUR",
+                f"[FEE] Skipping non-{config.SPOT_QUOTE_CURRENCY} commission asset %s (%.8g) — cannot convert to {config.SPOT_QUOTE_CURRENCY}",
                 asset, float(f.get("commission", 0) or 0),
             )
     return total
@@ -157,11 +157,11 @@ def init():
         # In live mode, balance is always fetched from Binance — just load positions.
         _load()
         try:
-            _state.balance = get_eur_balance()
+            _state.balance = get_quote_balance()
             _save()
-            notify(f"[LIVE] Started — Binance EUR balance: €{_state.balance:.2f}  open positions: {list(_state.positions.keys()) or 'none'}")
+            notify(f"[LIVE] Started — Binance {config.SPOT_QUOTE_CURRENCY} balance: {config.SPOT_CURRENCY_SYMBOL}{_state.balance:.2f}  open positions: {list(_state.positions.keys()) or 'none'}")
         except Exception as e:
-            log.warning(f"[LIVE] Binance balance fetch failed at startup ({e}) — using last saved balance €{_state.balance:.2f}")
+            log.warning(f"[LIVE] Binance balance fetch failed at startup ({e}) — using last saved balance {config.SPOT_CURRENCY_SYMBOL}{_state.balance:.2f}")
     else:
         _load()
         _save()  # anchor starting balance on first run; no-op if file already exists with same state
@@ -183,7 +183,7 @@ def sync_position_from_binance(pair: str) -> dict:
     if pair not in _state.positions:
         return {"error": f"no open position for {pair}"}
 
-    asset = pair.replace("EUR", "").replace("USDT", "")
+    asset = config.base_asset_for(pair)
     actual = get_free_balance(asset)
     pos    = _state.positions[pair]
     old_amount = pos.amount
@@ -244,7 +244,7 @@ def _open_position_locked(pair: str, price: float, size_pct: float = None, price
     pct = size_pct if size_pct is not None else (1.0 if no_dca else config.SPOT_POSITION_SIZE_PCT)
 
     if config.SPOT_MODE == "live":
-        balance = get_eur_balance()
+        balance = get_quote_balance()
         _state.balance = balance
     else:
         balance = _state.balance
@@ -264,7 +264,7 @@ def _open_position_locked(pair: str, price: float, size_pct: float = None, price
     if balance - size < min_notional:
         size = min(balance, max_size)
     if size < min_notional:
-        notify(f"[SKIP] {pair} buy signal — order size €{size:.2f} below minimum €{min_notional:.2f} (balance €{balance:.2f})")
+        notify(f"[SKIP] {pair} buy signal — order size {config.SPOT_CURRENCY_SYMBOL}{size:.2f} below minimum {config.SPOT_CURRENCY_SYMBOL}{min_notional:.2f} (balance {config.SPOT_CURRENCY_SYMBOL}{balance:.2f})")
         return
 
     if config.SPOT_MODE == "live":
@@ -286,7 +286,7 @@ def _open_position_locked(pair: str, price: float, size_pct: float = None, price
             pos      = Position(pair, avg_price, amount, value, tp_price, avg_price, opened_at=_time.time())
             _state.positions[pair] = pos
             _state.total_fees += buy_fee
-            _state.balance = get_eur_balance()
+            _state.balance = get_quote_balance()
             _save()
         finally:
             _clear_pending()
@@ -314,7 +314,7 @@ def manual_add(pair: str, price: float, size_pct: float):
 def _manual_add_locked(pair: str, price: float, size_pct: float):
     """Manual buy — opens new position or merges into existing one."""
     if config.SPOT_MODE == "live":
-        balance = get_eur_balance()
+        balance = get_quote_balance()
         _state.balance = balance
     else:
         balance = _state.balance
@@ -347,7 +347,7 @@ def _manual_add_locked(pair: str, price: float, size_pct: float):
             else:
                 apply_dca(_state.positions[pair], avg_price, value)
             _state.total_fees += buy_fee
-            _state.balance = get_eur_balance()
+            _state.balance = get_quote_balance()
             _save()
         finally:
             _clear_pending()
@@ -390,7 +390,7 @@ def _dca_position_locked(pair: str, price: float, prices: dict | None = None):
         return
 
     if config.SPOT_MODE == "live":
-        balance = get_eur_balance()
+        balance = get_quote_balance()
         _state.balance = balance
     else:
         balance = _state.balance
@@ -410,7 +410,7 @@ def _dca_position_locked(pair: str, price: float, prices: dict | None = None):
     if balance - dca_value < min_notional:
         dca_value = min(balance, max_size)
     if dca_value < min_notional:
-        notify(f"[SKIP] {pair} DCA — order size €{dca_value:.2f} below minimum €{min_notional:.2f} (balance €{balance:.2f})")
+        notify(f"[SKIP] {pair} DCA — order size {config.SPOT_CURRENCY_SYMBOL}{dca_value:.2f} below minimum {config.SPOT_CURRENCY_SYMBOL}{min_notional:.2f} (balance {config.SPOT_CURRENCY_SYMBOL}{balance:.2f})")
         return
 
     if config.SPOT_MODE == "live":
@@ -431,7 +431,7 @@ def _dca_position_locked(pair: str, price: float, prices: dict | None = None):
             log_trade(pair, "BUY", avg_price, bought, dca_value, buy_fee, mode="live", notes="dca")
             apply_dca(pos, avg_price, dca_value, tp_pct=config.take_profit_for(pair))
             _state.total_fees += buy_fee
-            _state.balance = get_eur_balance()
+            _state.balance = get_quote_balance()
             _save()
         finally:
             _clear_pending()
@@ -471,7 +471,7 @@ def _close_position_locked(pair: str, price: float, reason: str = "signal"):
     pos = _state.positions.pop(pair)
 
     if config.SPOT_MODE == "live":
-        base_asset  = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
+        base_asset  = config.base_asset_for(pair)
         free        = get_free_balance(base_asset)
         sell_amount = min(pos.amount, free)
         _write_pending(pair, "SELL", sell_amount * price)
@@ -497,7 +497,7 @@ def _close_position_locked(pair: str, price: float, reason: str = "signal"):
         _state.total_trades += 1
         _state.total_pnl    += pnl
         _state.total_fees   += sell_fee
-        _state.balance = get_eur_balance()
+        _state.balance = get_quote_balance()
         if reason == "trailing_stop":
             _set_stop_cooldown(pair)
         _save()
@@ -543,7 +543,7 @@ def _partial_close_position_locked(pair: str, price: float):
     sell_amt = round_qty(pair, pos.amount * pct) if config.SPOT_MODE == "live" else pos.amount * pct
 
     if config.SPOT_MODE == "live":
-        base_asset = pair.replace("EUR", "").replace("USDT", "").replace("USDC", "")
+        base_asset = config.base_asset_for(pair)
         free       = get_free_balance(base_asset)
         sell_amt   = min(sell_amt, round_qty(pair, free * pct))
         _write_pending(pair, "SELL_PARTIAL", sell_amt * price)
@@ -566,7 +566,7 @@ def _partial_close_position_locked(pair: str, price: float):
         log_trade(pair, "SELL", avg_price, sell_amt, exit_value, sell_fee, mode="live", pnl=pnl, notes="partial_close")
         _state.total_pnl  += pnl
         _state.total_fees += sell_fee
-        _state.balance = get_eur_balance()
+        _state.balance = get_quote_balance()
     else:
         avg_price  = price
         exit_value = sell_amt * price
@@ -612,7 +612,7 @@ def check_stops(prices: dict):
                   and (now - pos.opened_at) / 86400 > config.time_stop_for(pair)
                   and pos.peak() <= pos.trailing_stop_level(floor_pct=floor, trail_pct=trail)):
                 age = (now - pos.opened_at) / 86400
-                notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at €{price:,.2f}")
+                notify(f"[TIME STOP] {pair} — position held {age:.0f}d without reaching profit floor, closing at {config.SPOT_CURRENCY_SYMBOL}{price:,.2f}")
                 close_position(pair, price, reason="time_stop")
             elif updated:
                 _save()
@@ -689,6 +689,7 @@ class SpotShadowSimulator:
         if self.started_at is None:
             import datetime, zoneinfo
             self.started_at = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+            log_balance(round(self.starting_balance, 2), self._db_mode)
             self._save()
 
     # --- override helpers ---
@@ -1054,6 +1055,7 @@ class GridShadowSimulator:
         if self.started_at is None:
             import datetime, zoneinfo
             self.started_at = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+            log_balance(round(self.starting_balance, 2), self._db_mode)
             self._save()
 
     # --- compatibility helpers (app.py calls these on all shadows) ---

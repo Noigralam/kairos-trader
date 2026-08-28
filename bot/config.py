@@ -28,6 +28,9 @@ DISCORD_ALLOWED_USER_IDS: set[int] = {
 SPOT_INVESTED            = float(os.getenv("SPOT_INVESTED", "0"))                  # total capital deposited; overrides starting balance display (0 = use first balance_history entry)
 SPOT_MODE                = os.getenv("SPOT_MODE", "simulation")                   # simulation | live
 SPOT_TRADING_PAIRS       = [p.strip() for p in os.getenv("SPOT_TRADING_PAIRS", "ETHEUR,SOLEUR").split(",") if p.strip()]
+SPOT_QUOTE_CURRENCY      = os.getenv("SPOT_QUOTE_CURRENCY", "EUR")
+_CURRENCY_SYMBOLS   = {"EUR": "€", "GBP": "£", "USDT": "$", "USDC": "$", "BRL": "R$", "TRY": "₺", "AUD": "A$", "BNB": "BNB "}
+SPOT_CURRENCY_SYMBOL = os.getenv("SPOT_CURRENCY_SYMBOL", _CURRENCY_SYMBOLS.get(SPOT_QUOTE_CURRENCY, SPOT_QUOTE_CURRENCY + " "))
 SPOT_SIMULATION_BALANCE  = float(os.getenv("SPOT_SIMULATION_BALANCE", "200.0"))  # virtual EUR balance for simulation
 SPOT_SHADOW_DEFAULT_BALANCE = float(os.getenv("SPOT_SHADOW_DEFAULT_BALANCE", "200.0"))  # starting balance for new shadows when no live state exists
 SPOT_FEE                 = float(os.getenv("SPOT_FEE", "0.001"))                  # 0.1% Binance maker/taker rate
@@ -102,6 +105,16 @@ def partial_close_for(pair: str) -> float:
 
 def partial_close_trail_for(pair: str) -> float:
     return float(os.getenv(f"SPOT_PARTIAL_CLOSE_TRAIL_PCT_{pair}", SPOT_PARTIAL_CLOSE_TRAIL_PCT))
+
+def base_asset_for(pair: str) -> str:
+    """Strip the configured quote currency suffix from a pair name to get the base asset."""
+    if pair.upper().endswith(SPOT_QUOTE_CURRENCY):
+        return pair[:-len(SPOT_QUOTE_CURRENCY)]
+    # fallback: strip common quote currencies for legacy state files
+    for qc in ("EUR", "USDT", "USDC", "GBP", "BRL", "TRY"):
+        if pair.upper().endswith(qc):
+            return pair[:-len(qc)]
+    return pair
 
 # ---------------------------------------------------------------------------
 # Futures (USDT-M perpetuals)

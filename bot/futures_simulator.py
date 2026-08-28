@@ -19,11 +19,35 @@ from .notifier import notify, trade_alert, trailing_stop_alert
 from .db import log_trade
 
 FEE = config.FUTURES_FEE
-_check_lock = threading.Lock()
+# Reentrant so nested calls (check_stops → close_long) don't deadlock.
+_state_lock = threading.RLock()
 
 _SIM_STATE_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_state_simulation.json")
 _LIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "futures_state_live.json")
 _STATE_PATH = _LIVE_STATE_PATH if config.FUTURES_MODE == "live" else _SIM_STATE_PATH
+
+_DATA_DIR_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+_PENDING_PATH  = os.path.join(_DATA_DIR_ROOT, "futures_pending_order.json")
+
+
+def _write_pending(symbol: str, side: str, size: float):
+    try:
+        os.makedirs(_DATA_DIR_ROOT, exist_ok=True)
+        tmp = _PENDING_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"symbol": symbol, "side": side, "size": size, "ts": _time.time()}, f)
+        os.replace(tmp, _PENDING_PATH)
+    except Exception as e:
+        log.warning(f"[FUTURES PENDING] Failed to write pending-order ledger: {e}")
+
+
+def _clear_pending():
+    try:
+        os.remove(_PENDING_PATH)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log.warning(f"[FUTURES PENDING] Failed to remove pending-order ledger: {e}")
 
 
 @dataclass
@@ -71,12 +95,20 @@ def _save():
             for sym, p in _state.positions.items()
         },
     }
-    with open(_STATE_PATH, "w") as f:
+    tmp = _STATE_PATH + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp, _STATE_PATH)
 
 
 def _load():
     global _state
+    if os.path.exists(_PENDING_PATH):
+        log.critical(
+            "UNRESOLVED FUTURES PENDING ORDER detected in %s — a previous trade may not "
+            "have been recorded. Check Binance for open positions and reconcile manually.",
+            _PENDING_PATH,
+        )
     if not os.path.exists(_STATE_PATH):
         return
     try:
@@ -93,8 +125,11 @@ def _load():
             if "dca_done" in d:
                 d["dca_count"] = 1 if d.pop("dca_done") else 0
             _state.positions[sym] = FuturesPosition(**d)
-    except Exception:
-        pass  # corrupt state — start fresh
+    except Exception as e:
+        log.critical(
+            "Futures state file %s is corrupt: %s. Starting with empty state — "
+            "check Binance for open positions!", _STATE_PATH, e,
+        )
 
 
 def init():
@@ -137,6 +172,11 @@ def reset():
 # ---------------------------------------------------------------------------
 
 def open_long(symbol: str, price: float, size_pct: float = None):
+    with _state_lock:
+        return _open_long_locked(symbol, price, size_pct)
+
+
+def _open_long_locked(symbol: str, price: float, size_pct: float = None):
     if symbol in _state.positions:
         return
 
@@ -169,7 +209,12 @@ def open_long(symbol: str, price: float, size_pct: float = None):
     tp_price  = price * (1 + config.FUTURES_TAKE_PROFIT_PCT)
 
     if config.FUTURES_MODE == "live":
-        order     = place_order(symbol, "BUY", amount)
+        _write_pending(symbol, "BUY", margin)
+        try:
+            order     = place_order(symbol, "BUY", amount)
+        except Exception:
+            _clear_pending()
+            raise
         fills     = order.get("fills", [])
         avg_price = (sum(float(f["price"]) * float(f["qty"]) for f in fills)
                      / sum(float(f["qty"]) for f in fills)) if fills else price
@@ -191,6 +236,8 @@ def open_long(symbol: str, price: float, size_pct: float = None):
     _state.balance   -= margin + entry_fee
     _state.total_fees += entry_fee
     _save()
+    if config.FUTURES_MODE == "live":
+        _clear_pending()
 
     notify(
         f"[FUTURES BUY] {symbol} LONG  {amount} @ ${price:,.4f}  "
@@ -203,6 +250,11 @@ def open_long(symbol: str, price: float, size_pct: float = None):
 
 
 def dca_long(symbol: str, price: float):
+    with _state_lock:
+        return _dca_long_locked(symbol, price)
+
+
+def _dca_long_locked(symbol: str, price: float):
     if symbol not in _state.positions:
         return
     pos = _state.positions[symbol]
@@ -229,7 +281,12 @@ def dca_long(symbol: str, price: float):
     entry_fee    = dca_notional * FEE
 
     if config.FUTURES_MODE == "live":
-        order    = place_order(symbol, "BUY", dca_amount)
+        _write_pending(symbol, "DCA", dca_margin)
+        try:
+            order    = place_order(symbol, "BUY", dca_amount)
+        except Exception:
+            _clear_pending()
+            raise
         fills    = order.get("fills", [])
         price    = (sum(float(f["price"]) * float(f["qty"]) for f in fills)
                     / sum(float(f["qty"]) for f in fills)) if fills else price
@@ -242,6 +299,8 @@ def dca_long(symbol: str, price: float):
     _state.balance    -= dca_margin + entry_fee
     _state.total_fees += entry_fee
     _save()
+    if config.FUTURES_MODE == "live":
+        _clear_pending()
 
     notify(
         f"[FUTURES DCA] {symbol}  +{dca_amount} @ ${price:,.4f}  "
@@ -252,6 +311,11 @@ def dca_long(symbol: str, price: float):
 
 
 def close_long(symbol: str, price: float, reason: str = "signal"):
+    with _state_lock:
+        return _close_long_locked(symbol, price, reason)
+
+
+def _close_long_locked(symbol: str, price: float, reason: str = "signal"):
     if symbol not in _state.positions:
         return
     pos = _state.positions.pop(symbol)
@@ -262,7 +326,13 @@ def close_long(symbol: str, price: float, reason: str = "signal"):
     pnl       = calc_pnl(pos, price, entry_fee=entry_fee, exit_fee=exit_fee)
 
     if config.FUTURES_MODE == "live":
-        exchange_close(symbol)
+        _write_pending(symbol, "SELL", notional)
+        try:
+            exchange_close(symbol)
+        except Exception:
+            _state.positions[symbol] = pos  # restore
+            _clear_pending()
+            raise
         _state.balance = get_usdt_balance()
     else:
         returned_margin = pos.margin + pnl
@@ -275,6 +345,8 @@ def close_long(symbol: str, price: float, reason: str = "signal"):
     _state.total_fees    += exit_fee
     _state.total_funding += pos.funding_paid
     _save()
+    if config.FUTURES_MODE == "live":
+        _clear_pending()
 
     pnl_pct = pnl / pos.margin * 100 if pos.margin else 0
     notify(
@@ -294,6 +366,11 @@ def apply_funding(symbol: str, rate: float):
     Deduct (or credit) funding from an open long position.
     Positive rate = long pays short. Negative = long receives.
     """
+    with _state_lock:
+        return _apply_funding_locked(symbol, rate)
+
+
+def _apply_funding_locked(symbol: str, rate: float):
     if symbol not in _state.positions:
         return
     pos     = _state.positions[symbol]
@@ -312,7 +389,7 @@ def apply_funding(symbol: str, rate: float):
 
 
 def check_stops(prices: dict):
-    with _check_lock:
+    with _state_lock:
         now = _time.time()
         for symbol, pos in list(_state.positions.items()):
             if symbol not in prices:
@@ -390,7 +467,9 @@ class FuturesShadowSimulator:
         self._load()
         if self.started_at is None:
             import datetime, zoneinfo
+            from .db import log_balance
             self.started_at = datetime.datetime.now(tz=zoneinfo.ZoneInfo("Europe/Helsinki")).isoformat()
+            log_balance(round(self.balance, 2), self._db_mode)
             self._save()
 
     def _o(self, key, default):
@@ -546,7 +625,8 @@ class FuturesShadowSimulator:
 
     def _save(self):
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
-        with open(self.state_path, "w") as f:
+        tmp = self.state_path + ".tmp"
+        with open(tmp, "w") as f:
             json.dump({
                 "name":             self.name,
                 "started_at":       self.started_at,
@@ -578,6 +658,7 @@ class FuturesShadowSimulator:
                     for sym, p in self.positions.items()
                 },
             }, f, indent=2)
+        os.replace(tmp, self.state_path)
 
     def _load(self):
         if not os.path.exists(self.state_path):
@@ -601,8 +682,11 @@ class FuturesShadowSimulator:
                 if "dca_done" in d:
                     d["dca_count"] = 1 if d.pop("dca_done") else 0
                 self.positions[sym] = FuturesPosition(**d)
-        except Exception:
-            pass
+        except Exception as e:
+            log.critical(
+                "Futures shadow state file %s is corrupt: %s. Starting %s empty.",
+                self.state_path, e, self.name,
+            )
 
 
 _futures_shadows: list[FuturesShadowSimulator] = []

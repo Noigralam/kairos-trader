@@ -488,8 +488,8 @@ def _legend(wide: bool = True, description: str = ""):
     if wide:
         print(f"    n           closed trades  (+N = position still open at backtest end, valued at last candle price)")
         print(f"    W/L         winning / losing trades (profit > 0 counts as win)")
-        print(f"    PnL         total realized € profit/loss  |  avg = average € per closed trade")
-        print(f"    worst/best  single trade extremes in €  |  fees = total exchange fees paid (0.1% per side)")
+        print(f"    PnL         total realized {config.SPOT_CURRENCY_SYMBOL} profit/loss  |  avg = average {config.SPOT_CURRENCY_SYMBOL} per closed trade")
+        print(f"    worst/best  single trade extremes in {config.SPOT_CURRENCY_SYMBOL}  |  fees = total exchange fees paid (0.1% per side)")
         print(f"    dca         number of trades where averaging-down (DCA) fired before the exit")
         print(f"    exits       how positions were closed:")
         print(f"                  trail   = trailing stop — price dropped X% from its peak while above profit floor")
@@ -500,9 +500,9 @@ def _legend(wide: bool = True, description: str = ""):
         print(f"                  partial = partial take-profit — fraction sold at TP, remainder trailed with tighter stop")
     else:
         print(f"    n             closed trades  |  open column = positions still open at backtest end")
-        print(f"    W/L           winning / losing trades  |  PnL = total realized €  |  worst = worst single trade (€)")
+        print(f"    W/L           winning / losing trades  |  PnL = total realized {config.SPOT_CURRENCY_SYMBOL}  |  worst = worst single trade ({config.SPOT_CURRENCY_SYMBOL})")
         print(f"    bal-aft-tax   final balance (start + PnL − tax) after Finnish capital gains tax")
-        print(f"                  (30% on gains up to €30 000, 34% on gains above €30 000)")
+        print(f"                  (30% on gains up to {config.SPOT_CURRENCY_SYMBOL}30 000, 34% on gains above {config.SPOT_CURRENCY_SYMBOL}30 000)")
         print(f"    exits         trail=trailing stop  TP=hard take-profit  RSI=overbought signal  time=time stop")
     if description:
         print(f"  {'─'*(width - 2)}")
@@ -1078,7 +1078,7 @@ def sweep_multipos(days_list: list[int]):
 
         for pair in ["ETHEUR", "SOLEUR"]:
             df = dfs[pair]
-            print(f"\n  ── {pair} (start=€{start:.0f}) ──")
+            print(f"\n  ── {pair} (start={config.SPOT_CURRENCY_SYMBOL}{start:.0f}) ──")
             t, _ = run_pair(pair, df, start, max_dca=config.SPOT_DCA_MAX,
                             dca_step=config.SPOT_DCA_STEP_PCT)
             summarise(f"1 slot + {config.SPOT_DCA_MAX} DCA  (current)", t, start, wide=True)
@@ -1089,7 +1089,7 @@ def sweep_multipos(days_list: list[int]):
                     label += "  (baseline)"
                 summarise(label, t, start, wide=True)
 
-        print(f"\n  ── ETH+SOL combined (€{half:.0f} each) ──")
+        print(f"\n  ── ETH+SOL combined ({config.SPOT_CURRENCY_SYMBOL}{half:.0f} each) ──")
         eth_cur, _ = run_pair("ETHEUR", dfs["ETHEUR"], half,
                                max_dca=config.SPOT_DCA_MAX, dca_step=config.SPOT_DCA_STEP_PCT)
         sol_cur, _ = run_pair("SOLEUR", dfs["SOLEUR"], half,
@@ -1350,7 +1350,7 @@ def run_topup(start: float, monthly: float, days: int):
     # --- pair performance table ---
     half = start / 2
     dfs_full = {p: fetch(p, days) for p in PAIRS}
-    print(f"\nPair comparison — {days}d  (start=€{start:.0f})")
+    print(f"\nPair comparison — {days}d  (start={config.SPOT_CURRENCY_SYMBOL}{start:.0f})")
     print(f"  {'Scenario':<36}  {'n':>4}  {'open':>4}  {'W/L':<7}  {'PnL':>8}  {'bal-aft-tax':>11}  {'worst':>8}  fees")
     print(f"  {'─'*36}  {'─'*4}  {'─'*4}  {'─'*7}  {'─'*8}  {'─'*10}  {'─'*8}  {'─'*5}")
     eth_t, _ = run_pair("ETHEUR", dfs_full["ETHEUR"], start)
@@ -1362,18 +1362,18 @@ def run_topup(start: float, monthly: float, days: int):
     summarise("ETH+SOL combined [pos=75%]", eth2 + sol2, start)
 
     print(f"\n{'═'*54}")
-    print(f"  ETH + SOL  |  {days} days  |  +€{monthly:.0f}/month")
+    print(f"  ETH + SOL  |  {days} days  |  +{config.SPOT_CURRENCY_SYMBOL}{monthly:.0f}/month")
     print(f"{'═'*54}")
-    print(f"  Total invested   : €{total_invested:.2f}  (€{start:.0f} start + €{added:.0f} added)")
-    print(f"  Final balance    : €{balance:.2f}")
-    print(f"  Realized PnL     : €{realized_pnl:+.2f}  ({trades} closed trades)")
+    print(f"  Total invested   : {config.SPOT_CURRENCY_SYMBOL}{total_invested:.2f}  ({config.SPOT_CURRENCY_SYMBOL}{start:.0f} start + {config.SPOT_CURRENCY_SYMBOL}{added:.0f} added)")
+    print(f"  Final balance    : {config.SPOT_CURRENCY_SYMBOL}{balance:.2f}")
+    print(f"  Realized PnL     : {config.SPOT_CURRENCY_SYMBOL}{realized_pnl:+.2f}  ({trades} closed trades)")
     if open_pnl != 0:
-        print(f"  Open pos. PnL    : €{open_pnl:+.2f}  ({', '.join(open_pairs)})")
-    print(f"  Tax (FI 30%)     : €{tax:.2f}")
-    print(f"  After-tax PnL    : €{after_tax_pnl:+.2f}")
-    print(f"  After-tax bal    : €{start + added + after_tax_pnl:.2f}")
+        print(f"  Open pos. PnL    : {config.SPOT_CURRENCY_SYMBOL}{open_pnl:+.2f}  ({', '.join(open_pairs)})")
+    print(f"  Tax (FI 30%)     : {config.SPOT_CURRENCY_SYMBOL}{tax:.2f}")
+    print(f"  After-tax PnL    : {config.SPOT_CURRENCY_SYMBOL}{after_tax_pnl:+.2f}")
+    print(f"  After-tax bal    : {config.SPOT_CURRENCY_SYMBOL}{start + added + after_tax_pnl:.2f}")
     print(f"  ROI on invested  : {(balance - total_invested) / total_invested * 100:+.1f}%")
-    print(f"  Fees             : €{total_fees:.2f}")
+    print(f"  Fees             : {config.SPOT_CURRENCY_SYMBOL}{total_fees:.2f}")
 
     print(f"\n  Month-by-month portfolio value (cash + open positions):")
     print(f"  {'Month':<10}  {'Value':>8}  {'vs Invested':>12}")
@@ -1383,7 +1383,7 @@ def run_topup(start: float, monthly: float, days: int):
         key = (ts.year, ts.month)
         if key not in seen:
             seen.add(key)
-            print(f"  {ts.strftime('%Y-%m'):<10}  €{val:>7.2f}  {val - cumulative:>+11.2f}")
+            print(f"  {ts.strftime('%Y-%m'):<10}  {config.SPOT_CURRENCY_SYMBOL}{val:>7.2f}  {val - cumulative:>+11.2f}")
             cumulative += monthly
 
 
@@ -1474,12 +1474,12 @@ def sweep_solfocus(days_list: list[int]):
         df_sol = fetch("SOLEUR", days)
         df_eth = fetch("ETHEUR", days)
 
-        print(f"\n  ── SOLEUR only (€{start:.0f}) ──")
+        print(f"\n  ── SOLEUR only ({config.SPOT_CURRENCY_SYMBOL}{start:.0f}) ──")
         for label, kwargs in scenarios:
             trades, _ = run_pair("SOLEUR", df_sol, start, **kwargs)
             summarise(label, trades, start, wide=True)
 
-        print(f"\n  ── allocation: where to put €{start:.0f} ──")
+        print(f"\n  ── allocation: where to put {config.SPOT_CURRENCY_SYMBOL}{start:.0f} ──")
         sol_full, _ = run_pair("SOLEUR", df_sol, start,
                                rsi_period=sol_rsi_period, rsi_buy=config.SPOT_RSI_OVERSOLD,
                                rsi_sell=sol_rsi_ob, floor_pct=config.SPOT_PROFIT_FLOOR_PCT,
