@@ -57,7 +57,13 @@ First candle tick fires within 15 minutes. When you're happy with simulation res
 
 ## Screenshots
 
-See the [`screenshots/`](screenshots/) directory for dashboard and alert examples.
+![Main dashboard — balance, portfolio value, P&L and performance stats](screenshots/kairos_1.jpg)
+
+![Open position detail — price ladder, DCA trigger, break-even and trailing stop](screenshots/kairos_2.jpg)
+
+![Price chart with candlesticks, indicators and trade markers, plus recent trades table](screenshots/kairos_3.jpg)
+
+![Shadow simulator rankings — all profiles compared by return, P&L and win rate](screenshots/kairos_4.jpg)
 
 ## Documentation
 
