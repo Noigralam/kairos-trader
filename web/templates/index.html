@@ -794,7 +794,7 @@
           </div>
           <div class="btn-group" id="sh-pnl-mode-btns">
             <button onclick="setShPnlMode('pct')" data-mode="pct" class="active">% return</button>
-            <button onclick="setShPnlMode('eur')" data-mode="eur">{{ currency_symbol }} PnL</button>
+            <button onclick="setShPnlMode('abs')" data-mode="abs">{{ currency_symbol }} PnL</button>
           </div>
         </div>
       </div>
@@ -1891,7 +1891,7 @@
     ]);
   }
 
-  let _shPnlMode = 'pct';  // 'pct' | 'eur'
+  let _shPnlMode = 'pct';  // 'pct' | 'abs'
 
   function setShPnlDays(days) {
     _shPnlDays = days;
