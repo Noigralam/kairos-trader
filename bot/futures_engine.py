@@ -84,18 +84,28 @@ def _loop():
 
     sleep_sec = INTERVAL_SECONDS.get(_FUTURES_INTERVAL, 900)
 
-    # Pre-fill next funding times
+    # Pre-fill next funding times — load persisted values from snapshot first to avoid
+    # double-charging funding if the engine restarts mid-cycle.
+    try:
+        import json as _json_tmp
+        snap = _json_tmp.load(open(_STATUS_SNAPSHOT_PATH)) if os.path.exists(_STATUS_SNAPSHOT_PATH) else {}
+        for sym, ts in snap.get("next_funding_times", {}).items():
+            _next_funding[sym] = int(ts)
+    except Exception:
+        pass
     for sym in config.FUTURES_TRADING_PAIRS:
-        try:
-            _next_funding[sym] = get_next_funding_time(sym)
-        except Exception:
-            _next_funding[sym] = 0
+        if sym not in _next_funding or _next_funding[sym] == 0:
+            try:
+                _next_funding[sym] = get_next_funding_time(sym)
+            except Exception:
+                _next_funding[sym] = 0
 
     # Align to next candle boundary
     wait = _seconds_until_next_candle(sleep_sec)
     log.info(f"[FUTURES] Waiting {wait}s to align to next {_FUTURES_INTERVAL} candle boundary")
     time.sleep(wait)
 
+    _consecutive_errors = 0
     while _running:
         if _paused:
             time.sleep(5)
@@ -200,10 +210,16 @@ def _loop():
             _db.log_balance(round(snap.balance + open_pnl, 2), f"futures_{config.FUTURES_MODE}")
 
             write_status_snapshot(prices)
+            _consecutive_errors = 0
 
         except Exception as e:
             log.error(f"[FUTURES LOOP] {e}", exc_info=True)
-            notify(f"[FUTURES ERROR] {e}", discord=False)
+            notify(f"[FUTURES ERROR] {config.scrub_err(e)}", discord=False)
+            _consecutive_errors += 1
+            if _consecutive_errors >= 5:
+                with _lock:
+                    _paused = True
+                notify(f"[FUTURES] ⏸ Auto-paused after {_consecutive_errors} consecutive tick failures — resume manually when resolved.")
 
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
@@ -302,6 +318,7 @@ def write_status_snapshot(prices: dict | None = None):
             "total_fees":       round(state.total_fees, 4),
             "total_funding":    round(state.total_funding, 4),
             "positions":        positions_out,
+            "next_funding_times": dict(_next_funding),
             "written_at":       now_iso,
         }
         tmp = _STATUS_SNAPSHOT_PATH + ".tmp"
@@ -319,6 +336,10 @@ def start():
             return
         _running = True
         _start_time = time.time()
+    if _thread and _thread.is_alive():
+        log.warning("Futures engine thread still alive — waiting up to 15s for it to stop")
+        _thread.join(timeout=15)
+    config.validate()
     sim_init()
     init_futures_shadows()
     write_status_snapshot()
@@ -334,6 +355,8 @@ def stop():
         _running = False
         _paused  = False
     notify("[FUTURES] Engine stopped.", discord=False)
+    if _thread and _thread.is_alive():
+        _thread.join(timeout=10)
 
 
 def pause():
@@ -373,7 +396,7 @@ def manual_buy(symbol: str, size_pct: float = None):
         open_long(symbol, price, size_pct=size_pct)
         notify(f"[FUTURES MANUAL BUY] {symbol} @ ${price:,.4f}")
     except Exception as e:
-        notify(f"[FUTURES MANUAL BUY ERROR] {e}")
+        notify(f"[FUTURES MANUAL BUY ERROR] {config.scrub_err(e)}")
 
 
 def manual_close(symbol: str):
@@ -383,4 +406,4 @@ def manual_close(symbol: str):
         close_long(symbol, price, reason="manual_override")
         notify(f"[FUTURES MANUAL CLOSE] {symbol} @ ${price:,.4f}")
     except Exception as e:
-        notify(f"[FUTURES MANUAL CLOSE ERROR] {e}")
+        notify(f"[FUTURES MANUAL CLOSE ERROR] {config.scrub_err(e)}")

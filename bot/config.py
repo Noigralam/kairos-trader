@@ -16,6 +16,11 @@ DISCORD_GUILD_ID        = os.getenv("DISCORD_GUILD_ID", "")
 DISCORD_NOTIFY_TICKS    = os.getenv("DISCORD_NOTIFY_TICKS",    "true").lower()  != "false"
 DISCORD_MENTION_ON_TRADE = os.getenv("DISCORD_MENTION_ON_TRADE", "true").lower() != "false"
 DISCORD_TICK_HISTORY    = int(os.getenv("DISCORD_TICK_HISTORY", "5"))
+# Comma-separated list of Discord user IDs allowed to run mutating slash commands.
+# Empty/unset → no user is authorised (mutating commands are effectively disabled).
+DISCORD_ALLOWED_USER_IDS: set[int] = {
+    int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip().isdigit()
+}
 
 # ---------------------------------------------------------------------------
 # Spot (EUR pairs)
@@ -258,3 +263,41 @@ TAX_RATE_LOW       = float(os.getenv("TAX_RATE_LOW",    "0.30"))   # rate on gai
 TAX_BRACKET        = float(os.getenv("TAX_BRACKET",     "30000"))  # threshold between low and high rate
 TAX_RATE_HIGH      = float(os.getenv("TAX_RATE_HIGH",   "0.34"))   # rate on gains above TAX_BRACKET
 TAX_EXEMPT_AMOUNT  = float(os.getenv("TAX_EXEMPT_AMOUNT", "0"))    # annual tax-free allowance (subtracted before rates apply)
+
+
+# ---------------------------------------------------------------------------
+# Startup validation — call from engine start() to fail fast on bad configs
+# ---------------------------------------------------------------------------
+
+def validate() -> None:
+    """Sanity-check critical config values. Raises ValueError with a helpful message."""
+    errors: list[str] = []
+
+    if not (0 < SPOT_POSITION_SIZE_PCT <= 1):
+        errors.append(f"SPOT_POSITION_SIZE_PCT must be in (0, 1] — got {SPOT_POSITION_SIZE_PCT}")
+    if SPOT_TRAILING_STOP_PCT <= 0:
+        errors.append(f"SPOT_TRAILING_STOP_PCT must be > 0 — got {SPOT_TRAILING_STOP_PCT}")
+    if SPOT_TAKE_PROFIT_PCT <= 0:
+        errors.append(f"SPOT_TAKE_PROFIT_PCT must be > 0 — got {SPOT_TAKE_PROFIT_PCT}")
+    if SPOT_PROFIT_FLOOR_PCT < 0:
+        errors.append(f"SPOT_PROFIT_FLOOR_PCT must be >= 0 — got {SPOT_PROFIT_FLOOR_PCT}")
+    if SPOT_DCA_DROP_PCT <= 0:
+        errors.append(f"SPOT_DCA_DROP_PCT must be > 0 — got {SPOT_DCA_DROP_PCT}")
+    if not SPOT_TRADING_PAIRS or any(not isinstance(p, str) or not p.strip() for p in SPOT_TRADING_PAIRS):
+        errors.append(f"SPOT_TRADING_PAIRS must be a non-empty list of non-empty strings — got {SPOT_TRADING_PAIRS!r}")
+
+    if FUTURES_ENABLED:
+        if not (0 < FUTURES_POSITION_SIZE_PCT <= 1):
+            errors.append(f"FUTURES_POSITION_SIZE_PCT must be in (0, 1] — got {FUTURES_POSITION_SIZE_PCT}")
+
+    if errors:
+        raise ValueError("Invalid configuration:\n  - " + "\n  - ".join(errors))
+
+
+def scrub_err(text: str) -> str:
+    """Strip Binance API credentials from an exception string before logging or sending externally."""
+    result = str(text)
+    for secret in (BINANCE_API_KEY, BINANCE_SECRET_KEY):
+        if secret and secret in result:
+            result = result.replace(secret, "***")
+    return result

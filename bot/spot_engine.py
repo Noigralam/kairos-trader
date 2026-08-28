@@ -111,6 +111,7 @@ def _loop():
     log.info(f"Waiting {wait}s to align to next {config.SPOT_INTERVAL} candle boundary")
     time.sleep(wait)
 
+    _consecutive_errors = 0
     while _status != BotStatus.STOPPED:
         if _status == BotStatus.PAUSED:
             time.sleep(5)
@@ -222,10 +223,17 @@ def _loop():
             _db.log_balance(round(snap_state.balance + open_val, 2), config.SPOT_MODE)
 
             write_status_snapshot(prices)
+            _consecutive_errors = 0
 
         except Exception as e:
             log.error(e, exc_info=True)
-            notify(f"⚠️ Tick failed — {e}")
+            notify(f"⚠️ Tick failed — {config.scrub_err(e)}")
+            _consecutive_errors += 1
+            if _consecutive_errors >= 5:
+                _set_status(BotStatus.PAUSED)
+                notify(f"⏸ Auto-paused after {_consecutive_errors} consecutive tick failures — resume manually when resolved.")
+                _consecutive_errors = 0
+                continue
 
         time.sleep(_seconds_until_next_candle(sleep_sec))
 
@@ -360,6 +368,10 @@ def start():
     global _thread, _stop_thread, _start_time
     if _status == BotStatus.RUNNING:
         return
+    if _thread and _thread.is_alive():
+        log.warning("Spot engine thread still alive — waiting up to 15s for it to stop")
+        _thread.join(timeout=15)
+    config.validate()
     _ensure_live_since()
     init_spot_shadows()
     _start_time = time.time()
@@ -386,6 +398,8 @@ def stop():
     with _lock:
         _status = BotStatus.STOPPED
     bot_status_alert("stopped")
+    if _thread and _thread.is_alive():
+        _thread.join(timeout=10)
 
 
 def manual_close(pair: str):
@@ -395,7 +409,7 @@ def manual_close(pair: str):
         close_position(pair, price, reason="manual_override")
         notify(f"[MANUAL CLOSE] {pair} @ €{price:.2f}")
     except Exception as e:
-        notify(f"[MANUAL CLOSE ERROR] {e}")
+        notify(f"[MANUAL CLOSE ERROR] {config.scrub_err(e)}")
 
 
 def manual_buy(pair: str, size_pct: float):
@@ -405,4 +419,4 @@ def manual_buy(pair: str, size_pct: float):
         manual_add(pair, price, size_pct)
         notify(f"[MANUAL BUY] {pair} @ €{price:.2f} ({size_pct*100:.0f}% of balance)")
     except Exception as e:
-        notify(f"[MANUAL BUY ERROR] {e}")
+        notify(f"[MANUAL BUY ERROR] {config.scrub_err(e)}")

@@ -1,7 +1,9 @@
+import hmac
 import json
 import math
 import os
 import sqlite3
+import time as _time
 import datetime
 import zoneinfo
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
@@ -331,7 +333,7 @@ def api_signals():
                 "has_position": has_position,
             }
         except Exception as e:
-            out[pair] = {"error": str(e)}
+            out[pair] = {"error": config.scrub_err(e)}
     return jsonify(out)
 
 
@@ -687,7 +689,7 @@ def api_shadow_signals(name):
                 "position":       pos_data,
             }
         except Exception as e:
-            out[pair] = {"error": str(e)}
+            out[pair] = {"error": config.scrub_err(e)}
     return jsonify(out)
 
 
@@ -938,7 +940,7 @@ def api_futures_shadow_signals(name):
                 "position":       pos_data,
             }
         except Exception as e:
-            out[sym] = {"error": str(e)}
+            out[sym] = {"error": config.scrub_err(e)}
     return jsonify(out)
 
 
@@ -1133,7 +1135,7 @@ def api_futures_signals():
                 "position":      pos_data,
             }
         except Exception as e:
-            out[sym] = {"error": str(e)}
+            out[sym] = {"error": config.scrub_err(e)}
     return jsonify(out)
 
 
@@ -1635,8 +1637,9 @@ def api_futures_status():
 
 
 import json as _json
-_PIN_MAX_ATTEMPTS  = 5
-_PIN_FAILURES_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pin_lockouts.json")
+_PIN_MAX_ATTEMPTS   = 5
+_PIN_LOCK_DURATION  = 3600  # seconds; auto-expire lockout after 1 hour
+_PIN_FAILURES_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pin_lockouts.json")
 
 
 def _load_lockouts() -> dict:
@@ -1649,24 +1652,49 @@ def _load_lockouts() -> dict:
 
 def _save_lockouts(data: dict):
     os.makedirs(os.path.dirname(_PIN_FAILURES_PATH), exist_ok=True)
-    with open(_PIN_FAILURES_PATH, "w") as f:
+    tmp = _PIN_FAILURES_PATH + ".tmp"
+    with open(tmp, "w") as f:
         _json.dump(data, f)
+    os.replace(tmp, _PIN_FAILURES_PATH)
+
+
+def _client_ip() -> str:
+    """Return the client IP. Trusts X-Forwarded-For only when TRUSTED_PROXY env var is set,
+    otherwise falls back to remote_addr to avoid header spoofing bypasses."""
+    if os.environ.get("TRUSTED_PROXY"):
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
 
 
 def _check_pin() -> tuple[bool, bool]:
-    """Returns (allowed, rate_limited). rate_limited = permanently locked out."""
+    """Returns (allowed, rate_limited). Lockouts auto-expire after _PIN_LOCK_DURATION."""
     if not config.DASHBOARD_PIN:
         return True, False
-    ip       = request.remote_addr or "unknown"
+    ip       = _client_ip()
+    now      = _time.time()
     lockouts = _load_lockouts()
-    entry    = lockouts.get(ip, {"attempts": 0, "locked": False})
+    entry    = lockouts.get(ip, {"attempts": 0, "locked": False, "locked_at": 0})
+
+    # Auto-expire stale lockouts
+    if entry.get("locked") and (now - float(entry.get("locked_at", 0)) > _PIN_LOCK_DURATION):
+        entry = {"attempts": 0, "locked": False, "locked_at": 0}
+        lockouts.pop(ip, None)
+        _save_lockouts(lockouts)
+
     if entry.get("locked"):
         return False, True
-    correct = request.headers.get("X-Dashboard-Pin", "") == config.DASHBOARD_PIN
+
+    correct = hmac.compare_digest(
+        request.headers.get("X-Dashboard-Pin", ""),
+        config.DASHBOARD_PIN,
+    )
     if not correct:
         entry["attempts"] = entry.get("attempts", 0) + 1
         if entry["attempts"] >= _PIN_MAX_ATTEMPTS:
-            entry["locked"] = True
+            entry["locked"]    = True
+            entry["locked_at"] = now
         lockouts[ip] = entry
         _save_lockouts(lockouts)
     else:
@@ -1767,6 +1795,15 @@ def run(host: str = None, port: int = None):
 
     if not ssl_context and config.DASHBOARD_PIN:
         _log.warning("HTTPS is not enabled — PIN is transmitted in cleartext")
+
+    if config.WEB_HOST != "127.0.0.1" and not config.DASHBOARD_PIN:
+        _log.critical(
+            "FATAL: WEB_HOST is set to a public address (%s) but DASHBOARD_PIN is empty. "
+            "Control endpoints would be fully unauthenticated. "
+            "Set DASHBOARD_PIN or bind to 127.0.0.1.",
+            config.WEB_HOST,
+        )
+        raise SystemExit(1)
 
     app.run(
         host=host or config.WEB_HOST,
