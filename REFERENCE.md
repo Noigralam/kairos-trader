@@ -109,11 +109,13 @@ In `.env` set `SPOT_MODE=live`, then restart:
 ./stop.sh && ./start.sh
 ```
 
-On startup in live mode the engine fetches your real EUR balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running:
+On startup in live mode the engine fetches your real quote-currency balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running:
 
 ```
 [LIVE] Started — Binance EUR balance: €XXX.XX  open positions: none
 ```
+
+(The currency symbol in that line reflects your `SPOT_QUOTE_CURRENCY` setting.)
 
 If that line doesn't appear within 30 seconds, check `data/kairos.log` for an error — it's almost always an API key or IP restriction issue.
 
@@ -159,9 +161,9 @@ See `.env.example` for the full annotated list. Key settings:
 | Variable | Default | Description |
 |---|---|---|
 | `SPOT_MODE` | `simulation` | `simulation` or `live` |
-| `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance EUR spot pairs; first pair gets priority for DCA funds when multiple fire simultaneously |
-| `SPOT_INVESTED` | `0` | Total EUR deposited; dashboard "from X€" reference (0 = use first recorded balance) |
-| `SPOT_SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (EUR) |
+| `SPOT_TRADING_PAIRS` | `ETHEUR,SOLEUR` | Comma-separated Binance spot pairs (any quote currency); first pair gets priority for DCA funds when multiple fire simultaneously |
+| `SPOT_INVESTED` | `0` | Total quote currency deposited; dashboard "from X" reference (0 = use first recorded balance) |
+| `SPOT_SIMULATION_BALANCE` | `200.0` | Starting balance for simulation (quote currency) |
 | `SPOT_FEE` | `0.001` | Binance maker/taker fee rate (0.1%) |
 | `SPOT_INTERVAL` | `15m` | Candle interval |
 | `SPOT_POSITION_SIZE_PCT` | `0.75` | Fraction of balance per new position |
@@ -226,7 +228,7 @@ Enable with `SPOT_SHADOW_PROFILES=PROFILE1,PROFILE2,...`. Each profile supports 
 |---|---|
 | `PAIRS` | Comma-separated pairs to trade |
 | `INTERVAL` | Candle interval (defaults to `SPOT_INTERVAL`) |
-| `BALANCE` | Starting virtual balance (EUR) |
+| `BALANCE` | Starting virtual balance (quote currency) |
 | `RSI_PERIOD` / `RSI_OVERSOLD` / `RSI_OVERBOUGHT` | RSI parameters |
 | `EMA_GAP_PCT` | EMA gap filter |
 | `TAKE_PROFIT_PCT` | Take-profit target |
@@ -346,12 +348,12 @@ Most parameters can be left at their defaults. The ones below have the biggest i
 
 ### Pairs: how to choose
 
-Any Binance spot pair ending in EUR works. Practical considerations:
+Any Binance spot pair with your configured quote currency works. Practical considerations:
 
-- **Volume matters** — low-volume pairs have wide spreads and slippage the backtest doesn't model. Stick to pairs where the 24h volume is consistently above €1–2M.
+- **Volume matters** — low-volume pairs have wide spreads and slippage the backtest doesn't model. Stick to pairs where the 24h volume is consistently above 1–2M in your quote currency.
 - **Volatility and RSI period go together** — high-volatility pairs need a shorter RSI period to react before the move is over.
 - **Start with one pair** — running multiple pairs ties up more capital per DCA tranche and makes it harder to understand what's driving results.
-- To evaluate a new pair before adding it to the live bot, add it as a shadow (`SPOT_SHADOW_MYPAIR_PAIRS=XRPEUR`) and backtest it with `pair_sweep.py XRPEUR`.
+- To evaluate a new pair before adding it to the live bot, add it as a shadow (`SPOT_SHADOW_MYPAIR_PAIRS=XRPEUR`) and backtest it with `pair_sweep.py XRPEUR` (substitute your actual pair).
 
 ### What not to change
 
@@ -516,7 +518,7 @@ data/
 backtest.py             — spot backtest + parameter sweep tool
 backtest_futures.py     — futures backtest + parameter sweep tool
 backtest_grid.py        — grid strategy backtest: spacing × levels sweep
-pair_sweep.py           — full parameter sweep for any single EUR pair
+pair_sweep.py           — full parameter sweep for any single spot pair
 main.py                 — engine entry point: spot engine, futures engine, Discord bot
 dashboard.py            — dashboard entry point: Flask web server only
 start.sh / stop.sh      — process management (engine, dashboard, or both)
