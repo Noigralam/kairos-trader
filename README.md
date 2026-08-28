@@ -2,7 +2,7 @@
 
 A self-hosted crypto trading bot for Binance with a web dashboard. Runs two independent engines simultaneously:
 
-- **Spot** — EUR pairs (SOLEUR, ADAEUR, …), 15m candles, RSI + EMA200 mean-reversion
+- **Spot** — any Binance quote currency (SOLEUR, ETHUSDT, XRPGBP, …), 15m candles, RSI + EMA200 mean-reversion
 - **Futures** — USDT-M perpetuals (ETHUSDT, SOLUSDT), 15m candles, isolated margin, configurable leverage
 
 Simulation mode requires no API keys — paper trade first, switch to live when ready.
