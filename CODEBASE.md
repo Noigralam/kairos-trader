@@ -42,7 +42,7 @@ The `discord.py` slash-command bot (`/crp_status`, `/crp_pause`, `/crp_buy`, `/c
 FIFO capital gains tracker for live spot trades. Maintains `fifo_lots` and `fifo_disposals` tables in `trades.db`. `_add_lot()` records cost basis on BUY; `_dispose_fifo()` matches SELL proceeds against the oldest lots in order, recording gain/loss per disposal. `annual_summary()` returns year-by-year totals. `integrity_check()` compares lot quantities against held positions to catch mismatches. `rebuild()` wipes and re-processes all historical live trades from scratch.
 
 ### `bot/spot_exchange.py` *(96 lines)*
-Thin wrapper around the Binance spot REST API. `get_price(pair)` returns the current ask. `get_eur_balance()` fetches the real EUR wallet balance. `place_order()` / `place_sell_order()` execute real trades in live mode. `get_account_asset()` fetches a specific asset balance for position reconciliation.
+Thin wrapper around the Binance spot REST API. `get_price(pair)` returns the current ask. `get_quote_balance()` fetches the real quote-currency wallet balance. `place_order()` / `place_sell_order()` execute real trades in live mode. `get_account_asset()` fetches a specific asset balance for position reconciliation.
 
 ### `bot/spot_risk.py` *(63 lines)*
 `Position` dataclass — the in-memory representation of an open spot position. Holds entry price, amount, cost basis, peak price, DCA count, take-profit price, and live-since timestamp. Methods: `trailing_stop_level()`, `unrealized_pnl()`, `peak()`. Also `apply_dca()` for averaging down and `calc_pnl()` for realised P&L.
@@ -92,4 +92,4 @@ Futures backtest with isolated-margin accounting: models 0.05% taker fee, 0.01%/
 Grid strategy backtester. Places simulated limit orders at fixed price levels around a centre price and tracks fills as price oscillates. Sweeps spacing and number-of-levels combinations, ranks by realised P&L. Footer legend explains all grid-specific columns (spacing, levels, trades, realised%, stuck%, recenters, open_slots, fees) and how the grid mechanics work. Output mirrored to `backtest_results/`. Used for evaluating `XRP_GRID`, `SOL_GRID_*` shadow profiles.
 
 ### `pair_sweep.py` *(58 lines)*
-Convenience wrapper around `backtest.py`. Points `PAIRS` at a single EUR pair and runs every sweep (RSI period, buy threshold, exit, floor, trail, min exit, DCA, EMA gap, cooldown) across 730d / 365d / 180d in one shot. The natural starting point when evaluating a new pair candidate. See `SWEEP_EXAMPLES.md` for worked examples.
+Convenience wrapper around `backtest.py`. Points `PAIRS` at a single spot pair and runs every sweep (RSI period, buy threshold, exit, floor, trail, min exit, DCA, EMA gap, cooldown) across 730d / 365d / 180d in one shot. The natural starting point when evaluating a new pair candidate. See `SWEEP_EXAMPLES.md` for worked examples.
