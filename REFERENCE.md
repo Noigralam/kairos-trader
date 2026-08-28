@@ -1,7 +1,7 @@
 # Kairos
 
 RSI + EMA200 mean-reversion bot for Binance. Runs in simulation or live mode with two independent engines:
-- **Spot** — EUR pairs (SOLEUR, ETHEUR, …), 15m candles
+- **Spot** — any Binance quote currency (SOLEUR, ETHUSDT, XRPGBP, …), 15m candles
 - **Futures** — USDT-M perpetuals (ETHUSDT, SOLUSDT), 15m candles, configurable leverage
 
 Includes a web dashboard, Discord integration, shadow simulators, and backtest/sweep tools for both engines.
@@ -53,7 +53,7 @@ cp .env.example .env
 
 Edit `.env`. The file is fully annotated. Minimum required before first run:
 
-- **`SPOT_TRADING_PAIRS`** — which EUR pairs to trade (e.g. `SOLEUR,ETHEUR`)
+- **`SPOT_TRADING_PAIRS`** — which pairs to trade (e.g. `SOLEUR,ETHEUR` or `ETHUSDT,SOLUSDT`)
 - **`SPOT_MODE`** — leave as `simulation` to paper trade first (no API keys needed)
 - **`FUTURES_ENABLED`** — set to `false` if you only want spot
 
