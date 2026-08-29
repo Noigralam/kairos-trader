@@ -307,6 +307,20 @@ def _process_commands():
                     manual_buy(pair, size_pct)
                 elif action == "manual_close":
                     manual_close(pair)
+                elif action == "reset_shadow":
+                    name = cmd.get("name", "").upper()
+                    from .spot_simulator import get_spot_shadows
+                    for sh in get_spot_shadows():
+                        if sh.name.upper() == name:
+                            sh.reset()
+                            log.info(f"[CMD] Reset shadow {sh.name}")
+                            break
+                    else:
+                        log.warning(f"[CMD] reset_shadow: unknown shadow {name!r}")
+                elif action == "reload_shadows":
+                    from .spot_simulator import reload_spot_shadows
+                    reload_spot_shadows()
+                    log.info("[CMD] Shadow list reloaded from config")
                 else:
                     log.warning(f"[SPOT CMD] Unknown action: {action!r}")
             except Exception as e:

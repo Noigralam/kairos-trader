@@ -758,7 +758,10 @@
 
     <!-- Rankings table -->
     <section style="margin-bottom:8px">
-      <h2>Rankings</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin-bottom:0">Rankings</h2>
+        <button onclick="reloadShadows()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">↺ Reload shadows</button>
+      </div>
       <div class="tbl-wrap">
         <table id="sh-ranking-table">
           <thead>
@@ -771,10 +774,11 @@
               <th class="sortable" onclick="sortShRanking('pnl')">PnL</th>
               <th class="sortable" onclick="sortShRanking('trades')">Trades</th>
               <th class="sortable" onclick="sortShRanking('win_rate')">Win Rate</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="sh-ranking-body">
-            <tr><td colspan="8" class="empty">Loading…</td></tr>
+            <tr><td colspan="9" class="empty">Loading…</td></tr>
           </tbody>
         </table>
       </div>
@@ -1999,7 +2003,7 @@
 
   function renderShRanking() {
     const tbody = document.getElementById('sh-ranking-body');
-    if (!_shRankingData.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty">No data</td></tr>'; return; }
+    if (!_shRankingData.length) { tbody.innerHTML = '<tr><td colspan="9" class="empty">No data</td></tr>'; return; }
     const { col, dir } = _shRankingSort;
     const sorted = [..._shRankingData].sort((a, b) => {
       let av = col === 'pairs' ? a.pairs.join(',') : a[col];
@@ -2017,6 +2021,8 @@
       const badge     = s.is_main
         ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
         : `<span style="font-size:11px;background:var(--card);color:#3fb950;padding:1px 6px;border-radius:3px;margin-right:6px">SPOT</span>`;
+      const resetBtn  = s.is_main ? '' :
+        `<button onclick="resetShadow('${escHtml(s.name)}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 7px;cursor:pointer" title="Reset shadow">Reset</button>`;
       return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
         <td style="color:var(--muted)">${i + 1}</td>
         <td>${badge}<span style="${nameStyle}" onclick="switchShadow('${escHtml(s.name)}')">${escHtml(s.name)}</span></td>
@@ -2026,8 +2032,30 @@
         <td style="color:${s.pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${s.pnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${s.pnl.toFixed(2)}</td>
         <td>${s.trades}</td>
         <td>${s.win_rate !== null ? s.win_rate + '%' : '—'}</td>
+        <td>${resetBtn}</td>
       </tr>`;
     }).join('');
+  }
+
+  async function resetShadow(name) {
+    if (!confirm(`Reset shadow ${name}? This wipes all trades and history.`)) return;
+    try {
+      const res  = await fetch(`/api/shadows/${encodeURIComponent(name)}/reset`, {method: 'POST'});
+      const data = await res.json();
+      if (data.queued) { alert('Reset queued — will apply within 30s.'); }
+      else if (data.ok) { location.reload(); }
+      else { alert('Error: ' + (data.error || 'unknown')); }
+    } catch(e) { alert('Request failed: ' + e); }
+  }
+
+  async function reloadShadows() {
+    try {
+      const res  = await fetch('/api/shadows/reload', {method: 'POST'});
+      const data = await res.json();
+      if (data.queued) { alert('Reload queued — will apply within 30s.'); }
+      else if (data.ok) { location.reload(); }
+      else { alert('Error: ' + (data.error || 'unknown')); }
+    } catch(e) { alert('Request failed: ' + e); }
   }
 
   async function refreshShRanking() {
