@@ -836,6 +836,40 @@ def api_shadow_chart(name, pair):
     })
 
 
+@app.route("/api/shadows/<name>/reset", methods=["POST"])
+def api_shadow_reset(name):
+    allowed, rate_limited = _check_pin()
+    if rate_limited:
+        return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+    name = name.upper()
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        _queue_command(_SPOT_COMMANDS_PATH, {"action": "reset_shadow", "name": name})
+        return jsonify({"ok": True, "queued": True})
+    from bot.spot_simulator import get_spot_shadows
+    for sh in get_spot_shadows():
+        if sh.name.upper() == name:
+            sh.reset()
+            return jsonify({"ok": True})
+    return jsonify({"error": f"Shadow {name} not found"}), 404
+
+
+@app.route("/api/shadows/reload", methods=["POST"])
+def api_shadows_reload():
+    allowed, rate_limited = _check_pin()
+    if rate_limited:
+        return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        _queue_command(_SPOT_COMMANDS_PATH, {"action": "reload_shadows"})
+        return jsonify({"ok": True, "queued": True})
+    from bot.spot_simulator import reload_spot_shadows
+    reload_spot_shadows()
+    return jsonify({"ok": True})
+
+
 def _futures_config_for_sym(sym: str) -> dict:
     return {
         "rsi_period":        config.futures_rsi_period_for(sym),

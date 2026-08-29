@@ -751,6 +751,26 @@ class SpotShadowSimulator:
             json.dump(data, f, indent=2)
         os.replace(tmp, self.state_path)
 
+    def reset(self):
+        with self._lock:
+            from .db import clear_shadow_trades, log_balance
+            clear_shadow_trades(self._db_mode)
+            try:
+                os.remove(self.state_path)
+            except FileNotFoundError:
+                pass
+            self.balance        = self.starting_balance
+            self.positions      = {}
+            self.total_trades   = 0
+            self.total_pnl      = 0.0
+            self.total_fees     = 0.0
+            self.portfolio_peak = 0.0
+            self.started_at     = None
+            self._stop_cooldowns        = {}
+            self._reentry_drop_prices   = {}
+            log_balance(round(self.starting_balance, 2), self._db_mode)
+            log.info(f"[SHADOW] {self.name}: reset to {self.starting_balance:.2f}")
+
     def _load(self):
         if not os.path.exists(self.state_path):
             return
@@ -1237,6 +1257,27 @@ class GridShadowSimulator:
             }, f, indent=2)
         os.replace(tmp, self.state_path)
 
+    def reset(self):
+        with self._lock:
+            from .db import clear_shadow_trades, log_balance
+            clear_shadow_trades(self._db_mode)
+            try:
+                os.remove(self.state_path)
+            except FileNotFoundError:
+                pass
+            self.balance        = self.starting_balance
+            self.total_trades   = 0
+            self.total_pnl      = 0.0
+            self.total_fees     = 0.0
+            self.portfolio_peak = 0.0
+            self.started_at     = None
+            self._grid_center   = None
+            self._slots         = []
+            self._highest_price = 0.0
+            self._slot_eur      = self.starting_balance / self._n_levels
+            log_balance(round(self.starting_balance, 2), self._db_mode)
+            log.info(f"[SHADOW] {self.name}: reset to {self.starting_balance:.2f}")
+
     def _load(self):
         if not os.path.exists(self.state_path):
             return
@@ -1302,6 +1343,40 @@ def init_spot_shadows() -> list[SpotShadowSimulator]:
         names = ", ".join(s.name for s in _shadows)
         notify(f"[SHADOW] {len(_shadows)} shadow sim(s) loaded: {names}", discord=False)
     return _shadows
+
+
+def reload_spot_shadows():
+    """Re-read .env and sync the shadow list: add new, remove deleted, reload params on changed ones."""
+    global _shadows
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+    # config.get_shadow_profiles() and config.get_shadow_overrides() read os.getenv() at call time,
+    # so no importlib.reload needed — dotenv override above is sufficient.
+
+    new_names = {n.upper() for n in config.get_shadow_profiles()}
+
+    # Remove shadows no longer in config
+    _shadows = [s for s in _shadows if s.name.upper() in new_names]
+
+    # Add new shadows
+    existing_names = {s.name.upper() for s in _shadows}
+    for name in config.get_shadow_profiles():
+        if name.upper() not in existing_names:
+            overrides  = config.get_shadow_overrides(name)
+            state_path = os.path.join(_DATA_DIR, f"spot_state_shadow_{name.lower()}.json")
+            if overrides.get("type") == "grid":
+                _shadows.append(GridShadowSimulator(name, state_path, overrides))
+            else:
+                _shadows.append(SpotShadowSimulator(name, state_path, overrides))
+            log.info(f"[SHADOW] Added new shadow: {name}")
+
+    # Reload overrides on existing shadows
+    for s in _shadows:
+        s.overrides    = config.get_shadow_overrides(s.name)
+        s._fingerprint = _config_fingerprint(s.overrides)
+
+    notify(f"[SHADOW] Reloaded — {len(_shadows)} shadow(s) active", discord=False)
+    log.info(f"[SHADOW] reload_spot_shadows: {[s.name for s in _shadows]}")
 
 
 def get_spot_shadows() -> list[SpotShadowSimulator]:
