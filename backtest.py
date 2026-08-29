@@ -555,18 +555,9 @@ def _run_sweep(days_list: list[int], title: str, scenarios: list[dict], pairs: l
 # ---------------------------------------------------------------------------
 
 def sweep_exit(days_list: list[int]):
-    scenarios = [
-        dict(rsi_sell=65, tp_pct=0.05, label="sell>65  TP=5%"),
-        dict(rsi_sell=65, tp_pct=0.07, label="sell>65  TP=7%"),
-        dict(rsi_sell=65, tp_pct=0.10, label="sell>65  TP=10%"),
-        dict(rsi_sell=70, tp_pct=0.05, label="sell>70  TP=5%"),
-        dict(rsi_sell=70, tp_pct=0.07, label="sell>70  TP=7%"),
-        dict(rsi_sell=70, tp_pct=0.10, label="sell>70  TP=10%"),
-        dict(rsi_sell=75, tp_pct=0.05, label="sell>75  TP=5%"),
-        dict(rsi_sell=75, tp_pct=0.07, label="sell>75  TP=7%"),
-        dict(rsi_sell=75, tp_pct=0.10, label="sell>75  TP=10%"),
-    ]
-    _mark_current(scenarios, tp_pct=config.SPOT_TAKE_PROFIT_PCT)
+    scenarios = [dict(rsi_sell=v, label=f"sell>{v}") for v in _SWEEP_RANGES["rsi_sell"]] + \
+                [dict(tp_pct=v,   label=f"TP={v*100:.0f}%") for v in _SWEEP_RANGES["tp_pct"]]
+    _mark_current(scenarios, rsi_sell=config.SPOT_RSI_OVERBOUGHT, tp_pct=config.SPOT_TAKE_PROFIT_PCT)
     _run_sweep(days_list, "Sell RSI + Take-profit sweep", scenarios, PAIRS,
                description=(
                    "sell>N  RSI must exceed N before the overbought signal can close a position.\n"
@@ -576,13 +567,7 @@ def sweep_exit(days_list: list[int]):
 
 
 def sweep_floor(days_list: list[int]):
-    scenarios = [
-        dict(floor_pct=0.01, label="floor=1%"),
-        dict(floor_pct=0.02, label="floor=2%"),
-        dict(floor_pct=0.03, label="floor=3%"),
-        dict(floor_pct=0.04, label="floor=4%"),
-        dict(floor_pct=0.05, label="floor=5%"),
-    ]
+    scenarios = [dict(floor_pct=v, label=f"floor={v*100:.1f}%") for v in _SWEEP_RANGES["floor_pct"]]
     _mark_current(scenarios, floor_pct=config.SPOT_PROFIT_FLOOR_PCT)
     _run_sweep(days_list, "Profit floor sweep", scenarios, PAIRS,
                description=(
@@ -593,14 +578,7 @@ def sweep_floor(days_list: list[int]):
 
 
 def sweep_trail(days_list: list[int]):
-    scenarios = [
-        dict(trail_pct=0.02, label="trail=2%"),
-        dict(trail_pct=0.03, label="trail=3%"),
-        dict(trail_pct=0.04, label="trail=4%"),
-        dict(trail_pct=0.05, label="trail=5%"),
-        dict(trail_pct=0.06, label="trail=6%"),
-        dict(trail_pct=0.07, label="trail=7%"),
-    ]
+    scenarios = [dict(trail_pct=v, label=f"trail={v*100:.1f}%") for v in _SWEEP_RANGES["trail_pct"]]
     _mark_current(scenarios, trail_pct=config.SPOT_TRAILING_STOP_PCT)
     _run_sweep(days_list, "Trailing stop sweep", scenarios, PAIRS,
                description=(
@@ -611,14 +589,7 @@ def sweep_trail(days_list: list[int]):
 
 
 def sweep_buyrsi(days_list: list[int]):
-    scenarios = [
-        dict(rsi_buy=25, label="buy<25"),
-        dict(rsi_buy=27, label="buy<27"),
-        dict(rsi_buy=30, label="buy<30"),
-        dict(rsi_buy=32, label="buy<32"),
-        dict(rsi_buy=33, label="buy<33"),
-        dict(rsi_buy=35, label="buy<35"),
-    ]
+    scenarios = [dict(rsi_buy=v, label=f"buy<{v}") for v in _SWEEP_RANGES["rsi_buy"]]
     _mark_current(scenarios, rsi_buy=config.SPOT_RSI_OVERSOLD)
     _run_sweep(days_list, "Buy RSI threshold sweep", scenarios, PAIRS,
                description=(
@@ -629,16 +600,7 @@ def sweep_buyrsi(days_list: list[int]):
 
 
 def sweep_min_exit(days_list: list[int]):
-    scenarios = [
-        dict(min_exit=0.000, label="min_exit=0%   (no gate)"),
-        dict(min_exit=0.005, label="min_exit=0.5%"),
-        dict(min_exit=0.010, label="min_exit=1%"),
-        dict(min_exit=0.015, label="min_exit=1.5%"),
-        dict(min_exit=0.020, label="min_exit=2%"),
-        dict(min_exit=0.025, label="min_exit=2.5%"),
-        dict(min_exit=0.030, label="min_exit=3%"),
-        dict(min_exit=0.040, label="min_exit=4%"),
-    ]
+    scenarios = [dict(min_exit=v, label=f"min_exit={v*100:.1f}%") for v in _SWEEP_RANGES["min_exit"]]
     _mark_current(scenarios, min_exit=config.SPOT_MIN_EXIT_PROFIT_PCT)
     _run_sweep(days_list, "Min exit profit sweep", scenarios, PAIRS,
                description=(
@@ -648,17 +610,7 @@ def sweep_min_exit(days_list: list[int]):
 
 
 def sweep_rsiperiod(days_list: list[int]):
-    scenarios = [
-        dict(rsi_period=5,  label="RSI(5)"),
-        dict(rsi_period=6,  label="RSI(6)"),
-        dict(rsi_period=7,  label="RSI(7)"),
-        dict(rsi_period=8,  label="RSI(8)"),
-        dict(rsi_period=9,  label="RSI(9)"),
-        dict(rsi_period=10, label="RSI(10)"),
-        dict(rsi_period=12, label="RSI(12)"),
-        dict(rsi_period=14, label="RSI(14)"),
-        dict(rsi_period=21, label="RSI(21)"),
-    ]
+    scenarios = [dict(rsi_period=v, label=f"RSI({v})") for v in _SWEEP_RANGES["rsi_period"]]
     start = config.SPOT_SIMULATION_BALANCE
     for days in days_list:
         _header(days, "RSI period sweep", wide=True)
@@ -681,15 +633,7 @@ def sweep_rsiperiod(days_list: list[int]):
 
 
 def sweep_timestop(days_list: list[int]):
-    scenarios = [
-        dict(time_stop_days=0,  label="no time stop  (current)"),
-        dict(time_stop_days=14, label="time stop 14d"),
-        dict(time_stop_days=21, label="time stop 21d"),
-        dict(time_stop_days=30, label="time stop 30d"),
-        dict(time_stop_days=45, label="time stop 45d"),
-        dict(time_stop_days=60, label="time stop 60d"),
-        dict(time_stop_days=90, label="time stop 90d"),
-    ]
+    scenarios = [dict(time_stop_days=v, label=f"time stop {'off' if v == 0 else str(v)+'d'}") for v in _SWEEP_RANGES["time_stop_days"]]
     _run_sweep(days_list, "Time-based stop sweep (close if no profit floor within N days)", scenarios, PAIRS,
                description=(
                    "time_stop  If a position has been held for N days without ever reaching the profit floor,\n"
@@ -716,16 +660,7 @@ def sweep_maxdrawdown(days_list: list[int]):
 
 
 def sweep_ema_gap(days_list: list[int]):
-    scenarios = [
-        dict(ema_gap=0.00, label="gap=0%   (current)"),
-        dict(ema_gap=0.01, label="gap=1%   above EMA"),
-        dict(ema_gap=0.02, label="gap=2%   above EMA"),
-        dict(ema_gap=0.03, label="gap=3%   above EMA"),
-        dict(ema_gap=0.05, label="gap=5%   above EMA"),
-        dict(ema_gap=0.07, label="gap=7%   above EMA"),
-        dict(ema_gap=0.10, label="gap=10%  above EMA"),
-        dict(ema_gap=0.15, label="gap=15%  above EMA"),
-    ]
+    scenarios = [dict(ema_gap=v, label=f"gap={v*100:.1f}% above EMA") for v in _SWEEP_RANGES["ema_gap"]]
     _run_sweep(days_list, "EMA gap filter sweep (price must be X% above EMA200 to buy)", scenarios, PAIRS,
                description=(
                    "ema_gap  Price must be at least X% above EMA200 before a buy is allowed.\n"
@@ -753,15 +688,7 @@ def sweep_volume(days_list: list[int]):
 
 
 def sweep_cooldown(days_list: list[int]):
-    scenarios = [
-        dict(stop_cooldown=0,   label="off  (baseline)"),
-        dict(stop_cooldown=4,   label="cooldown=4 bars   (~1h)"),
-        dict(stop_cooldown=8,   label="cooldown=8 bars   (~2h)"),
-        dict(stop_cooldown=16,  label="cooldown=16 bars  (~4h)"),
-        dict(stop_cooldown=32,  label="cooldown=32 bars  (~8h)"),
-        dict(stop_cooldown=96,  label="cooldown=96 bars  (~1d)"),
-        dict(stop_cooldown=192, label="cooldown=192 bars (~2d)"),
-    ]
+    scenarios = [dict(stop_cooldown=v, label=f"cooldown={'off' if v == 0 else str(v)+' bars'}") for v in _SWEEP_RANGES["stop_cooldown"]]
     _run_sweep(days_list, "Stop cooldown sweep (block re-entry N candles after trailing stop)", scenarios, PAIRS,
                description=(
                    "stop_cooldown  After a trailing stop fires, new buys on that pair are blocked for N candles.\n"
@@ -771,16 +698,7 @@ def sweep_cooldown(days_list: list[int]):
 
 
 def sweep_partialclose(days_list: list[int]):
-    scenarios = [
-        dict(partial_close_pct=0.0,                                   label="off  (full close at TP)"),
-        dict(partial_close_pct=0.25, partial_close_trail=0.02,        label="sell 25% at TP  trail=2%"),
-        dict(partial_close_pct=0.50, partial_close_trail=0.02,        label="sell 50% at TP  trail=2%"),
-        dict(partial_close_pct=0.50, partial_close_trail=0.03,        label="sell 50% at TP  trail=3%"),
-        dict(partial_close_pct=0.50, partial_close_trail=0.05,        label="sell 50% at TP  trail=5%"),
-        dict(partial_close_pct=0.75, partial_close_trail=0.02,        label="sell 75% at TP  trail=2%"),
-        dict(partial_close_pct=0.75, partial_close_trail=0.03,        label="sell 75% at TP  trail=3%"),
-        dict(partial_close_pct=0.75, partial_close_trail=0.05,        label="sell 75% at TP  trail=5%"),
-    ]
+    scenarios = [dict(partial_close_pct=v, label=f"partial={'off' if v == 0 else f'{v*100:.0f}% at TP'}") for v in _SWEEP_RANGES["partial_close_pct"]]
     _run_sweep(days_list, "Partial close sweep (sell fraction at TP, trail the remainder)", scenarios, PAIRS,
                description=(
                    "partial_close_pct    Fraction of the position to sell when price hits the take-profit level.\n"
@@ -788,6 +706,34 @@ def sweep_partialclose(days_list: list[int]):
                    "partial_close_trail  Tighter trailing stop applied to the remaining portion after the partial sell.\n"
                    "                     The remainder has no profit floor — the trailing stop fires from peak immediately.\n"
                    "                     Captures guaranteed profit on part of the position while letting winners run further."))
+
+
+def sweep_maxdca(days_list: list[int]):
+    scenarios = [dict(max_dca=v, enable_dca=v > 0, label=f"max_dca={'off' if v == 0 else v}") for v in _SWEEP_RANGES["max_dca"]]
+    _mark_current(scenarios, max_dca=config.SPOT_DCA_MAX)
+    _run_sweep(days_list, "Max DCA tranches sweep", scenarios, PAIRS,
+               description=(
+                   "max_dca  Maximum number of DCA (cost-averaging) buy tranches allowed per position.\n"
+                   "         0 = DCA disabled entirely. 1 = one additional buy allowed after entry. Etc.\n"
+                   "         Each tranche triggers when price drops dca_drop% further from the previous entry."))
+
+
+def sweep_dcastep(days_list: list[int]):
+    scenarios = [dict(dca_step=v, label=f"dca_step={v*100:.1f}%") for v in _SWEEP_RANGES["dca_step"]]
+    _run_sweep(days_list, "DCA step % sweep (additional drop per tranche)", scenarios, PAIRS,
+               description=(
+                   "dca_step  Additional % drop required per successive DCA tranche beyond the first.\n"
+                   "          e.g. drop=3% step=1%: 1st DCA at -3%, 2nd at -4%, 3rd at -5%.\n"
+                   "          0 = all tranches trigger at the same fixed drop interval."))
+
+
+def sweep_posize(days_list: list[int]):
+    scenarios = [dict(pos_pct=v, label=f"pos={v*100:.0f}%") for v in _SWEEP_RANGES["pos_pct"]]
+    _mark_current(scenarios, pos_pct=config.SPOT_POSITION_SIZE_PCT)
+    _run_sweep(days_list, "Position size % sweep", scenarios, PAIRS,
+               description=(
+                   "pos_pct  Fraction of available balance committed per new entry.\n"
+                   "         1.0 = go all-in on each trade. Lower values preserve cash for DCA tranches."))
 
 
 def sweep_dca_partial(days_list: list[int]):
@@ -1164,15 +1110,7 @@ def sweep_tieredsize(days_list: list[int]):
 
 
 def sweep_hardstop(days_list: list[int]):
-    scenarios = [
-        dict(hard_stop=None,  label="no hard stop  (current)"),
-        dict(hard_stop=0.10,  label="hard stop -10%"),
-        dict(hard_stop=0.15,  label="hard stop -15%"),
-        dict(hard_stop=0.20,  label="hard stop -20%"),
-        dict(hard_stop=0.25,  label="hard stop -25%"),
-        dict(hard_stop=0.30,  label="hard stop -30%"),
-        dict(hard_stop=0.40,  label="hard stop -40%"),
-    ]
+    scenarios = [dict(hard_stop=v if v else None, label=f"hard stop {'off' if not v else f'-{v*100:.0f}%'}") for v in _SWEEP_RANGES["hard_stop"]]
     _run_sweep(days_list, "Hard stop loss sweep", scenarios, PAIRS,
                description=(
                    "hard_stop  If price drops X% below entry, the position is closed immediately at a loss.\n"
@@ -1211,7 +1149,7 @@ def sweep_dca(days_list: list[int]):
             rows = []
             base, _ = run_pair(pair, df, start, enable_dca=False)
             rows.append(_format_row("no DCA  (baseline)", base, start, wide=True))
-            for drop in [0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.15]:
+            for drop in _SWEEP_RANGES["dca_drop"]:
                 for size in [0.50, 0.75, 1.00]:
                     cur = (abs(drop - config.SPOT_DCA_DROP_PCT) < 1e-9 and
                            abs(size - config.SPOT_DCA_SIZE_PCT) < 1e-9)
@@ -1636,18 +1574,17 @@ def api_run_backtest(pair: str, days: int, start: float, interval: str = "15m", 
     return summary
 
 
-_SWEEP_RANGES: dict[str, list] = {
-    "rsi_period": [5, 6, 7, 8, 10, 12, 14, 16, 20],
-    "rsi_buy":    [25, 27, 30, 32, 35],
-    "rsi_sell":   [65, 70, 75, 80, 85],
-    "tp_pct":     [0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15],
-    "trail_pct":  [0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05],
-    "floor_pct":  [0.0, 0.005, 0.01, 0.015, 0.02, 0.03],
-    "min_exit":   [0.0, 0.005, 0.01, 0.015, 0.02],
-    "pos_pct":    [0.5, 0.75, 1.0],
-    "dca_drop":   [0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.15],
-    "ema_gap":    [0.0, 0.01, 0.02, 0.03],
-}
+def _load_sweep_ranges() -> dict[str, list]:
+    import tomllib, os
+    path = os.path.join(os.path.dirname(__file__), "sweep_ranges.toml")
+    with open(path, "rb") as f:
+        return tomllib.load(f)["ranges"]
+
+def _sweep_ranges() -> dict[str, list]:
+    """Always reads from disk so edits to sweep_ranges.toml take effect without restart."""
+    return _load_sweep_ranges()
+
+_SWEEP_RANGES: dict[str, list] = _load_sweep_ranges()
 
 
 def api_sweep_param(pair: str, days: int, start: float, sweep_param: str,
@@ -1655,7 +1592,7 @@ def api_sweep_param(pair: str, days: int, start: float, sweep_param: str,
     """Sweep one parameter over its default range, keep all other params fixed. Returns ranked list."""
     with _bt_lock:
         df = fetch(pair, days, interval)
-    values = _SWEEP_RANGES.get(sweep_param, [])
+    values = _sweep_ranges().get(sweep_param, [])
     results = []
     for v in values:
         params = {**base_params, sweep_param: v}
@@ -1674,7 +1611,7 @@ def api_full_sweep(pair: str, days: int, start: float, interval: str = "15m") ->
     with _bt_lock:
         df = fetch(pair, days, interval)
     out: dict[str, list] = {}
-    for param, values in _SWEEP_RANGES.items():
+    for param, values in _sweep_ranges().items():
         axis: list[dict] = []
         for v in values:
             trades, final = run_pair(pair, df, start, interval=interval, **{param: v})
@@ -1684,6 +1621,54 @@ def api_full_sweep(pair: str, days: int, start: float, interval: str = "15m") ->
         axis.sort(key=lambda x: x["return_pct"], reverse=True)
         out[param] = axis
     return out
+
+
+def api_random_search(pair: str, days: int, start: float, n_trials: int = 200,
+                      interval: str = "15m") -> list[dict]:
+    """Randomly sample n_trials parameter combinations from sweep_ranges, return ranked list."""
+    import random
+    with _bt_lock:
+        df = fetch(pair, days, interval)
+    ranges = _sweep_ranges()
+    results = []
+    for _ in range(n_trials):
+        params = {k: random.choice(v) for k, v in ranges.items()}
+        try:
+            trades, final = run_pair(pair, df, start, interval=interval, **params)
+            summary = _trade_summary(pair, days, start, final, trades)
+            summary["params"] = params
+            results.append(summary)
+        except Exception:
+            pass
+    results.sort(key=lambda x: x["return_pct"], reverse=True)
+    return results
+
+
+def api_2axis_sweep(pair: str, days: int, start: float, param1: str, param2: str,
+                    base_params: dict | None = None, interval: str = "15m") -> dict:
+    """Test all N×M combinations of param1 × param2, others held at base_params/defaults."""
+    with _bt_lock:
+        df = fetch(pair, days, interval)
+    ranges = _sweep_ranges()
+    values1 = ranges.get(param1, [])
+    values2 = ranges.get(param2, [])
+    base = base_params or {}
+    grid = []
+    for v1 in values1:
+        row = []
+        for v2 in values2:
+            params = {**base, param1: v1, param2: v2}
+            trades, final = run_pair(pair, df, start, interval=interval, **params)
+            summary = _trade_summary(pair, days, start, final, trades)
+            summary["v1"] = v1
+            summary["v2"] = v2
+            row.append(summary)
+        grid.append(row)
+    return {
+        "param1": param1, "param2": param2,
+        "values1": values1, "values2": values2,
+        "grid": grid,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1712,38 +1697,63 @@ if __name__ == "__main__":
         mode      = str_args[1].lower() if len(str_args) > 1 else "all"
         days_list = day_args or [730, 365]
         sweeps = {
-            "exit":     sweep_exit,
-            "floor":    sweep_floor,
-            "trail":    sweep_trail,
-            "buyrsi":   sweep_buyrsi,
-            "dca":      sweep_dca,
-            "ema":      sweep_ema,
-            "minexit":  sweep_min_exit,
-            "rsiper":   sweep_rsiperiod,
-            "hardstop": sweep_hardstop,
-            "emagap":      sweep_ema_gap,
-            "timestop":    sweep_timestop,
-            "maxdrawdown": sweep_maxdrawdown,
-            "tieredsize":  sweep_tieredsize,
-            "multidca":    sweep_multidca,
-            "dailyema":    sweep_daily_ema,
-            "interval":    sweep_interval,
-            "htfrsi":      sweep_htf_rsi,
-            "volume":       sweep_volume,
-            "cooldown":     sweep_cooldown,
-            "partialclose":      sweep_partialclose,
-            "dcapartial":        sweep_dca_partial,
-            "pyramid":           sweep_pyramid,
-            "combinedpartial":   sweep_combined_partial,
-            "divergence":        sweep_divergence,
-            "multipos":    sweep_multipos,
-            "solfocus":    sweep_solfocus,
+            # TOML-matching names (primary)
+            "rsi_buy":          sweep_buyrsi,
+            "rsi_period":       sweep_rsiperiod,
+            "rsi_sell":         sweep_exit,       # combined rsi_sell + tp_pct
+            "tp_pct":           sweep_exit,
+            "trail_pct":        sweep_trail,
+            "floor_pct":        sweep_floor,
+            "min_exit":         sweep_min_exit,
+            "pos_pct":          sweep_posize,
+            "dca_drop":         sweep_dca,
+            "dca_step":         sweep_dcastep,
+            "max_dca":          sweep_maxdca,
+            "ema_gap":          sweep_ema_gap,
+            "time_stop_days":   sweep_timestop,
+            "stop_cooldown":    sweep_cooldown,
+            "hard_stop":        sweep_hardstop,
+            "partial_close_pct": sweep_partialclose,
+            # legacy aliases
+            "buyrsi":        sweep_buyrsi,
+            "rsiper":        sweep_rsiperiod,
+            "exit":          sweep_exit,
+            "trail":         sweep_trail,
+            "floor":         sweep_floor,
+            "minexit":       sweep_min_exit,
+            "posize":        sweep_posize,
+            "dca":           sweep_dca,
+            "dcastep":       sweep_dcastep,
+            "maxdca":        sweep_maxdca,
+            "emagap":        sweep_ema_gap,
+            "timestop":      sweep_timestop,
+            "cooldown":      sweep_cooldown,
+            "hardstop":      sweep_hardstop,
+            "partialclose":  sweep_partialclose,
+            # experimental / multi-factor sweeps
+            "ema":           sweep_ema,
+            "maxdrawdown":   sweep_maxdrawdown,
+            "tieredsize":    sweep_tieredsize,
+            "multidca":      sweep_multidca,
+            "dailyema":      sweep_daily_ema,
+            "interval":      sweep_interval,
+            "htfrsi":        sweep_htf_rsi,
+            "volume":        sweep_volume,
+            "dcapartial":    sweep_dca_partial,
+            "pyramid":       sweep_pyramid,
+            "combinedpartial": sweep_combined_partial,
+            "divergence":    sweep_divergence,
+            "multipos":      sweep_multipos,
+            "solfocus":      sweep_solfocus,
         }
         _days_str = "_".join(f"{d}d" for d in days_list)
         _tee = _Tee(f"{RESULTS_DIR}/spot_sweep_{mode}_{_days_str}_{_date}.txt")
         if mode == "all":
+            seen = set()
             for fn in sweeps.values():
-                fn(days_list)
+                if id(fn) not in seen:
+                    seen.add(id(fn))
+                    fn(days_list)
         elif mode in sweeps:
             sweeps[mode](days_list)
         else:
@@ -1751,6 +1761,111 @@ if __name__ == "__main__":
             print(f"Unknown sweep '{mode}'. Options: {', '.join(sweeps)}, all")
             sys.exit(1)
         _tee.close()
+    elif str_args and str_args[0] == "random":
+        # python backtest.py random [n_trials] [days...] [--cached]
+        n_trials  = int(str_args[1]) if len(str_args) > 1 else 200
+        days_list = day_args or [365]
+        n_show    = 20
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/spot_random_{n_trials}t_{_days_str}_{_date}.txt")
+        start  = config.SPOT_SIMULATION_BALANCE
+        _pct_keys = {"tp_pct","trail_pct","floor_pct","min_exit","pos_pct",
+                     "dca_drop","dca_step","ema_gap","hard_stop","partial_close_pct"}
+        def _fv(k, v):
+            return f"{v*100:.1f}%" if k in _pct_keys else str(v)
+        ranges = _sweep_ranges()
+        pkeys  = list(ranges.keys())
+        W = 130
+        for days in days_list:
+            print(f"\n{'━'*W}")
+            print(f"  Random search — {n_trials} trials — {days}d  (top {n_show} shown)")
+            print(f"{'━'*W}")
+            for pair in PAIRS:
+                print(f"\n  ── {pair} ──")
+                results = api_random_search(pair, days, start, n_trials=n_trials)
+                hdr_params = "  ".join(f"{k:<12}" for k in pkeys)
+                print(f"  {'#':<3}  {'return':>7}  {'PnL':>8}  {'n':>3}  {'W%':>4}  {'worst':>7}  {hdr_params}")
+                print(f"  {'─'*3}  {'─'*7}  {'─'*8}  {'─'*3}  {'─'*4}  {'─'*7}  " + "  ".join("─"*12 for _ in pkeys))
+                for i, r in enumerate(results[:n_show]):
+                    pvals = "  ".join(f"{_fv(k, r['params'][k]):<12}" for k in pkeys)
+                    ret   = r["return_pct"]
+                    pnl   = r["total_pnl"]
+                    marker = "  ◄ best" if i == 0 else ""
+                    print(f"  {i+1:<3}  {ret:>+6.2f}%  {pnl:>+8.2f}  {r['trades']:>3}  {r['win_rate']:>3}%  {r['worst']:>+7.2f}  {pvals}{marker}")
+        print()
+        _tee.close()
+
+    elif str_args and str_args[0] == "grid":
+        # python backtest.py grid param1 param2 [days...] [--cached]
+        if len(str_args) < 3:
+            print("Usage: python backtest.py grid <param1> <param2> [days]")
+            print(f"Params: {', '.join(_sweep_ranges().keys())}")
+            sys.exit(1)
+        param1    = str_args[1]
+        param2    = str_args[2]
+        days_list = day_args or [365]
+        ranges    = _sweep_ranges()
+        if param1 not in ranges:
+            print(f"Unknown param '{param1}'. Options: {', '.join(ranges.keys())}")
+            sys.exit(1)
+        if param2 not in ranges:
+            print(f"Unknown param '{param2}'. Options: {', '.join(ranges.keys())}")
+            sys.exit(1)
+        if param1 == param2:
+            print("param1 and param2 must be different.")
+            sys.exit(1)
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee = _Tee(f"{RESULTS_DIR}/spot_grid_{param1}x{param2}_{_days_str}_{_date}.txt")
+        start  = config.SPOT_SIMULATION_BALANCE
+        _pct_keys = {"tp_pct","trail_pct","floor_pct","min_exit","pos_pct",
+                     "dca_drop","dca_step","ema_gap","hard_stop","partial_close_pct"}
+        def _fv2(k, v):
+            return f"{v*100:.1f}%" if k in _pct_keys else str(v)
+        for days in days_list:
+            result   = api_2axis_sweep(pair=PAIRS[0], days=days, start=start,
+                                       param1=param1, param2=param2)
+            values1  = result["values1"]
+            values2  = result["values2"]
+            grid     = result["grid"]
+            col_w    = 9
+            lbl_w    = 12
+            header   = f"  {param1[:lbl_w-2]:<{lbl_w}}" + "".join(f"{_fv2(param2,v):>{col_w}}" for v in values2)
+            W = len(header) + 2
+            print(f"\n{'━'*W}")
+            print(f"  2-axis grid: {param1} × {param2} — {days}d — {PAIRS[0]}")
+            print(f"  Rows: {param1}  |  Cols: {param2}  |  Cells: return %")
+            print(f"{'━'*W}")
+            print(header)
+            print(f"  {'─'*lbl_w}" + ("─"*col_w)*len(values2))
+            all_rets = [cell["return_pct"] for row in grid for cell in row]
+            best_ret = max(all_rets)
+            for ri, row in enumerate(grid):
+                cells = ""
+                for cell in row:
+                    ret  = cell["return_pct"]
+                    mark = "◄" if ret == best_ret else " "
+                    cells += f"  {ret:>+5.1f}%{mark}"
+                print(f"  {_fv2(param1, values1[ri]):<{lbl_w}}{cells}")
+            if len(PAIRS) > 1:
+                print(f"\n  (grid shown for {PAIRS[0]} only; running remaining pairs…)")
+                for pair in PAIRS[1:]:
+                    result2  = api_2axis_sweep(pair=pair, days=days, start=start,
+                                               param1=param1, param2=param2)
+                    print(f"\n  ── {pair} ──")
+                    print(header)
+                    print(f"  {'─'*lbl_w}" + ("─"*col_w)*len(values2))
+                    all2 = [c["return_pct"] for r in result2["grid"] for c in r]
+                    best2 = max(all2)
+                    for ri, row in enumerate(result2["grid"]):
+                        cells = ""
+                        for cell in row:
+                            ret  = cell["return_pct"]
+                            mark = "◄" if ret == best2 else " "
+                            cells += f"  {ret:>+5.1f}%{mark}"
+                        print(f"  {_fv2(param1, values1[ri]):<{lbl_w}}{cells}")
+        print()
+        _tee.close()
+
     elif str_args and str_args[0] == "topup":
         # positional floats after "topup": start monthly days
         num_args = [float(a) for a in str_args[1:] if a.replace(".", "").isdigit()]

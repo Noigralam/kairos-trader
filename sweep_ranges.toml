@@ -1,0 +1,68 @@
+# Sweep axis value lists — edit freely.
+# Each list defines the values tested when sweeping that parameter.
+# Used by both the CLI (backtest.py sweep) and the dashboard backtest tab.
+# Changes here take effect immediately on the dashboard; CLI picks them up on next run.
+
+[ranges]
+
+# RSI period: how many candles the RSI calculation looks back.
+# Shorter = more sensitive / more signals; longer = smoother / fewer signals.
+rsi_period      = [3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 25]
+
+# RSI buy threshold: buy when RSI drops below this value (oversold).
+# Lower = only buy on deeper dips; higher = buy more often.
+rsi_buy         = [20, 22, 25, 27, 28, 30, 32, 33, 35, 38, 40, 45]
+
+# RSI sell threshold: allow exit when RSI rises above this (overbought).
+# Higher = hold for stronger rallies; lower = exit sooner.
+rsi_sell        = [55, 60, 62, 65, 67, 70, 72, 75, 78, 80, 85, 90]
+
+# Take-profit %: close position when price is this far above entry cost.
+# Tested together with rsi_sell in the combined exit sweep.
+tp_pct          = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12, 0.15, 0.20]
+
+# Trailing stop %: once TP is hit, follow price up and exit if it drops this far from the peak.
+# Tighter = locks in profit sooner but exits early on dips; wider = rides longer rallies.
+trail_pct       = [0.005, 0.01, 0.012, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.05, 0.06, 0.08]
+
+# Profit floor %: minimum unrealised gain that must be in place before trailing stop activates.
+# Prevents the trailing stop from closing a barely-profitable trade on noise.
+floor_pct       = [0.0, 0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06]
+
+# Minimum exit profit %: hard lower bound — never close below this gain (unless hard stop fires).
+# Use to avoid selling at a tiny profit when the trailing stop catches a small dip.
+min_exit        = [0.0, 0.003, 0.005, 0.008, 0.01, 0.012, 0.015, 0.018, 0.02, 0.025, 0.03, 0.04]
+
+# Position size: fraction of available balance used per trade (1.0 = all-in).
+pos_pct         = [0.25, 0.33, 0.40, 0.50, 0.60, 0.67, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0]
+
+# DCA drop %: price must fall this far below the current average cost before adding a tranche.
+dca_drop        = [0.005, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.12, 0.15]
+
+# DCA step %: each additional tranche requires an extra drop of this much beyond dca_drop.
+# 0 = all tranches trigger at the same interval; higher = tranches spread out further down.
+dca_step        = [0.0, 0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06]
+
+# Max DCA tranches: how many times the bot is allowed to add to a losing position.
+# 0 = no DCA at all.
+max_dca         = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12]
+
+# EMA gap filter %: price must be at least this far above the EMA before a buy is allowed.
+# Filters out buys into downtrends. 0 = disabled.
+ema_gap         = [0.0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08]
+
+# Time stop (days): force-close any trade that has been open longer than this many days.
+# 0 = disabled. Prevents capital from being locked in slow-moving positions indefinitely.
+time_stop_days  = [0, 2, 3, 5, 7, 9, 10, 12, 14, 18, 21, 30]
+
+# Stop cooldown (days): after a hard stop or time stop fires, wait this many days before buying again.
+# Prevents immediately re-entering a falling market after being stopped out.
+stop_cooldown   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16]
+
+# Hard stop %: if the position drops this far below entry cost, exit immediately regardless of RSI.
+# 0 = disabled. Acts as a maximum-loss guardrail.
+hard_stop       = [0.0, 0.03, 0.05, 0.07, 0.10, 0.12, 0.15, 0.17, 0.20, 0.22, 0.25, 0.30]
+
+# Partial close %: sell this fraction of the position when the first TP level is reached,
+# letting the remainder ride with the trailing stop. 0 = disabled (close fully at trail).
+partial_close_pct = [0.0, 0.10, 0.20, 0.25, 0.33, 0.40, 0.50, 0.60, 0.67, 0.75, 0.80, 0.90]

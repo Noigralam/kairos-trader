@@ -316,7 +316,9 @@
   }
   .bt-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
   .bt-field input, .bt-field select { background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:5px 8px; font-size:13px; width:100%; box-sizing:border-box; }
-  .bt-field select { color-scheme: dark; }
+  .bt-field select option, #bt-sweep-param option, #bt-grid-param1 option, #bt-grid-param2 option { color: #000; background: #fff; }
+  .bt-action-btn { padding:6px 14px; background:var(--blue); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; opacity:0.85; }
+  .bt-action-btn:hover { opacity:1; }
   </style>
 </head>
 <body>
@@ -1075,52 +1077,138 @@
   <!-- ═══════════════════════════ BACKTEST TAB ══════════════════════════ -->
   <div id="tab-backtest" style="display:none">
     <h2>Backtest</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px">
-      <!-- Row 1: core -->
-      <label class="bt-field"><span>Pair</span><input id="bt-pair" type="text" value="{{ config.SPOT_TRADING_PAIRS[0] }}" style="text-transform:uppercase"></label>
-      <label class="bt-field"><span>Days</span>
-        <select id="bt-days">
-          <option value="90">90d</option>
-          <option value="180">180d</option>
-          <option value="365" selected>365d</option>
-          <option value="730">730d</option>
-        </select>
-      </label>
-      <label class="bt-field"><span>Start balance</span><input id="bt-start" type="number" value="{{ config.SPOT_SIMULATION_BALANCE }}" min="1" step="10"></label>
-      <label class="bt-field"><span>Position size %</span><input id="bt-pos" type="number" value="{{ (config.SPOT_POSITION_SIZE_PCT * 100) | int }}" min="1" max="100"></label>
-      <!-- Row 2: RSI -->
-      <label class="bt-field"><span>RSI period</span><input id="bt-rsi-period" type="number" value="{{ config.SPOT_RSI_PERIOD }}" min="2" max="50"></label>
-      <label class="bt-field"><span>RSI oversold</span><input id="bt-rsi-buy" type="number" value="{{ config.SPOT_RSI_OVERSOLD }}" min="1" max="50"></label>
-      <label class="bt-field"><span>RSI overbought</span><input id="bt-rsi-sell" type="number" value="{{ config.SPOT_RSI_OVERBOUGHT }}" min="50" max="99"></label>
-      <!-- Row 3: exit -->
-      <label class="bt-field"><span>Take profit %</span><input id="bt-tp" type="number" value="{{ (config.SPOT_TAKE_PROFIT_PCT * 100) }}" min="0.1" step="0.1"></label>
-      <label class="bt-field"><span>Trailing stop %</span><input id="bt-trail" type="number" value="{{ (config.SPOT_TRAILING_STOP_PCT * 100) }}" min="0.1" step="0.1"></label>
-      <label class="bt-field"><span>Profit floor %</span><input id="bt-floor" type="number" value="{{ (config.SPOT_PROFIT_FLOOR_PCT * 100) }}" min="0" step="0.1"></label>
-      <label class="bt-field"><span>Min exit profit %</span><input id="bt-min-exit" type="number" value="{{ (config.SPOT_MIN_EXIT_PROFIT_PCT * 100) }}" min="0" step="0.1"></label>
-      <!-- Row 4: DCA -->
-      <label class="bt-field"><span>DCA max (0=off)</span><input id="bt-dca-max" type="number" value="{{ config.SPOT_DCA_MAX }}" min="0" max="10"></label>
-      <label class="bt-field"><span>DCA drop %</span><input id="bt-dca-drop" type="number" value="{{ (config.SPOT_DCA_DROP_PCT * 100) }}" min="0.1" step="0.1"></label>
-      <label class="bt-field"><span>DCA step %</span><input id="bt-dca-step" type="number" value="{{ (config.SPOT_DCA_STEP_PCT * 100) }}" min="0.1" step="0.1"></label>
-    </div>
-    <button id="bt-run-btn" onclick="runBacktest()" style="padding:8px 24px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Run backtest</button>
-    <span id="bt-status" style="margin-left:12px;color:var(--muted);font-size:13px"></span>
 
-    <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <select id="bt-sweep-param" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px;color-scheme:dark">
-        <option value="rsi_period">RSI period</option>
-        <option value="rsi_buy">RSI oversold</option>
-        <option value="rsi_sell">RSI overbought</option>
-        <option value="tp_pct">Take profit %</option>
-        <option value="trail_pct">Trailing stop %</option>
-        <option value="floor_pct">Profit floor %</option>
-        <option value="min_exit">Min exit %</option>
-        <option value="pos_pct">Position size %</option>
-        <option value="dca_drop">DCA drop %</option>
-        <option value="ema_gap">EMA gap %</option>
-      </select>
-      <button onclick="runSweep()" style="padding:8px 20px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px">Sweep param</button>
-      <button onclick="runFullSweep()" style="padding:8px 20px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px">Full sweep</button>
-      <span id="bt-sweep-status" style="color:var(--muted);font-size:13px"></span>
+    <!-- Shared: pair + period -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:10px">
+      <label class="bt-field"><span>Pair</span><input id="bt-pair" type="text" value="{{ config.SPOT_TRADING_PAIRS[0] }}" style="text-transform:uppercase"></label>
+      <label class="bt-field"><span>Start balance</span><input id="bt-start" type="number" value="{{ config.SPOT_SIMULATION_BALANCE }}" min="1" step="10"></label>
+    </div>
+    <div class="bt-field" style="margin-bottom:20px"><span>Time spans</span>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="bt-days-cb" value="90"> 90d</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="bt-days-cb" value="180"> 180d</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="bt-days-cb" value="365" checked> 365d</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--text);cursor:pointer"><input type="checkbox" class="bt-days-cb" value="730"> 730d</label>
+      </div>
+    </div>
+
+    <!-- Section 1: Single run -->
+    <div style="border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.05em">Single run — fixed parameters</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px">
+        <label class="bt-field"><span>Position size %</span><input id="bt-pos" type="number" value="{{ (config.SPOT_POSITION_SIZE_PCT * 100) | int }}" min="1" max="100"></label>
+        <label class="bt-field"><span>RSI period</span><input id="bt-rsi-period" type="number" value="{{ config.SPOT_RSI_PERIOD }}" min="2" max="50"></label>
+        <label class="bt-field"><span>RSI oversold</span><input id="bt-rsi-buy" type="number" value="{{ config.SPOT_RSI_OVERSOLD }}" min="1" max="50"></label>
+        <label class="bt-field"><span>RSI overbought</span><input id="bt-rsi-sell" type="number" value="{{ config.SPOT_RSI_OVERBOUGHT }}" min="50" max="99"></label>
+        <label class="bt-field"><span>Take profit %</span><input id="bt-tp" type="number" value="{{ (config.SPOT_TAKE_PROFIT_PCT * 100) }}" min="0.1" step="0.1"></label>
+        <label class="bt-field"><span>Trailing stop %</span><input id="bt-trail" type="number" value="{{ (config.SPOT_TRAILING_STOP_PCT * 100) }}" min="0.1" step="0.1"></label>
+        <label class="bt-field"><span>Profit floor %</span><input id="bt-floor" type="number" value="{{ (config.SPOT_PROFIT_FLOOR_PCT * 100) }}" min="0" step="0.1"></label>
+        <label class="bt-field"><span>Min exit profit %</span><input id="bt-min-exit" type="number" value="{{ (config.SPOT_MIN_EXIT_PROFIT_PCT * 100) }}" min="0" step="0.1"></label>
+        <label class="bt-field"><span>DCA max (0=off)</span><input id="bt-dca-max" type="number" value="{{ config.SPOT_DCA_MAX }}" min="0" max="10"></label>
+        <label class="bt-field"><span>DCA drop %</span><input id="bt-dca-drop" type="number" value="{{ (config.SPOT_DCA_DROP_PCT * 100) }}" min="0.1" step="0.1"></label>
+        <label class="bt-field"><span>DCA step %</span><input id="bt-dca-step" type="number" value="{{ (config.SPOT_DCA_STEP_PCT * 100) }}" min="0.1" step="0.1"></label>
+        <label class="bt-field"><span>Time stop (days, 0=off)</span><input id="bt-time-stop" type="number" value="0" min="0" step="1"></label>
+        <label class="bt-field"><span>Stop cooldown (candles, 0=off)</span><input id="bt-stop-cooldown" type="number" value="0" min="0" step="1"></label>
+        <label class="bt-field"><span>EMA gap % (0=off)</span><input id="bt-ema-gap" type="number" value="0" min="0" step="0.1"></label>
+        <label class="bt-field"><span>Hard stop % (0=off)</span><input id="bt-hard-stop" type="number" value="0" min="0" step="0.5"></label>
+        <label class="bt-field"><span>Partial close % (0=off)</span><input id="bt-partial-close" type="number" value="0" min="0" max="100" step="5"></label>
+        <label class="bt-field"><span>Partial close trail %</span><input id="bt-partial-trail" type="number" value="2" min="0.1" step="0.1"></label>
+        <div class="bt-field"><span>Interval</span>
+          <select id="bt-interval">
+            <option value="15m" selected>15m</option>
+            <option value="30m">30m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+          </select>
+        </div>
+      </div>
+      <button id="bt-run-btn" onclick="runBacktest()" style="padding:8px 24px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Run backtest</button>
+      <span id="bt-status" style="margin-left:12px;color:var(--muted);font-size:13px"></span>
+    </div>
+
+    <!-- Section 2: Sweep -->
+    <div style="border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.05em">Sweep</div>
+      <div style="display:grid;grid-template-columns:80px 1fr;gap:8px 12px;align-items:center">
+
+        <!-- Single axis -->
+        <span style="font-size:12px;color:var(--muted)">Single axis</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="bt-sweep-param" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px">
+            <option value="rsi_period">RSI period</option>
+            <option value="rsi_buy">RSI oversold</option>
+            <option value="rsi_sell">RSI overbought</option>
+            <option value="tp_pct">Take profit %</option>
+            <option value="trail_pct">Trailing stop %</option>
+            <option value="floor_pct">Profit floor %</option>
+            <option value="min_exit">Min exit %</option>
+            <option value="pos_pct">Position size %</option>
+            <option value="dca_drop">DCA drop %</option>
+            <option value="dca_step">DCA step %</option>
+            <option value="max_dca">DCA max</option>
+            <option value="ema_gap">EMA gap %</option>
+            <option value="time_stop_days">Time stop (days)</option>
+            <option value="stop_cooldown">Stop cooldown</option>
+            <option value="hard_stop">Hard stop %</option>
+            <option value="partial_close_pct">Partial close %</option>
+          </select>
+          <button onclick="runSweep()" class="bt-action-btn">Sweep param</button>
+          <button onclick="runFullSweep()" class="bt-action-btn">Full sweep</button>
+        </div>
+
+        <!-- Random search -->
+        <span style="font-size:12px;color:var(--muted)">Random</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input id="bt-random-trials" type="number" value="200" min="10" max="2000" step="50" style="width:70px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px">
+          <span style="font-size:12px;color:var(--muted)">trials</span>
+          <button onclick="runRandomSearch()" class="bt-action-btn" style="margin-left:4px">Random search</button>
+        </div>
+
+        <!-- 2-axis grid -->
+        <span style="font-size:12px;color:var(--muted)">2-axis grid</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="bt-grid-param1" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px">
+            <option value="rsi_period">RSI period</option>
+            <option value="rsi_buy" selected>RSI oversold</option>
+            <option value="rsi_sell">RSI overbought</option>
+            <option value="tp_pct">Take profit %</option>
+            <option value="trail_pct">Trailing stop %</option>
+            <option value="floor_pct">Profit floor %</option>
+            <option value="min_exit">Min exit %</option>
+            <option value="pos_pct">Position size %</option>
+            <option value="dca_drop">DCA drop %</option>
+            <option value="dca_step">DCA step %</option>
+            <option value="max_dca">DCA max</option>
+            <option value="ema_gap">EMA gap %</option>
+            <option value="time_stop_days">Time stop (days)</option>
+            <option value="stop_cooldown">Stop cooldown</option>
+            <option value="hard_stop">Hard stop %</option>
+            <option value="partial_close_pct">Partial close %</option>
+          </select>
+          <span style="color:var(--muted);font-size:13px">×</span>
+          <select id="bt-grid-param2" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px">
+            <option value="rsi_period">RSI period</option>
+            <option value="rsi_buy">RSI oversold</option>
+            <option value="rsi_sell">RSI overbought</option>
+            <option value="tp_pct" selected>Take profit %</option>
+            <option value="trail_pct">Trailing stop %</option>
+            <option value="floor_pct">Profit floor %</option>
+            <option value="min_exit">Min exit %</option>
+            <option value="pos_pct">Position size %</option>
+            <option value="dca_drop">DCA drop %</option>
+            <option value="dca_step">DCA step %</option>
+            <option value="max_dca">DCA max</option>
+            <option value="ema_gap">EMA gap %</option>
+            <option value="time_stop_days">Time stop (days)</option>
+            <option value="stop_cooldown">Stop cooldown</option>
+            <option value="hard_stop">Hard stop %</option>
+            <option value="partial_close_pct">Partial close %</option>
+          </select>
+          <button onclick="run2AxisSweep()" class="bt-action-btn">2-axis grid</button>
+        </div>
+
+      </div>
+      <div style="margin-top:10px"><span id="bt-sweep-status" style="color:var(--muted);font-size:12px"></span></div>
     </div>
 
     <div id="bt-results" style="display:none;margin-top:20px">
@@ -1128,6 +1216,17 @@
       <div id="bt-summary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px"></div>
       <!-- Exit reasons -->
       <div id="bt-reasons" style="margin-bottom:20px;font-size:13px;color:var(--muted)"></div>
+      <!-- Save as Shadow -->
+      <div id="bt-save-shadow-row" style="display:none;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button onclick="toggleSaveShadowForm()" style="padding:6px 16px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px">Save as Shadow</button>
+        <div id="bt-save-shadow-form" style="display:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input id="bt-shadow-name" type="text" placeholder="Shadow name" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px;width:140px">
+          <input id="bt-shadow-balance" type="number" placeholder="Balance" min="1" step="10" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px;width:100px">
+          <input id="bt-shadow-pairs" type="text" placeholder="Pairs (optional)" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px;width:160px">
+          <button onclick="saveShadow()" style="padding:6px 16px;background:var(--green);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Create</button>
+          <span id="bt-save-shadow-status" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
       <!-- Trade list -->
       <h3 style="font-size:14px;margin-bottom:8px">Trades</h3>
       <div class="tbl-wrap">
@@ -1145,7 +1244,7 @@
   </div><!-- /tab-backtest -->
 
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
-  <section>
+  <section id="activity-section">
     <h2>Recent Activity</h2>
     <div class="log-box" id="log-box">
       <div class="log-entry tick"><span class="log-time">--:--:--</span>Waiting for data…</div>
@@ -1213,6 +1312,7 @@
     document.getElementById('tab-futures').style.display        = name === 'futures'        ? '' : 'none';
     document.getElementById('tab-futures-shadow').style.display = name === 'futures-shadow' ? '' : 'none';
     document.getElementById('tab-backtest').style.display       = name === 'backtest'       ? '' : 'none';
+    document.getElementById('activity-section').style.display   = name === 'backtest'       ? 'none' : '';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'spot-shadow')    refreshShadowTab();
@@ -1778,7 +1878,8 @@
     _activeShadow = _shNames[0];
     const sel = document.getElementById('sh-selector');
     sel.innerHTML = _shNames.map(n =>
-      `<button onclick="switchShadow('${n}')" data-shadow="${n}" data-color="${_shColorMap[n]}">${n}</button>`
+      `<button onclick="switchShadow('${n}')" data-shadow="${n}" data-color="${_shColorMap[n]}"
+        onmouseenter="highlightPnlLine('${n}')" onmouseleave="unhighlightPnlLine()">${n}</button>`
     ).join('');
     if (_shNames.length > 1)
       document.getElementById('sh-selector-wrap').style.display = '';
@@ -1989,6 +2090,30 @@
       b.classList.toggle('active', b.dataset.mode === mode));
     if (_shPnlChart) { _shPnlChart.destroy(); _shPnlChart = null; }
     refreshShPnlChart();
+  }
+
+  function highlightPnlLine(name) {
+    if (!_shPnlChart) return;
+    _shPnlChart.data.datasets.forEach(ds => {
+      const isHovered = ds.label === name;
+      const baseColor = _shColorMap[ds.label] || ds._baseColor || ds.borderColor;
+      ds._baseColor   = baseColor;
+      ds.borderColor  = isHovered ? baseColor : baseColor + '22';
+      ds.borderWidth  = isHovered ? 3 : 0.5;
+      ds.borderDash   = isHovered ? [] : [3, 3];
+    });
+    _shPnlChart.update('none');
+  }
+
+  function unhighlightPnlLine() {
+    if (!_shPnlChart) return;
+    _shPnlChart.data.datasets.forEach(ds => {
+      const baseColor = ds._baseColor || ds.borderColor;
+      ds.borderColor  = baseColor;
+      ds.borderWidth  = ds.label === _activeShadow ? 2 : 1;
+      ds.borderDash   = ds.label === _activeShadow ? [] : [3, 3];
+    });
+    _shPnlChart.update('none');
   }
 
   async function refreshShPnlChart() {
@@ -4126,11 +4251,10 @@
     const results = document.getElementById('bt-results');
     btn.disabled = true;
     results.style.display = 'none';
-    status.textContent = 'Running…';
 
-    const payload = {
+    const daysList = _selectedDays();
+    const basePayload = {
       pair:       document.getElementById('bt-pair').value.trim().toUpperCase(),
-      days:       parseInt(document.getElementById('bt-days').value),
       start:      parseFloat(document.getElementById('bt-start').value),
       pos_pct:    parseFloat(document.getElementById('bt-pos').value) / 100,
       rsi_period: parseInt(document.getElementById('bt-rsi-period').value),
@@ -4140,33 +4264,60 @@
       trail_pct:  parseFloat(document.getElementById('bt-trail').value) / 100,
       floor_pct:  parseFloat(document.getElementById('bt-floor').value) / 100,
       min_exit:   parseFloat(document.getElementById('bt-min-exit').value) / 100,
-      max_dca:    parseInt(document.getElementById('bt-dca-max').value),
-      dca_drop:   parseFloat(document.getElementById('bt-dca-drop').value) / 100,
-      dca_step:   parseFloat(document.getElementById('bt-dca-step').value) / 100,
+      max_dca:          parseInt(document.getElementById('bt-dca-max').value),
+      dca_drop:         parseFloat(document.getElementById('bt-dca-drop').value) / 100,
+      dca_step:         parseFloat(document.getElementById('bt-dca-step').value) / 100,
+      time_stop_days:   parseFloat(document.getElementById('bt-time-stop').value),
+      stop_cooldown:    parseInt(document.getElementById('bt-stop-cooldown').value),
+      ema_gap:          parseFloat(document.getElementById('bt-ema-gap').value) / 100,
+      hard_stop:        parseFloat(document.getElementById('bt-hard-stop').value) / 100,
+      partial_close_pct:   parseFloat(document.getElementById('bt-partial-close').value) / 100,
+      partial_close_trail: parseFloat(document.getElementById('bt-partial-trail').value) / 100,
+      interval:         document.getElementById('bt-interval').value,
     };
 
-    try {
-      const _bth = {'Content-Type':'application/json'};
-      if (_pinEnabled) _bth['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
-      const r1  = await fetch('/api/backtest/run', {method:'POST', headers:_bth, body: JSON.stringify(payload)});
-      const j1  = await r1.json();
-      if (!j1.job_id) { status.textContent = 'Error: ' + (j1.error || 'unknown'); btn.disabled=false; return; }
-      const jobId = j1.job_id;
+    const _bth = {'Content-Type':'application/json'};
 
-      const poll = async () => {
-        const r2 = await fetch(`/api/backtest/${jobId}`);
-        const j2 = await r2.json();
-        if (j2.status === 'running') { status.textContent = 'Running…'; setTimeout(poll, 1500); return; }
+    try {
+      status.textContent = `Starting ${daysList.length} run(s)…`;
+      const jobIds = await Promise.all(daysList.map(async d => {
+        const r = await fetch('/api/backtest/run', {method:'POST', headers:_bth, body: JSON.stringify({...basePayload, days: d})});
+        const j = await r.json();
+        if (!j.job_id) throw new Error(j.error || 'unknown');
+        return {days: d, jobId: j.job_id};
+      }));
+
+      const pollAll = async () => {
+        const settled = await Promise.all(jobIds.map(async ({days, jobId}) => {
+          const r = await fetch(`/api/backtest/${jobId}`);
+          const j = await r.json();
+          return {days, jobId, ...j};
+        }));
+        const running = settled.filter(s => s.status === 'running').length;
+        if (running > 0) { status.textContent = `Running… (${settled.length - running}/${settled.length} done)`; setTimeout(pollAll, 1500); return; }
         btn.disabled = false;
-        if (j2.status === 'error')  { status.textContent = 'Error: ' + j2.error; return; }
+        const errors = settled.filter(s => s.status === 'error');
+        if (errors.length) { status.textContent = 'Error: ' + errors[0].error; return; }
         status.textContent = 'Done.';
-        renderBacktestResults(j2.result);
+        if (settled.length === 1) {
+          renderBacktestResults(settled[0].result);
+        } else {
+          renderMultiBacktestResults(settled.map(s => ({days: s.days, result: s.result})));
+        }
       };
-      setTimeout(poll, 1500);
+      setTimeout(pollAll, 1500);
     } catch(e) { status.textContent = 'Request failed: ' + e; btn.disabled=false; }
   }
 
+  let _lastBtParams = null;
+
   function renderBacktestResults(r) {
+    _lastBtParams = _collectParams();
+    document.getElementById('bt-save-shadow-form').style.display = 'none';
+    document.getElementById('bt-shadow-balance').value = _lastBtParams.start;
+    document.getElementById('bt-shadow-pairs').value = _lastBtParams.pair;
+    document.getElementById('bt-save-shadow-status').textContent = '';
+    document.getElementById('bt-save-shadow-row').style.display = 'flex';
     document.getElementById('bt-results').style.display = '';
     const cards = [
       ['PnL',        `${r.total_pnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${r.total_pnl.toFixed(2)}`, r.total_pnl >= 0 ? 'var(--green)' : 'var(--red)'],
@@ -4201,10 +4352,72 @@
     ).join('');
   }
 
+  function renderMultiBacktestResults(runs) {
+    const el = document.getElementById('bt-results');
+    el.style.display = '';
+    // hide single-run sections
+    document.getElementById('bt-summary').innerHTML = '';
+    document.getElementById('bt-reasons').innerHTML = '';
+    document.getElementById('bt-trades-body').innerHTML = '';
+    const cols = ['Return','PnL','Trades','Win rate','Avg PnL','Best','Worst','Fees','DCA used','Final bal'];
+    const rows = runs.map(({days, result: r}) => [
+      `${days}d`,
+      `<span style="color:${r.return_pct>=0?'var(--green)':'var(--red)'}">${r.return_pct>=0?'+':''}${r.return_pct.toFixed(2)}%</span>`,
+      `<span style="color:${r.total_pnl>=0?'var(--green)':'var(--red)'}">${r.total_pnl>=0?'+':''}${CURRENCY_SYMBOL}${r.total_pnl.toFixed(2)}</span>`,
+      r.trades,
+      r.trades ? r.win_rate+'%' : '—',
+      `<span style="color:${r.avg_pnl>=0?'var(--green)':'var(--red)'}">${r.avg_pnl>=0?'+':''}${CURRENCY_SYMBOL}${r.avg_pnl.toFixed(2)}</span>`,
+      `<span style="color:var(--green)">+${CURRENCY_SYMBOL}${r.best.toFixed(2)}</span>`,
+      `<span style="color:var(--red)">${CURRENCY_SYMBOL}${r.worst.toFixed(2)}</span>`,
+      `-${CURRENCY_SYMBOL}${r.total_fees.toFixed(2)}`,
+      r.dca_used,
+      `${CURRENCY_SYMBOL}${r.final_balance.toFixed(2)}`,
+    ]);
+    document.getElementById('bt-summary').innerHTML = `<div class="tbl-wrap" style="grid-column:1/-1"><table class="data-tbl">
+      <thead><tr><th>Period</th>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  function toggleSaveShadowForm() {
+    const form = document.getElementById('bt-save-shadow-form');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+    if (form.style.display === 'flex') document.getElementById('bt-shadow-name').focus();
+  }
+
+  async function saveShadow() {
+    const status = document.getElementById('bt-save-shadow-status');
+    const name = document.getElementById('bt-shadow-name').value.trim();
+    if (!name) { status.textContent = 'Enter a shadow name.'; return; }
+    if (!_lastBtParams) { status.textContent = 'No backtest params available.'; return; }
+    status.textContent = 'Creating…';
+    const payload = {
+      ..._lastBtParams,
+      name,
+      balance:  parseFloat(document.getElementById('bt-shadow-balance').value) || _lastBtParams.start,
+      pairs:    document.getElementById('bt-shadow-pairs').value.trim().toUpperCase() || _lastBtParams.pair,
+    };
+    try {
+      const h = {'Content-Type': 'application/json'};
+      if (_pinEnabled) h['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+      const r = await fetch('/api/shadows/create', {method: 'POST', headers: h, body: JSON.stringify(payload)});
+      const j = await r.json();
+      if (!j.ok) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      status.style.color = 'var(--green)';
+      status.textContent = `Shadow '${j.name}' created${j.queued ? ' (reload queued)' : ''}.`;
+      document.getElementById('bt-shadow-name').value = '';
+    } catch(e) { status.textContent = 'Request failed: ' + e; }
+  }
+
+  function _selectedDays() {
+    const checked = [...document.querySelectorAll('.bt-days-cb:checked')].map(cb => parseInt(cb.value));
+    return checked.length ? checked : [365];
+  }
+
   function _collectParams() {
     return {
       pair:       document.getElementById('bt-pair').value.trim().toUpperCase(),
-      days:       parseInt(document.getElementById('bt-days').value),
+      days:       _selectedDays()[0],
       start:      parseFloat(document.getElementById('bt-start').value),
       pos_pct:    parseFloat(document.getElementById('bt-pos').value) / 100,
       rsi_period: parseInt(document.getElementById('bt-rsi-period').value),
@@ -4214,9 +4427,16 @@
       trail_pct:  parseFloat(document.getElementById('bt-trail').value) / 100,
       floor_pct:  parseFloat(document.getElementById('bt-floor').value) / 100,
       min_exit:   parseFloat(document.getElementById('bt-min-exit').value) / 100,
-      max_dca:    parseInt(document.getElementById('bt-dca-max').value),
-      dca_drop:   parseFloat(document.getElementById('bt-dca-drop').value) / 100,
-      dca_step:   parseFloat(document.getElementById('bt-dca-step').value) / 100,
+      max_dca:          parseInt(document.getElementById('bt-dca-max').value),
+      dca_drop:         parseFloat(document.getElementById('bt-dca-drop').value) / 100,
+      dca_step:         parseFloat(document.getElementById('bt-dca-step').value) / 100,
+      time_stop_days:   parseFloat(document.getElementById('bt-time-stop').value),
+      stop_cooldown:    parseInt(document.getElementById('bt-stop-cooldown').value),
+      ema_gap:          parseFloat(document.getElementById('bt-ema-gap').value) / 100,
+      hard_stop:        parseFloat(document.getElementById('bt-hard-stop').value) / 100,
+      partial_close_pct:   parseFloat(document.getElementById('bt-partial-close').value) / 100,
+      partial_close_trail: parseFloat(document.getElementById('bt-partial-trail').value) / 100,
+      interval:         document.getElementById('bt-interval').value,
     };
   }
 
@@ -4240,9 +4460,7 @@
     status.textContent = 'Running…';
     document.getElementById('bt-sweep-results').style.display = 'none';
     try {
-      const _swh = {'Content-Type':'application/json'};
-      if (_pinEnabled) _swh['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
-      const r = await fetch('/api/backtest/sweep', {method:'POST', headers:_swh, body: JSON.stringify(params)});
+      const r = await fetch('/api/backtest/sweep', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params)});
       const j = await r.json();
       if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
       _pollSweepJob(j.job_id, rows => renderSweepResults(sweepParam, rows, false));
@@ -4255,9 +4473,7 @@
     status.textContent = 'Running full sweep (may take a few minutes)…';
     document.getElementById('bt-sweep-results').style.display = 'none';
     try {
-      const _fsh = {'Content-Type':'application/json'};
-      if (_pinEnabled) _fsh['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
-      const r = await fetch('/api/backtest/fullsweep', {method:'POST', headers:_fsh, body: JSON.stringify(params)});
+      const r = await fetch('/api/backtest/fullsweep', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params)});
       const j = await r.json();
       if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
       _pollSweepJob(j.job_id, result => renderFullSweepResults(result));
@@ -4267,9 +4483,12 @@
   const _SWEEP_PARAM_LABELS = {
     rsi_period: 'RSI period', rsi_buy: 'RSI oversold', rsi_sell: 'RSI overbought',
     tp_pct: 'Take profit %', trail_pct: 'Trailing stop %', floor_pct: 'Profit floor %',
-    min_exit: 'Min exit %', pos_pct: 'Position size %', dca_drop: 'DCA drop %', ema_gap: 'EMA gap %',
+    min_exit: 'Min exit %', pos_pct: 'Position size %',
+    dca_drop: 'DCA drop %', dca_step: 'DCA step %', max_dca: 'DCA max',
+    ema_gap: 'EMA gap %', time_stop_days: 'Time stop (days)', stop_cooldown: 'Stop cooldown (candles)',
+    hard_stop: 'Hard stop %', partial_close_pct: 'Partial close %',
   };
-  const _PCT_PARAMS = new Set(['tp_pct','trail_pct','floor_pct','min_exit','pos_pct','dca_drop','ema_gap']);
+  const _PCT_PARAMS = new Set(['tp_pct','trail_pct','floor_pct','min_exit','pos_pct','dca_drop','dca_step','ema_gap','hard_stop','partial_close_pct']);
 
   function _fmtSweptValue(param, val) {
     if (_PCT_PARAMS.has(param)) return (val * 100).toFixed(1) + '%';
@@ -4333,6 +4552,126 @@
       </details>`;
     }
     html += '</div>';
+
+    document.getElementById('bt-sweep-content').innerHTML = html;
+    el.style.display = '';
+  }
+
+  async function runRandomSearch() {
+    const status = document.getElementById('bt-sweep-status');
+    const p = _collectParams();
+    const n_trials = parseInt(document.getElementById('bt-random-trials').value) || 200;
+    status.textContent = `Running random search (${n_trials} trials)…`;
+    document.getElementById('bt-sweep-results').style.display = 'none';
+    try {
+      const r = await fetch('/api/backtest/randomsearch', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({pair: p.pair, days: p.days, start: p.start, interval: p.interval, n_trials}),
+      });
+      const j = await r.json();
+      if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      _pollSweepJob(j.job_id, rows => renderRandomSearchResults(rows, n_trials));
+    } catch(e) { status.textContent = 'Request failed: ' + e; }
+  }
+
+  async function run2AxisSweep() {
+    const status = document.getElementById('bt-sweep-status');
+    const p = _collectParams();
+    const param1 = document.getElementById('bt-grid-param1').value;
+    const param2 = document.getElementById('bt-grid-param2').value;
+    if (param1 === param2) { status.textContent = 'Select two different parameters.'; return; }
+    const label1 = _SWEEP_PARAM_LABELS[param1] || param1;
+    const label2 = _SWEEP_PARAM_LABELS[param2] || param2;
+    status.textContent = `Running grid: ${label1} × ${label2}…`;
+    document.getElementById('bt-sweep-results').style.display = 'none';
+    try {
+      const r = await fetch('/api/backtest/2axissweep', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({...p, param1, param2}),
+      });
+      const j = await r.json();
+      if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      _pollSweepJob(j.job_id, result => render2AxisGridResults(result));
+    } catch(e) { status.textContent = 'Request failed: ' + e; }
+  }
+
+  function _applyParamsToForm(params) {
+    const pct = _PCT_PARAMS;
+    const map = {
+      pos_pct: 'bt-pos', rsi_period: 'bt-rsi-period', rsi_buy: 'bt-rsi-buy',
+      rsi_sell: 'bt-rsi-sell', tp_pct: 'bt-tp', trail_pct: 'bt-trail',
+      floor_pct: 'bt-floor', min_exit: 'bt-min-exit', max_dca: 'bt-dca-max',
+      dca_drop: 'bt-dca-drop', dca_step: 'bt-dca-step',
+      time_stop_days: 'bt-time-stop', stop_cooldown: 'bt-stop-cooldown',
+      ema_gap: 'bt-ema-gap', hard_stop: 'bt-hard-stop', partial_close_pct: 'bt-partial-close',
+    };
+    for (const [k, id] of Object.entries(map)) {
+      if (!(k in params)) continue;
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.value = pct.has(k) ? (params[k] * 100).toFixed(2).replace(/\.?0+$/, '') : params[k];
+    }
+  }
+
+  function renderRandomSearchResults(rows, n_trials) {
+    const el = document.getElementById('bt-sweep-results');
+    document.getElementById('bt-sweep-title').textContent =
+      `Random search — top results from ${n_trials} trials`;
+    const paramKeys = Object.keys(rows[0]?.params || {});
+    const top = rows.slice(0, 50);
+    let html = `<div class="tbl-wrap"><table class="data-tbl">
+      <thead><tr>
+        <th>#</th><th>Return</th><th>PnL</th><th>Trades</th><th>Win%</th><th>Worst</th>
+        ${paramKeys.map(k => `<th>${_SWEEP_PARAM_LABELS[k] || k}</th>`).join('')}
+        <th></th>
+      </tr></thead>
+      <tbody>${top.map((r, i) => `<tr${i === 0 ? ' style="border-left:3px solid var(--green)"' : ''}>
+        <td>${i + 1}</td>
+        <td style="color:${r.return_pct>=0?'var(--green)':'var(--red)'}">${r.return_pct>=0?'+':''}${r.return_pct.toFixed(2)}%</td>
+        <td style="color:${r.total_pnl>=0?'var(--green)':'var(--red)'}">${r.total_pnl>=0?'+':''}${CURRENCY_SYMBOL}${r.total_pnl.toFixed(2)}</td>
+        <td>${r.trades}</td>
+        <td>${r.trades ? r.win_rate+'%' : '—'}</td>
+        <td style="color:var(--red)">${CURRENCY_SYMBOL}${r.worst.toFixed(2)}</td>
+        ${paramKeys.map(k => `<td>${_fmtSweptValue(k, r.params[k])}</td>`).join('')}
+        <td><button onclick='_applyParamsToForm(${JSON.stringify(r.params)})' style="padding:2px 8px;font-size:11px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">Use</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+    document.getElementById('bt-sweep-content').innerHTML = html;
+    el.style.display = '';
+  }
+
+  function render2AxisGridResults(result) {
+    const el = document.getElementById('bt-sweep-results');
+    const { param1, param2, values1, values2, grid } = result;
+    const label1 = _SWEEP_PARAM_LABELS[param1] || param1;
+    const label2 = _SWEEP_PARAM_LABELS[param2] || param2;
+    document.getElementById('bt-sweep-title').textContent =
+      `2-axis grid: ${label1} × ${label2}`;
+
+    // compute min/max for colour scaling
+    const allReturns = grid.flat().map(c => c.return_pct);
+    const minR = Math.min(...allReturns), maxR = Math.max(...allReturns);
+    const range = maxR - minR || 1;
+
+    function cellBg(r) {
+      const t = (r - minR) / range; // 0=worst, 1=best
+      const hue = Math.round(t * 120); // 0=red, 120=green
+      return `hsl(${hue},55%,22%)`;
+    }
+
+    let html = `<div style="overflow-x:auto"><table class="data-tbl" style="border-collapse:collapse">
+      <thead><tr>
+        <th style="background:var(--card)">${label1} \\ ${label2}</th>
+        ${values2.map(v => `<th style="background:var(--card)">${_fmtSweptValue(param2, v)}</th>`).join('')}
+      </tr></thead>
+      <tbody>${grid.map((row, ri) => `<tr>
+        <td style="background:var(--card);font-weight:600">${_fmtSweptValue(param1, values1[ri])}</td>
+        ${row.map(cell => `<td style="background:${cellBg(cell.return_pct)};text-align:center;cursor:default;font-size:12px" title="${cell.return_pct>=0?'+':''}${cell.return_pct.toFixed(2)}% | ${cell.trades} trades | ${cell.win_rate}% win">${cell.return_pct>=0?'+':''}${cell.return_pct.toFixed(1)}%</td>`).join('')}
+      </tr>`).join('')}
+      </tbody></table></div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+      Range: ${minR.toFixed(2)}% (red) → ${maxR.toFixed(2)}% (green) &nbsp;·&nbsp; hover cells for detail
+    </div>`;
 
     document.getElementById('bt-sweep-content').innerHTML = html;
     el.style.display = '';

@@ -6,8 +6,7 @@ Usage:
     python pair_sweep.py DOTEUR [--cached]
     python pair_sweep.py SOLEUR 365 [--cached]
 
-Runs: buyrsi, rsiperiod, exit, floor, trail, minexit, dca, emagap, cooldown
-across 730d / 365d / 180d windows (or custom days).
+Runs all single-axis sweeps across 730d / 365d / 180d windows (or custom days).
 """
 import sys
 from dotenv import load_dotenv
@@ -40,15 +39,21 @@ else:
     bt.USE_CACHE = True
 
 sweeps = [
-    ("Buy RSI threshold",   bt.sweep_buyrsi),
-    ("RSI period",          bt.sweep_rsiperiod),
-    ("Sell RSI + TP",       bt.sweep_exit),
-    ("Profit floor",        bt.sweep_floor),
-    ("Trailing stop",       bt.sweep_trail),
-    ("Min exit profit",     bt.sweep_min_exit),
-    ("DCA parameters",      bt.sweep_dca),
-    ("EMA gap filter",      bt.sweep_ema_gap),
-    ("Cooldown",            bt.sweep_cooldown),
+    ("Buy RSI threshold",      bt.sweep_buyrsi),
+    ("RSI period",             bt.sweep_rsiperiod),
+    ("Sell RSI + TP",          bt.sweep_exit),
+    ("Profit floor",           bt.sweep_floor),
+    ("Trailing stop",          bt.sweep_trail),
+    ("Min exit profit",        bt.sweep_min_exit),
+    ("Position size",          bt.sweep_posize),
+    ("DCA parameters",         bt.sweep_dca),
+    ("DCA max tranches",       bt.sweep_maxdca),
+    ("DCA step %",             bt.sweep_dcastep),
+    ("EMA gap filter",         bt.sweep_ema_gap),
+    ("Hard stop",              bt.sweep_hardstop),
+    ("Time stop",              bt.sweep_timestop),
+    ("Stop cooldown",          bt.sweep_cooldown),
+    ("Partial close",          bt.sweep_partialclose),
 ]
 
 for name, fn in sweeps:

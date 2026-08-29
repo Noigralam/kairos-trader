@@ -271,6 +271,7 @@ def api_shadow_config(name):
         "overrides": ov,
         "per_pair": per_pair,
         "extra":    extra,
+        "fee_pct":  round(config.SPOT_FEE * 100, 3),
     })
 
 
@@ -857,6 +858,104 @@ def api_shadow_reset(name):
             sh.reset()
             return jsonify({"ok": True})
     return jsonify({"error": f"Shadow {name} not found"}), 404
+
+
+@app.route("/api/shadows/create", methods=["POST"])
+def api_shadows_create():
+    allowed, rate_limited = _check_pin()
+    if rate_limited:
+        return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip().upper().replace(" ", "_")
+    if not name:
+        return jsonify({"error": "name required"}), 400
+    if not name.replace("_", "").isalnum():
+        return jsonify({"error": "name must be alphanumeric (underscores allowed)"}), 400
+
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    try:
+        with open(env_path, "r") as f:
+            lines = f.readlines()
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Check duplicate
+    existing = config.get_shadow_profiles()
+    if name in [p.upper() for p in existing]:
+        return jsonify({"error": f"shadow '{name}' already exists"}), 400
+
+    # Update SPOT_SHADOW_PROFILES line
+    new_lines = []
+    profiles_updated = False
+    for line in lines:
+        if line.startswith("SPOT_SHADOW_PROFILES="):
+            stripped = line.rstrip()
+            comment = ""
+            if " #" in stripped:
+                idx = stripped.index(" #")
+                comment = stripped[idx:]
+                stripped = stripped[:idx]
+            new_lines.append(stripped + f",{name}" + comment + "\n")
+            profiles_updated = True
+        else:
+            new_lines.append(line)
+
+    if not profiles_updated:
+        new_lines.append(f"SPOT_SHADOW_PROFILES={name}\n")
+
+    # Build shadow override block
+    prefix = f"SPOT_SHADOW_{name}_"
+    block = [f"\n# Shadow: {name} (created from backtest)\n"]
+    pairs = data.get("pairs")
+    if pairs:
+        block.append(f"{prefix}PAIRS={pairs}\n")
+    balance = data.get("balance")
+    if balance is not None:
+        block.append(f"{prefix}BALANCE={float(balance):.2f}\n")
+
+    param_map = {
+        "rsi_period":  "RSI_PERIOD",
+        "rsi_buy":     "RSI_OVERSOLD",
+        "rsi_sell":    "RSI_OVERBOUGHT",
+        "tp_pct":      "TAKE_PROFIT_PCT",
+        "trail_pct":   "TRAILING_STOP_PCT",
+        "floor_pct":   "PROFIT_FLOOR_PCT",
+        "min_exit":    "MIN_EXIT_PROFIT_PCT",
+        "pos_pct":     "POSITION_SIZE_PCT",
+        "max_dca":           "DCA_MAX",
+        "dca_drop":          "DCA_DROP_PCT",
+        "dca_step":          "DCA_STEP_PCT",
+        "ema_gap":           "EMA_GAP_PCT",
+        "partial_close_pct": "PARTIAL_CLOSE_PCT",
+        "partial_close_trail": "PARTIAL_CLOSE_TRAIL_PCT",
+    }
+    int_params = {"rsi_period", "rsi_buy", "rsi_sell", "max_dca"}
+    for key, env_suffix in param_map.items():
+        val = data.get(key)
+        if val is not None:
+            if key in int_params:
+                block.append(f"{prefix}{env_suffix}={int(val)}\n")
+            else:
+                block.append(f"{prefix}{env_suffix}={float(val):.4f}\n")
+
+    new_lines.extend(block)
+
+    try:
+        with open(env_path, "w") as f:
+            f.writelines(new_lines)
+    except OSError as e:
+        return jsonify({"error": str(e)}), 500
+
+    # Trigger reload
+    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+        _queue_command(_SPOT_COMMANDS_PATH, {"action": "reload_shadows"})
+        return jsonify({"ok": True, "queued": True, "name": name})
+    from bot.spot_simulator import reload_spot_shadows
+    reload_spot_shadows()
+    return jsonify({"ok": True, "name": name})
 
 
 @app.route("/api/shadows/reload", methods=["POST"])
@@ -1734,32 +1833,33 @@ def api_futures_shadows_pnl_history():
 
 @app.route("/api/backtest/run", methods=["POST"])
 def api_backtest_run():
-    allowed, rate_limited = _check_pin()
-    if rate_limited:
-        return jsonify({"error": "too many attempts"}), 429
-    if config.DASHBOARD_PIN and not allowed:
-        return jsonify({"error": "PIN required"}), 403
-
     data    = request.get_json(force=True) or {}
     pair    = data.get("pair", "").upper().strip()
     if not pair:
         return jsonify({"error": "pair required"}), 400
 
-    days    = int(data.get("days", 365))
-    start   = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    days     = int(data.get("days", 365))
+    start    = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    interval = data.get("interval", "15m")
     params  = {
-        "rsi_period":  int(data["rsi_period"])    if "rsi_period"  in data else None,
-        "rsi_buy":     int(data["rsi_buy"])        if "rsi_buy"     in data else None,
-        "rsi_sell":    int(data["rsi_sell"])       if "rsi_sell"    in data else None,
-        "tp_pct":      float(data["tp_pct"])       if "tp_pct"      in data else None,
-        "trail_pct":   float(data["trail_pct"])    if "trail_pct"   in data else None,
-        "floor_pct":   float(data["floor_pct"])    if "floor_pct"   in data else None,
-        "min_exit":    float(data["min_exit"])     if "min_exit"    in data else None,
-        "pos_pct":     float(data["pos_pct"])      if "pos_pct"     in data else None,
-        "max_dca":     int(data["max_dca"])        if "max_dca"     in data else None,
-        "dca_drop":    float(data["dca_drop"])     if "dca_drop"    in data else None,
-        "dca_step":    float(data["dca_step"])     if "dca_step"    in data else None,
-        "enable_dca":  int(data.get("max_dca", 1)) > 0,
+        "rsi_period":       int(data["rsi_period"])          if "rsi_period"       in data else None,
+        "rsi_buy":          int(data["rsi_buy"])             if "rsi_buy"          in data else None,
+        "rsi_sell":         int(data["rsi_sell"])            if "rsi_sell"         in data else None,
+        "tp_pct":           float(data["tp_pct"])            if "tp_pct"           in data else None,
+        "trail_pct":        float(data["trail_pct"])         if "trail_pct"        in data else None,
+        "floor_pct":        float(data["floor_pct"])         if "floor_pct"        in data else None,
+        "min_exit":         float(data["min_exit"])          if "min_exit"         in data else None,
+        "pos_pct":          float(data["pos_pct"])           if "pos_pct"          in data else None,
+        "ema_gap":          float(data["ema_gap"])           if data.get("ema_gap")          else None,
+        "max_dca":          int(data["max_dca"])             if "max_dca"          in data else None,
+        "dca_drop":         float(data["dca_drop"])          if "dca_drop"         in data else None,
+        "dca_step":         float(data["dca_step"])          if data.get("dca_step")         else None,
+        "time_stop_days":   float(data["time_stop_days"])    if data.get("time_stop_days")   else None,
+        "stop_cooldown":    int(data["stop_cooldown"])       if data.get("stop_cooldown")    else None,
+        "hard_stop":        float(data["hard_stop"])         if data.get("hard_stop")        else None,
+        "partial_close_pct":   float(data["partial_close_pct"])   if data.get("partial_close_pct")   else None,
+        "partial_close_trail": float(data["partial_close_trail"])  if data.get("partial_close_trail") else None,
+        "enable_dca":       int(data.get("max_dca", 1)) > 0,
     }
     # Remove None values so run_pair falls back to config defaults
     params = {k: v for k, v in params.items() if v is not None}
@@ -1775,7 +1875,7 @@ def api_backtest_run():
     def _run():
         try:
             from backtest import api_run_backtest
-            result = api_run_backtest(pair, days, start, **params)
+            result = api_run_backtest(pair, days, start, interval=interval, **params)
             _backtest_jobs[job_id]["result"] = result
             _backtest_jobs[job_id]["status"] = "done"
         except Exception as e:
@@ -1796,11 +1896,6 @@ def api_backtest_status(job_id):
 
 @app.route("/api/backtest/sweep", methods=["POST"])
 def api_backtest_sweep():
-    allowed, rate_limited = _check_pin()
-    if rate_limited:
-        return jsonify({"error": "too many attempts"}), 429
-    if config.DASHBOARD_PIN and not allowed:
-        return jsonify({"error": "PIN required"}), 403
 
     data        = request.get_json(force=True) or {}
     pair        = data.get("pair", "").upper().strip()
@@ -1808,21 +1903,28 @@ def api_backtest_sweep():
     if not pair or not sweep_param:
         return jsonify({"error": "pair and sweep_param required"}), 400
 
-    days  = int(data.get("days", 365))
-    start = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    days     = int(data.get("days", 365))
+    start    = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    interval = data.get("interval", "15m")
     base_params = {k: v for k, v in {
-        "rsi_period": int(data["rsi_period"])    if "rsi_period" in data else None,
-        "rsi_buy":    int(data["rsi_buy"])        if "rsi_buy"    in data else None,
-        "rsi_sell":   int(data["rsi_sell"])       if "rsi_sell"   in data else None,
-        "tp_pct":     float(data["tp_pct"])       if "tp_pct"     in data else None,
-        "trail_pct":  float(data["trail_pct"])    if "trail_pct"  in data else None,
-        "floor_pct":  float(data["floor_pct"])    if "floor_pct"  in data else None,
-        "min_exit":   float(data["min_exit"])     if "min_exit"   in data else None,
-        "pos_pct":    float(data["pos_pct"])      if "pos_pct"    in data else None,
-        "max_dca":    int(data["max_dca"])        if "max_dca"    in data else None,
-        "dca_drop":   float(data["dca_drop"])     if "dca_drop"   in data else None,
-        "dca_step":   float(data["dca_step"])     if "dca_step"   in data else None,
-        "enable_dca": int(data.get("max_dca", 1)) > 0,
+        "rsi_period":       int(data["rsi_period"])          if "rsi_period"       in data else None,
+        "rsi_buy":          int(data["rsi_buy"])             if "rsi_buy"          in data else None,
+        "rsi_sell":         int(data["rsi_sell"])            if "rsi_sell"         in data else None,
+        "tp_pct":           float(data["tp_pct"])            if "tp_pct"           in data else None,
+        "trail_pct":        float(data["trail_pct"])         if "trail_pct"        in data else None,
+        "floor_pct":        float(data["floor_pct"])         if "floor_pct"        in data else None,
+        "min_exit":         float(data["min_exit"])          if "min_exit"         in data else None,
+        "pos_pct":          float(data["pos_pct"])           if "pos_pct"          in data else None,
+        "ema_gap":          float(data["ema_gap"])           if data.get("ema_gap")          else None,
+        "max_dca":          int(data["max_dca"])             if "max_dca"          in data else None,
+        "dca_drop":         float(data["dca_drop"])          if "dca_drop"         in data else None,
+        "dca_step":         float(data["dca_step"])          if data.get("dca_step")         else None,
+        "time_stop_days":   float(data["time_stop_days"])    if data.get("time_stop_days")   else None,
+        "stop_cooldown":    int(data["stop_cooldown"])       if data.get("stop_cooldown")    else None,
+        "hard_stop":        float(data["hard_stop"])         if data.get("hard_stop")        else None,
+        "partial_close_pct":   float(data["partial_close_pct"])   if data.get("partial_close_pct")   else None,
+        "partial_close_trail": float(data["partial_close_trail"])  if data.get("partial_close_trail") else None,
+        "enable_dca":       int(data.get("max_dca", 1)) > 0,
     }.items() if v is not None}
 
     if len(_backtest_jobs) >= 20:
@@ -1836,7 +1938,7 @@ def api_backtest_sweep():
     def _run():
         try:
             from backtest import api_sweep_param
-            result = api_sweep_param(pair, days, start, sweep_param, base_params)
+            result = api_sweep_param(pair, days, start, sweep_param, base_params, interval=interval)
             _backtest_jobs[job_id]["result"] = result
             _backtest_jobs[job_id]["status"] = "done"
         except Exception as e:
@@ -1849,19 +1951,14 @@ def api_backtest_sweep():
 
 @app.route("/api/backtest/fullsweep", methods=["POST"])
 def api_backtest_fullsweep():
-    allowed, rate_limited = _check_pin()
-    if rate_limited:
-        return jsonify({"error": "too many attempts"}), 429
-    if config.DASHBOARD_PIN and not allowed:
-        return jsonify({"error": "PIN required"}), 403
-
     data  = request.get_json(force=True) or {}
     pair  = data.get("pair", "").upper().strip()
     if not pair:
         return jsonify({"error": "pair required"}), 400
 
-    days  = int(data.get("days", 365))
-    start = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    days     = int(data.get("days", 365))
+    start    = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    interval = data.get("interval", "15m")
 
     if len(_backtest_jobs) >= 20:
         oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
@@ -1874,7 +1971,86 @@ def api_backtest_fullsweep():
     def _run():
         try:
             from backtest import api_full_sweep
-            result = api_full_sweep(pair, days, start)
+            result = api_full_sweep(pair, days, start, interval=interval)
+            _backtest_jobs[job_id]["result"] = result
+            _backtest_jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _backtest_jobs[job_id]["error"]  = str(e)
+            _backtest_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/backtest/randomsearch", methods=["POST"])
+def api_backtest_randomsearch():
+    data = request.get_json(force=True) or {}
+    pair = data.get("pair", "").upper().strip()
+    if not pair:
+        return jsonify({"error": "pair required"}), 400
+    days     = int(data.get("days", 365))
+    start    = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    interval = data.get("interval", "15m")
+    n_trials = int(data.get("n_trials", 200))
+
+    if len(_backtest_jobs) >= 20:
+        oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest:
+            _backtest_jobs.pop(k, None)
+
+    job_id = str(uuid.uuid4())
+    _backtest_jobs[job_id] = {"status": "running", "result": None, "error": None}
+
+    def _run():
+        try:
+            from backtest import api_random_search
+            result = api_random_search(pair, days, start, n_trials=n_trials, interval=interval)
+            _backtest_jobs[job_id]["result"] = result
+            _backtest_jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _backtest_jobs[job_id]["error"]  = str(e)
+            _backtest_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/backtest/2axissweep", methods=["POST"])
+def api_backtest_2axissweep():
+    data   = request.get_json(force=True) or {}
+    pair   = data.get("pair", "").upper().strip()
+    if not pair:
+        return jsonify({"error": "pair required"}), 400
+    days     = int(data.get("days", 365))
+    start    = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    interval = data.get("interval", "15m")
+    param1   = data.get("param1", "rsi_buy")
+    param2   = data.get("param2", "tp_pct")
+
+    _PARAM_KEYS = ["pos_pct", "rsi_period", "rsi_buy", "rsi_sell", "tp_pct", "trail_pct",
+                   "floor_pct", "min_exit", "max_dca", "dca_drop", "dca_step",
+                   "time_stop_days", "stop_cooldown", "ema_gap", "hard_stop",
+                   "partial_close_pct", "partial_close_trail"]
+    base_params = {}
+    for k in _PARAM_KEYS:
+        if k in data and k != param1 and k != param2:
+            v = data[k]
+            if v is not None and v != "" and v != 0:
+                base_params[k] = v
+
+    if len(_backtest_jobs) >= 20:
+        oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest:
+            _backtest_jobs.pop(k, None)
+
+    job_id = str(uuid.uuid4())
+    _backtest_jobs[job_id] = {"status": "running", "result": None, "error": None}
+
+    def _run():
+        try:
+            from backtest import api_2axis_sweep
+            result = api_2axis_sweep(pair, days, start, param1, param2,
+                                     base_params=base_params, interval=interval)
             _backtest_jobs[job_id]["result"] = result
             _backtest_jobs[job_id]["status"] = "done"
         except Exception as e:

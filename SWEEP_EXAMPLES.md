@@ -4,7 +4,9 @@ How to use the backtest tools to find good parameters, illustrated with real exa
 
 Add `--cached` to any command after the first run to skip candle syncing and use the local cache — much faster for iterating on the same window.
 
-Every run saves a full copy of its output to `backtest_results/` with a filename that describes what was run and when (e.g. `spot_sweep_buyrsi_730d_365d_2026-08-27.txt`). The path is printed at the top of each run. Each sweep also includes a footer legend explaining every column.
+Every run saves a full copy of its output to `backtest_results/` with a filename that describes what was run and when (e.g. `spot_sweep_rsi_buy_730d_365d_2026-08-27.txt`). The path is printed at the top of each run. Each sweep also includes a footer legend explaining every column.
+
+Sweep values for each axis are defined in `sweep_ranges.toml` — edit that file and changes take effect on the next run.
 
 ---
 
@@ -24,7 +26,7 @@ The baseline (RSI 14) was weak — roughly +€55 over 730 days. `pair_sweep.py`
 
 ```bash
 # Confirm RSI(7) over multiple windows with a focussed buy-threshold sweep
-.venv/bin/python backtest.py sweep buyrsi 730 365 180 --cached
+.venv/bin/python backtest.py sweep rsi_buy 730 365 180 --cached
 ```
 
 RSI period=7 with buy<30 and sell>75 came out significantly ahead (+€272 vs +€55 over 730d). That became **NEAR2**:
@@ -51,14 +53,14 @@ The hypothesis was that DCA was holding back performance on SOLEUR — capital g
 
 ```bash
 # How much does DCA actually help on the live pairs?
-.venv/bin/python backtest.py sweep dca 365 180 --cached
+.venv/bin/python backtest.py sweep dca_drop 365 180 --cached
 ```
 
 DCA=0 (all-in, no averaging) outperformed DCA=3 on SOLEUR over 180d. Then tightened the RSI exit to close faster after recovery:
 
 ```bash
 # How sensitive is exit RSI on shorter windows?
-.venv/bin/python backtest.py sweep exit 180 90 --cached
+.venv/bin/python backtest.py sweep rsi_sell 180 90 --cached
 ```
 
 sell>65 captured recoveries earlier without sacrificing much on big runs. That became **ACTIVE** (SOL+ETH) and **ACTIVE_SOL**:
@@ -99,8 +101,8 @@ RSI(14) with buy<35 and sell>70 fitted the 4h rhythm. Trailing stop needed to be
 
 ```bash
 # Trail / floor / TP sweep at 4h — run against the longer windows because 4h has fewer candles
-.venv/bin/python backtest.py sweep trail 730 365 --cached
-.venv/bin/python backtest.py sweep floor 730 365 --cached
+.venv/bin/python backtest.py sweep trail_pct 730 365 --cached
+.venv/bin/python backtest.py sweep floor_pct 730 365 --cached
 ```
 
 trail=3.5%, floor=2%, TP=7% came out ahead consistently. That became **SOL4H**:
@@ -166,21 +168,64 @@ Profiles that appear consistently in the top half across all windows are candida
 
 ---
 
+## Example 5 — Random search: find good combinations fast
+
+Single-axis sweeps vary one parameter while holding all others fixed. Random search samples random combinations across *all* axes simultaneously — useful for finding parameter sets that work well together rather than individually.
+
+```bash
+# 200 random combinations across all axes, 365d window
+.venv/bin/python backtest.py random 200 365 --cached
+
+# 500 trials, validated across two windows
+.venv/bin/python backtest.py random 500 365 730 --cached
+```
+
+Output: top 20 results ranked by return %, showing every parameter value for each combo. Once you spot a promising row, copy the values into a shadow profile or use the dashboard's "Use" button to load them directly into the form.
+
+---
+
+## Example 6 — 2-axis grid: understand interactions between parameters
+
+Some parameters interact strongly — for example, a tight trailing stop works better with a high profit floor. The grid sweep tests every combination of two axes and prints a return-% matrix so you can see the relationship at a glance.
+
+```bash
+# How does trailing stop % interact with profit floor %?
+.venv/bin/python backtest.py grid trail_pct floor_pct 365 --cached
+
+# RSI buy threshold vs take-profit %
+.venv/bin/python backtest.py grid rsi_buy tp_pct 365 730 --cached
+
+# DCA drop % vs max DCA tranches
+.venv/bin/python backtest.py grid dca_drop max_dca 365 --cached
+```
+
+Output: a matrix where rows = axis 1 values, columns = axis 2 values, each cell = return %. The best cell is marked with `◄`. Use this after random search to zoom in on a region — random search points you toward a promising area, the grid shows the exact shape of it.
+
+Both random search and 2-axis grid are also available from the dashboard backtest tab (no CLI needed).
+
+---
+
 ## General workflow
 
 ```bash
-# 1. Explore a new pair or idea — full sweep in one go
+# 1. Explore a new pair — full single-axis sweep in one go
 .venv/bin/python pair_sweep.py XRPEUR 730
 
-# 2. Drill into a specific dimension once you have a direction
-.venv/bin/python backtest.py sweep buyrsi 730 365 180 --cached
-.venv/bin/python backtest.py sweep trail 730 365 180 --cached
-.venv/bin/python backtest.py sweep dca 365 180 --cached
+# 2a. Random search to find promising combinations
+.venv/bin/python backtest.py random 300 365 --cached
 
-# 3. Validate the combined settings with a full shadow comparison
+# 2b. Or drill into a specific axis once you have a direction
+.venv/bin/python backtest.py sweep rsi_buy 730 365 180 --cached
+.venv/bin/python backtest.py sweep trail_pct 730 365 180 --cached
+.venv/bin/python backtest.py sweep dca_drop 365 180 --cached
+
+# 3. Check interactions between two parameters
+.venv/bin/python backtest.py grid trail_pct floor_pct 365 --cached
+
+# 4. Validate the combined settings with a full shadow comparison
 .venv/bin/python backtest.py shadows 365 180 90 --cached
 
-# 4. Add a shadow profile to .env, restart, and let it run live
+# 5. Add a shadow profile to .env, restart engine, and let it run live
 ./stop.sh engine && ./start.sh engine
 ```
 

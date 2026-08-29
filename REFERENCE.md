@@ -433,22 +433,45 @@ See [SWEEP_EXAMPLES.md](SWEEP_EXAMPLES.md) for worked examples showing how the c
 ```bash
 .venv/bin/python backtest.py                        # current settings, default window
 .venv/bin/python backtest.py 90                     # custom day window
+.venv/bin/python backtest.py 365 730                # multiple windows in one run
 .venv/bin/python backtest.py shadows                # all shadow profiles ranked (365d + 180d)
 .venv/bin/python backtest.py shadows 365 180 90     # custom windows
 
 .venv/bin/python backtest.py topup 200 25 730       # monthly top-up simulation
 
-.venv/bin/python backtest.py sweep buyrsi           # buy RSI threshold
-.venv/bin/python backtest.py sweep trail            # trailing stop %
-.venv/bin/python backtest.py sweep floor            # profit floor %
-.venv/bin/python backtest.py sweep exit             # min-exit profit %
-.venv/bin/python backtest.py sweep dca              # DCA settings
-.venv/bin/python backtest.py sweep cooldown         # re-entry cooldown
-.venv/bin/python backtest.py sweep all              # all sweeps
+# Single-axis sweeps — vary one parameter, all others held at config defaults
+# Parameter names match sweep_ranges.toml (legacy short names also accepted)
+.venv/bin/python backtest.py sweep rsi_buy          # buy RSI threshold
+.venv/bin/python backtest.py sweep rsi_period       # RSI lookback period
+.venv/bin/python backtest.py sweep rsi_sell         # sell RSI + take-profit (combined)
+.venv/bin/python backtest.py sweep trail_pct        # trailing stop %
+.venv/bin/python backtest.py sweep floor_pct        # profit floor %
+.venv/bin/python backtest.py sweep min_exit         # min exit profit %
+.venv/bin/python backtest.py sweep pos_pct          # position size %
+.venv/bin/python backtest.py sweep dca_drop         # DCA trigger drop %
+.venv/bin/python backtest.py sweep dca_step         # DCA step % per tranche
+.venv/bin/python backtest.py sweep max_dca          # max DCA tranches
+.venv/bin/python backtest.py sweep ema_gap          # EMA gap filter %
+.venv/bin/python backtest.py sweep time_stop_days   # time stop (days)
+.venv/bin/python backtest.py sweep stop_cooldown    # cooldown after stop
+.venv/bin/python backtest.py sweep hard_stop        # hard stop loss %
+.venv/bin/python backtest.py sweep partial_close_pct  # partial close %
+.venv/bin/python backtest.py sweep all              # all 16 axes in sequence
 
-.venv/bin/python pair_sweep.py XRPEUR               # full sweep for a single pair (730/365/180d)
+# Multi-parameter search — finds combinations single-axis sweeps miss
+.venv/bin/python backtest.py random 200 365         # 200 random combos, ranked by return
+.venv/bin/python backtest.py random 500 365 730     # 500 trials across two windows
+.venv/bin/python backtest.py grid rsi_buy tp_pct 365  # full 12×12 grid for two axes
+
+# All sweeps run with --cached skip candle sync (much faster for repeat runs)
+.venv/bin/python backtest.py sweep rsi_buy 365 --cached
+
+# Full sweep for a single pair across multiple windows
+.venv/bin/python pair_sweep.py XRPEUR               # all 16 axes, 730d / 365d / 180d
 .venv/bin/python pair_sweep.py DOTEUR 365 --cached  # custom window, skip sync
 ```
+
+Sweep values for each axis are defined in `sweep_ranges.toml` — edit that file and changes take effect on the next run (no code change needed). Each axis has 12 values by default.
 
 ### Futures
 
@@ -519,6 +542,7 @@ backtest.py             — spot backtest + parameter sweep tool
 backtest_futures.py     — futures backtest + parameter sweep tool
 backtest_grid.py        — grid strategy backtest: spacing × levels sweep
 pair_sweep.py           — full parameter sweep for any single spot pair
+sweep_ranges.toml       — sweep axis value lists (12 values × 16 axes); edit freely
 main.py                 — engine entry point: spot engine, futures engine, Discord bot
 dashboard.py            — dashboard entry point: Flask web server only
 start.sh / stop.sh      — process management (engine, dashboard, or both)
