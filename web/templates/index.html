@@ -766,7 +766,7 @@
     <section style="margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <h2 style="margin-bottom:0">Rankings</h2>
-        <span class="pin-gated{% if config.DASHBOARD_PIN %} pin-locked{% endif %}"><button onclick="reloadShadows()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">↺ Reload shadows</button></span>
+        <button onclick="reloadShadows()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">↺ Reload shadows</button>
       </div>
       <div class="tbl-wrap">
         <table id="sh-ranking-table">
@@ -1105,6 +1105,24 @@
     <button id="bt-run-btn" onclick="runBacktest()" style="padding:8px 24px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Run backtest</button>
     <span id="bt-status" style="margin-left:12px;color:var(--muted);font-size:13px"></span>
 
+    <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <select id="bt-sweep-param" style="background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px;color-scheme:dark">
+        <option value="rsi_period">RSI period</option>
+        <option value="rsi_buy">RSI oversold</option>
+        <option value="rsi_sell">RSI overbought</option>
+        <option value="tp_pct">Take profit %</option>
+        <option value="trail_pct">Trailing stop %</option>
+        <option value="floor_pct">Profit floor %</option>
+        <option value="min_exit">Min exit %</option>
+        <option value="pos_pct">Position size %</option>
+        <option value="dca_drop">DCA drop %</option>
+        <option value="ema_gap">EMA gap %</option>
+      </select>
+      <button onclick="runSweep()" style="padding:8px 20px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px">Sweep param</button>
+      <button onclick="runFullSweep()" style="padding:8px 20px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:14px">Full sweep</button>
+      <span id="bt-sweep-status" style="color:var(--muted);font-size:13px"></span>
+    </div>
+
     <div id="bt-results" style="display:none;margin-top:20px">
       <!-- Summary cards -->
       <div id="bt-summary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px"></div>
@@ -1119,10 +1137,15 @@
         </table>
       </div>
     </div>
+
+    <div id="bt-sweep-results" style="display:none;margin-top:24px">
+      <h3 id="bt-sweep-title" style="font-size:14px;margin-bottom:12px"></h3>
+      <div id="bt-sweep-content"></div>
+    </div>
   </div><!-- /tab-backtest -->
 
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
-  <section id="activity-section">
+  <section>
     <h2>Recent Activity</h2>
     <div class="log-box" id="log-box">
       <div class="log-entry tick"><span class="log-time">--:--:--</span>Waiting for data…</div>
@@ -1190,7 +1213,6 @@
     document.getElementById('tab-futures').style.display        = name === 'futures'        ? '' : 'none';
     document.getElementById('tab-futures-shadow').style.display = name === 'futures-shadow' ? '' : 'none';
     document.getElementById('tab-backtest').style.display       = name === 'backtest'       ? '' : 'none';
-    document.getElementById('activity-section').style.display   = name === 'backtest'       ? 'none' : '';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'spot-shadow')    refreshShadowTab();
@@ -2079,7 +2101,7 @@
         ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
         : `<span style="font-size:11px;background:var(--card);color:#3fb950;padding:1px 6px;border-radius:3px;margin-right:6px">SPOT</span>`;
       const resetBtn  = s.is_main ? '' :
-        `<span class="pin-gated"><button onclick="resetShadow('${escHtml(s.name)}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 7px;cursor:pointer" title="Reset shadow">Reset</button></span>`;
+        `<button onclick="resetShadow('${escHtml(s.name)}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 7px;cursor:pointer" title="Reset shadow">Reset</button>`;
       return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
         <td style="color:var(--muted)">${i + 1}</td>
         <td>${badge}<span style="${nameStyle}" onclick="switchShadow('${escHtml(s.name)}')">${escHtml(s.name)}</span></td>
@@ -2092,7 +2114,6 @@
         <td>${resetBtn}</td>
       </tr>`;
     }).join('');
-    _applyLockState();
   }
 
   async function resetShadow(name) {
@@ -4178,6 +4199,143 @@
         <td>${t.dca_used?'✓':''}</td>
       </tr>`
     ).join('');
+  }
+
+  function _collectParams() {
+    return {
+      pair:       document.getElementById('bt-pair').value.trim().toUpperCase(),
+      days:       parseInt(document.getElementById('bt-days').value),
+      start:      parseFloat(document.getElementById('bt-start').value),
+      pos_pct:    parseFloat(document.getElementById('bt-pos').value) / 100,
+      rsi_period: parseInt(document.getElementById('bt-rsi-period').value),
+      rsi_buy:    parseInt(document.getElementById('bt-rsi-buy').value),
+      rsi_sell:   parseInt(document.getElementById('bt-rsi-sell').value),
+      tp_pct:     parseFloat(document.getElementById('bt-tp').value) / 100,
+      trail_pct:  parseFloat(document.getElementById('bt-trail').value) / 100,
+      floor_pct:  parseFloat(document.getElementById('bt-floor').value) / 100,
+      min_exit:   parseFloat(document.getElementById('bt-min-exit').value) / 100,
+      max_dca:    parseInt(document.getElementById('bt-dca-max').value),
+      dca_drop:   parseFloat(document.getElementById('bt-dca-drop').value) / 100,
+      dca_step:   parseFloat(document.getElementById('bt-dca-step').value) / 100,
+    };
+  }
+
+  async function _pollSweepJob(jobId, onDone) {
+    const status = document.getElementById('bt-sweep-status');
+    const poll = async () => {
+      const r = await fetch(`/api/backtest/${jobId}`);
+      const j = await r.json();
+      if (j.status === 'running') { setTimeout(poll, 2000); return; }
+      if (j.status === 'error')   { status.textContent = 'Error: ' + j.error; return; }
+      status.textContent = 'Done.';
+      onDone(j.result);
+    };
+    setTimeout(poll, 2000);
+  }
+
+  async function runSweep() {
+    const status = document.getElementById('bt-sweep-status');
+    const sweepParam = document.getElementById('bt-sweep-param').value;
+    const params = { ..._collectParams(), sweep_param: sweepParam };
+    status.textContent = 'Running…';
+    document.getElementById('bt-sweep-results').style.display = 'none';
+    try {
+      const _swh = {'Content-Type':'application/json'};
+      if (_pinEnabled) _swh['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+      const r = await fetch('/api/backtest/sweep', {method:'POST', headers:_swh, body: JSON.stringify(params)});
+      const j = await r.json();
+      if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      _pollSweepJob(j.job_id, rows => renderSweepResults(sweepParam, rows, false));
+    } catch(e) { status.textContent = 'Request failed: ' + e; }
+  }
+
+  async function runFullSweep() {
+    const status = document.getElementById('bt-sweep-status');
+    const params = _collectParams();
+    status.textContent = 'Running full sweep (may take a few minutes)…';
+    document.getElementById('bt-sweep-results').style.display = 'none';
+    try {
+      const _fsh = {'Content-Type':'application/json'};
+      if (_pinEnabled) _fsh['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+      const r = await fetch('/api/backtest/fullsweep', {method:'POST', headers:_fsh, body: JSON.stringify(params)});
+      const j = await r.json();
+      if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      _pollSweepJob(j.job_id, result => renderFullSweepResults(result));
+    } catch(e) { status.textContent = 'Request failed: ' + e; }
+  }
+
+  const _SWEEP_PARAM_LABELS = {
+    rsi_period: 'RSI period', rsi_buy: 'RSI oversold', rsi_sell: 'RSI overbought',
+    tp_pct: 'Take profit %', trail_pct: 'Trailing stop %', floor_pct: 'Profit floor %',
+    min_exit: 'Min exit %', pos_pct: 'Position size %', dca_drop: 'DCA drop %', ema_gap: 'EMA gap %',
+  };
+  const _PCT_PARAMS = new Set(['tp_pct','trail_pct','floor_pct','min_exit','pos_pct','dca_drop','ema_gap']);
+
+  function _fmtSweptValue(param, val) {
+    if (_PCT_PARAMS.has(param)) return (val * 100).toFixed(1) + '%';
+    return val;
+  }
+
+  function _sweepTable(rows, paramKey) {
+    return `<div class="tbl-wrap"><table class="data-tbl">
+      <thead><tr>
+        <th>${_SWEEP_PARAM_LABELS[paramKey] || paramKey}</th>
+        <th>Return</th><th>PnL</th><th>Trades</th><th>Win rate</th><th>Avg</th><th>Worst</th><th>Best</th>
+      </tr></thead>
+      <tbody>${rows.map((r, i) => `<tr${i === 0 ? ' style="border-left:3px solid var(--green)"' : ''}>
+        <td><strong>${_fmtSweptValue(paramKey, r.swept_value)}</strong></td>
+        <td style="color:${r.return_pct>=0?'var(--green)':'var(--red)'}">${r.return_pct>=0?'+':''}${r.return_pct.toFixed(2)}%</td>
+        <td style="color:${r.total_pnl>=0?'var(--green)':'var(--red)'}">${r.total_pnl>=0?'+':''}${CURRENCY_SYMBOL}${r.total_pnl.toFixed(2)}</td>
+        <td>${r.trades}</td>
+        <td>${r.trades ? r.win_rate+'%' : '—'}</td>
+        <td style="color:${r.avg_pnl>=0?'var(--green)':'var(--red)'}">${r.avg_pnl>=0?'+':''}${CURRENCY_SYMBOL}${r.avg_pnl.toFixed(2)}</td>
+        <td style="color:var(--red)">${CURRENCY_SYMBOL}${r.worst.toFixed(2)}</td>
+        <td style="color:var(--green)">+${CURRENCY_SYMBOL}${r.best.toFixed(2)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  function renderSweepResults(paramKey, rows, isFullSweep) {
+    const el = document.getElementById('bt-sweep-results');
+    document.getElementById('bt-sweep-title').textContent =
+      `${_SWEEP_PARAM_LABELS[paramKey] || paramKey} sweep — ranked by return`;
+    document.getElementById('bt-sweep-content').innerHTML = _sweepTable(rows, paramKey);
+    el.style.display = '';
+  }
+
+  function renderFullSweepResults(result) {
+    const el = document.getElementById('bt-sweep-results');
+    document.getElementById('bt-sweep-title').textContent = 'Full parameter sweep — best value per axis';
+    const summary = Object.entries(result).map(([param, rows]) => {
+      const best = rows[0];
+      return { param, best };
+    });
+    let html = `<div class="tbl-wrap"><table class="data-tbl">
+      <thead><tr><th>Parameter</th><th>Best value</th><th>Return</th><th>PnL</th><th>Trades</th><th>Win rate</th></tr></thead>
+      <tbody>${summary.map(({param, best}) => `<tr>
+        <td>${_SWEEP_PARAM_LABELS[param] || param}</td>
+        <td><strong>${_fmtSweptValue(param, best.swept_value)}</strong></td>
+        <td style="color:${best.return_pct>=0?'var(--green)':'var(--red)'}">${best.return_pct>=0?'+':''}${best.return_pct.toFixed(2)}%</td>
+        <td style="color:${best.total_pnl>=0?'var(--green)':'var(--red)'}">${best.total_pnl>=0?'+':''}${CURRENCY_SYMBOL}${best.total_pnl.toFixed(2)}</td>
+        <td>${best.trades}</td>
+        <td>${best.trades ? best.win_rate+'%' : '—'}</td>
+      </tr>`).join('')}
+      </tbody></table></div>`;
+
+    html += '<div style="margin-top:20px">';
+    for (const [param, rows] of Object.entries(result)) {
+      html += `<details style="margin-bottom:10px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--muted);padding:4px 0">
+          ${_SWEEP_PARAM_LABELS[param] || param} — best: <strong>${_fmtSweptValue(param, rows[0].swept_value)}</strong>
+          (${rows[0].return_pct>=0?'+':''}${rows[0].return_pct.toFixed(2)}%)
+        </summary>
+        ${_sweepTable(rows, param)}
+      </details>`;
+    }
+    html += '</div>';
+
+    document.getElementById('bt-sweep-content').innerHTML = html;
+    el.style.display = '';
   }
 </script>
 

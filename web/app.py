@@ -1764,10 +1764,9 @@ def api_backtest_run():
     # Remove None values so run_pair falls back to config defaults
     params = {k: v for k, v in params.items() if v is not None}
 
-    # Evict oldest jobs if store is getting large
     if len(_backtest_jobs) >= 20:
-        oldest_keys = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
-        for k in oldest_keys:
+        oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest:
             _backtest_jobs.pop(k, None)
 
     job_id = str(uuid.uuid4())
@@ -1793,6 +1792,97 @@ def api_backtest_status(job_id):
     if not job:
         return jsonify({"error": "not found"}), 404
     return jsonify(job)
+
+
+@app.route("/api/backtest/sweep", methods=["POST"])
+def api_backtest_sweep():
+    allowed, rate_limited = _check_pin()
+    if rate_limited:
+        return jsonify({"error": "too many attempts"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+
+    data        = request.get_json(force=True) or {}
+    pair        = data.get("pair", "").upper().strip()
+    sweep_param = data.get("sweep_param", "")
+    if not pair or not sweep_param:
+        return jsonify({"error": "pair and sweep_param required"}), 400
+
+    days  = int(data.get("days", 365))
+    start = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    base_params = {k: v for k, v in {
+        "rsi_period": int(data["rsi_period"])    if "rsi_period" in data else None,
+        "rsi_buy":    int(data["rsi_buy"])        if "rsi_buy"    in data else None,
+        "rsi_sell":   int(data["rsi_sell"])       if "rsi_sell"   in data else None,
+        "tp_pct":     float(data["tp_pct"])       if "tp_pct"     in data else None,
+        "trail_pct":  float(data["trail_pct"])    if "trail_pct"  in data else None,
+        "floor_pct":  float(data["floor_pct"])    if "floor_pct"  in data else None,
+        "min_exit":   float(data["min_exit"])     if "min_exit"   in data else None,
+        "pos_pct":    float(data["pos_pct"])      if "pos_pct"    in data else None,
+        "max_dca":    int(data["max_dca"])        if "max_dca"    in data else None,
+        "dca_drop":   float(data["dca_drop"])     if "dca_drop"   in data else None,
+        "dca_step":   float(data["dca_step"])     if "dca_step"   in data else None,
+        "enable_dca": int(data.get("max_dca", 1)) > 0,
+    }.items() if v is not None}
+
+    if len(_backtest_jobs) >= 20:
+        oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest:
+            _backtest_jobs.pop(k, None)
+
+    job_id = str(uuid.uuid4())
+    _backtest_jobs[job_id] = {"status": "running", "result": None, "error": None}
+
+    def _run():
+        try:
+            from backtest import api_sweep_param
+            result = api_sweep_param(pair, days, start, sweep_param, base_params)
+            _backtest_jobs[job_id]["result"] = result
+            _backtest_jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _backtest_jobs[job_id]["error"]  = str(e)
+            _backtest_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/backtest/fullsweep", methods=["POST"])
+def api_backtest_fullsweep():
+    allowed, rate_limited = _check_pin()
+    if rate_limited:
+        return jsonify({"error": "too many attempts"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+
+    data  = request.get_json(force=True) or {}
+    pair  = data.get("pair", "").upper().strip()
+    if not pair:
+        return jsonify({"error": "pair required"}), 400
+
+    days  = int(data.get("days", 365))
+    start = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+
+    if len(_backtest_jobs) >= 20:
+        oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest:
+            _backtest_jobs.pop(k, None)
+
+    job_id = str(uuid.uuid4())
+    _backtest_jobs[job_id] = {"status": "running", "result": None, "error": None}
+
+    def _run():
+        try:
+            from backtest import api_full_sweep
+            result = api_full_sweep(pair, days, start)
+            _backtest_jobs[job_id]["result"] = result
+            _backtest_jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _backtest_jobs[job_id]["error"]  = str(e)
+            _backtest_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
 
 
 @app.route("/api/futures/status")

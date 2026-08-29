@@ -1594,13 +1594,9 @@ def run_shadow_backtest(days_list: list[int]):
 _bt_lock = threading.Lock()  # fetch() + initial_sync hit the DB; serialise to be safe
 
 
-def api_run_backtest(pair: str, days: int, start: float, interval: str = "15m", **kwargs) -> dict:
-    """Run a single-pair backtest and return structured results for the dashboard API."""
-    with _bt_lock:
-        df = fetch(pair, days, interval)
-    trades, final_balance = run_pair(pair, df, start, interval=interval, **kwargs)
-    closed = [t for t in trades if t.exit_reason != "end_of_data"]
-    wins   = [t for t in closed if t.pnl > 0]
+def _trade_summary(pair: str, days: int, start: float, final_balance: float, trades: list) -> dict:
+    closed    = [t for t in trades if t.exit_reason != "end_of_data"]
+    wins      = [t for t in closed if t.pnl > 0]
     total_pnl = sum(t.pnl for t in closed)
     reasons: dict[str, int] = {}
     for t in closed:
@@ -1622,12 +1618,72 @@ def api_run_backtest(pair: str, days: int, start: float, interval: str = "15m", 
         "total_fees":    round(sum(t.fees for t in closed), 2),
         "dca_used":      sum(1 for t in closed if t.dca_used),
         "exit_reasons":  reasons,
-        "trade_list": [
-            {"pnl": round(t.pnl, 2), "fees": round(t.fees, 4),
-             "exit_reason": t.exit_reason, "dca_used": t.dca_used}
-            for t in closed
-        ],
     }
+
+
+def api_run_backtest(pair: str, days: int, start: float, interval: str = "15m", **kwargs) -> dict:
+    """Run a single-pair backtest and return structured results for the dashboard API."""
+    with _bt_lock:
+        df = fetch(pair, days, interval)
+    trades, final_balance = run_pair(pair, df, start, interval=interval, **kwargs)
+    summary = _trade_summary(pair, days, start, final_balance, trades)
+    closed = [t for t in trades if t.exit_reason != "end_of_data"]
+    summary["trade_list"] = [
+        {"pnl": round(t.pnl, 2), "fees": round(t.fees, 4),
+         "exit_reason": t.exit_reason, "dca_used": t.dca_used}
+        for t in closed
+    ]
+    return summary
+
+
+_SWEEP_RANGES: dict[str, list] = {
+    "rsi_period": [5, 6, 7, 8, 10, 12, 14, 16, 20],
+    "rsi_buy":    [25, 27, 30, 32, 35],
+    "rsi_sell":   [65, 70, 75, 80, 85],
+    "tp_pct":     [0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15],
+    "trail_pct":  [0.01, 0.015, 0.02, 0.025, 0.03, 0.04, 0.05],
+    "floor_pct":  [0.0, 0.005, 0.01, 0.015, 0.02, 0.03],
+    "min_exit":   [0.0, 0.005, 0.01, 0.015, 0.02],
+    "pos_pct":    [0.5, 0.75, 1.0],
+    "dca_drop":   [0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.15],
+    "ema_gap":    [0.0, 0.01, 0.02, 0.03],
+}
+
+
+def api_sweep_param(pair: str, days: int, start: float, sweep_param: str,
+                    base_params: dict, interval: str = "15m") -> list[dict]:
+    """Sweep one parameter over its default range, keep all other params fixed. Returns ranked list."""
+    with _bt_lock:
+        df = fetch(pair, days, interval)
+    values = _SWEEP_RANGES.get(sweep_param, [])
+    results = []
+    for v in values:
+        params = {**base_params, sweep_param: v}
+        trades, final = run_pair(pair, df, start, interval=interval, **params)
+        summary = _trade_summary(pair, days, start, final, trades)
+        summary["swept_param"] = sweep_param
+        summary["swept_value"] = v
+        results.append(summary)
+    results.sort(key=lambda x: x["return_pct"], reverse=True)
+    return results
+
+
+def api_full_sweep(pair: str, days: int, start: float, interval: str = "15m") -> dict[str, list]:
+    """Sweep every parameter axis independently (config defaults for non-swept params).
+    Returns dict keyed by param name, each value a ranked list of results."""
+    with _bt_lock:
+        df = fetch(pair, days, interval)
+    out: dict[str, list] = {}
+    for param, values in _SWEEP_RANGES.items():
+        axis: list[dict] = []
+        for v in values:
+            trades, final = run_pair(pair, df, start, interval=interval, **{param: v})
+            summary = _trade_summary(pair, days, start, final, trades)
+            summary["swept_value"] = v
+            axis.append(summary)
+        axis.sort(key=lambda x: x["return_pct"], reverse=True)
+        out[param] = axis
+    return out
 
 
 # ---------------------------------------------------------------------------
