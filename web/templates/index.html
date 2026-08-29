@@ -314,6 +314,8 @@
     section h2 { font-size: 13px; }
     th, td { padding: 6px 8px; font-size: 12px; }
   }
+  .bt-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  .bt-field input, .bt-field select { background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:5px 8px; font-size:13px; width:100%; box-sizing:border-box; }
   </style>
 </head>
 <body>
@@ -361,6 +363,9 @@
       </button>
       <button class="tab" data-tab="futures-shadow" onclick="switchTab('futures-shadow')" id="futures-shadow-tab-btn" style="display:none">
         <span class="tab-dot" style="background:#bc8cff"></span>Futures Shadow
+      </button>
+      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')">
+        Backtest
       </button>
     </div>
   </div>
@@ -1066,6 +1071,55 @@
 
   </div><!-- /tab-futures-shadow -->
 
+  <!-- ═══════════════════════════ BACKTEST TAB ══════════════════════════ -->
+  <div id="tab-backtest" style="display:none">
+    <h2>Backtest</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px">
+      <!-- Row 1: core -->
+      <label class="bt-field"><span>Pair</span><input id="bt-pair" type="text" value="{{ config.SPOT_TRADING_PAIRS[0] }}" style="text-transform:uppercase"></label>
+      <label class="bt-field"><span>Days</span>
+        <select id="bt-days">
+          <option value="90">90d</option>
+          <option value="180">180d</option>
+          <option value="365" selected>365d</option>
+          <option value="730">730d</option>
+        </select>
+      </label>
+      <label class="bt-field"><span>Start balance</span><input id="bt-start" type="number" value="{{ config.SPOT_SIMULATION_BALANCE }}" min="1" step="10"></label>
+      <label class="bt-field"><span>Position size %</span><input id="bt-pos" type="number" value="{{ (config.SPOT_POSITION_SIZE_PCT * 100) | int }}" min="1" max="100"></label>
+      <!-- Row 2: RSI -->
+      <label class="bt-field"><span>RSI period</span><input id="bt-rsi-period" type="number" value="{{ config.SPOT_RSI_PERIOD }}" min="2" max="50"></label>
+      <label class="bt-field"><span>RSI oversold</span><input id="bt-rsi-buy" type="number" value="{{ config.SPOT_RSI_OVERSOLD }}" min="1" max="50"></label>
+      <label class="bt-field"><span>RSI overbought</span><input id="bt-rsi-sell" type="number" value="{{ config.SPOT_RSI_OVERBOUGHT }}" min="50" max="99"></label>
+      <!-- Row 3: exit -->
+      <label class="bt-field"><span>Take profit %</span><input id="bt-tp" type="number" value="{{ (config.SPOT_TAKE_PROFIT_PCT * 100) }}" min="0.1" step="0.1"></label>
+      <label class="bt-field"><span>Trailing stop %</span><input id="bt-trail" type="number" value="{{ (config.SPOT_TRAILING_STOP_PCT * 100) }}" min="0.1" step="0.1"></label>
+      <label class="bt-field"><span>Profit floor %</span><input id="bt-floor" type="number" value="{{ (config.SPOT_PROFIT_FLOOR_PCT * 100) }}" min="0" step="0.1"></label>
+      <label class="bt-field"><span>Min exit profit %</span><input id="bt-min-exit" type="number" value="{{ (config.SPOT_MIN_EXIT_PROFIT_PCT * 100) }}" min="0" step="0.1"></label>
+      <!-- Row 4: DCA -->
+      <label class="bt-field"><span>DCA max (0=off)</span><input id="bt-dca-max" type="number" value="{{ config.SPOT_DCA_MAX }}" min="0" max="10"></label>
+      <label class="bt-field"><span>DCA drop %</span><input id="bt-dca-drop" type="number" value="{{ (config.SPOT_DCA_DROP_PCT * 100) }}" min="0.1" step="0.1"></label>
+      <label class="bt-field"><span>DCA step %</span><input id="bt-dca-step" type="number" value="{{ (config.SPOT_DCA_STEP_PCT * 100) }}" min="0.1" step="0.1"></label>
+    </div>
+    <button id="bt-run-btn" onclick="runBacktest()" style="padding:8px 24px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">Run backtest</button>
+    <span id="bt-status" style="margin-left:12px;color:var(--muted);font-size:13px"></span>
+
+    <div id="bt-results" style="display:none;margin-top:20px">
+      <!-- Summary cards -->
+      <div id="bt-summary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px"></div>
+      <!-- Exit reasons -->
+      <div id="bt-reasons" style="margin-bottom:20px;font-size:13px;color:var(--muted)"></div>
+      <!-- Trade list -->
+      <h3 style="font-size:14px;margin-bottom:8px">Trades</h3>
+      <div class="tbl-wrap">
+        <table class="data-tbl">
+          <thead><tr><th>#</th><th>PnL</th><th>Fees</th><th>Exit reason</th><th>DCA</th></tr></thead>
+          <tbody id="bt-trades-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-backtest -->
+
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
   <section>
     <h2>Recent Activity</h2>
@@ -1134,6 +1188,7 @@
     document.getElementById('tab-spot-shadow').style.display    = name === 'spot-shadow'    ? '' : 'none';
     document.getElementById('tab-futures').style.display        = name === 'futures'        ? '' : 'none';
     document.getElementById('tab-futures-shadow').style.display = name === 'futures-shadow' ? '' : 'none';
+    document.getElementById('tab-backtest').style.display       = name === 'backtest'       ? '' : 'none';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'spot-shadow')    refreshShadowTab();
@@ -4033,6 +4088,92 @@
   setInterval(refreshFutures, 30000);
   setInterval(refreshFuturesSignals, 60000);
   setInterval(refreshFuturesShadows, 60000);
+
+  // ── Backtest ──────────────────────────────────────────────────────────────
+  const _BT_EXIT_LABELS = {
+    trailing_stop: 'Trail stop', take_profit: 'Take profit', signal: 'RSI sell',
+    time_stop: 'Time stop', hard_stop: 'Hard stop', partial_tp: 'Partial TP',
+    end_of_data: 'End of data',
+  };
+
+  async function runBacktest() {
+    const btn    = document.getElementById('bt-run-btn');
+    const status = document.getElementById('bt-status');
+    const results = document.getElementById('bt-results');
+    btn.disabled = true;
+    results.style.display = 'none';
+    status.textContent = 'Running…';
+
+    const payload = {
+      pair:       document.getElementById('bt-pair').value.trim().toUpperCase(),
+      days:       parseInt(document.getElementById('bt-days').value),
+      start:      parseFloat(document.getElementById('bt-start').value),
+      pos_pct:    parseFloat(document.getElementById('bt-pos').value) / 100,
+      rsi_period: parseInt(document.getElementById('bt-rsi-period').value),
+      rsi_buy:    parseInt(document.getElementById('bt-rsi-buy').value),
+      rsi_sell:   parseInt(document.getElementById('bt-rsi-sell').value),
+      tp_pct:     parseFloat(document.getElementById('bt-tp').value) / 100,
+      trail_pct:  parseFloat(document.getElementById('bt-trail').value) / 100,
+      floor_pct:  parseFloat(document.getElementById('bt-floor').value) / 100,
+      min_exit:   parseFloat(document.getElementById('bt-min-exit').value) / 100,
+      max_dca:    parseInt(document.getElementById('bt-dca-max').value),
+      dca_drop:   parseFloat(document.getElementById('bt-dca-drop').value) / 100,
+      dca_step:   parseFloat(document.getElementById('bt-dca-step').value) / 100,
+    };
+
+    try {
+      const r1  = await fetch('/api/backtest/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      const j1  = await r1.json();
+      if (!j1.job_id) { status.textContent = 'Error: ' + (j1.error || 'unknown'); btn.disabled=false; return; }
+      const jobId = j1.job_id;
+
+      const poll = async () => {
+        const r2 = await fetch(`/api/backtest/${jobId}`);
+        const j2 = await r2.json();
+        if (j2.status === 'running') { status.textContent = 'Running…'; setTimeout(poll, 1500); return; }
+        btn.disabled = false;
+        if (j2.status === 'error')  { status.textContent = 'Error: ' + j2.error; return; }
+        status.textContent = 'Done.';
+        renderBacktestResults(j2.result);
+      };
+      setTimeout(poll, 1500);
+    } catch(e) { status.textContent = 'Request failed: ' + e; btn.disabled=false; }
+  }
+
+  function renderBacktestResults(r) {
+    document.getElementById('bt-results').style.display = '';
+    const cards = [
+      ['PnL',        `${r.total_pnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${r.total_pnl.toFixed(2)}`, r.total_pnl >= 0 ? 'var(--green)' : 'var(--red)'],
+      ['Return',     `${r.return_pct >= 0 ? '+' : ''}${r.return_pct.toFixed(2)}%`, r.return_pct >= 0 ? 'var(--green)' : 'var(--red)'],
+      ['Trades',     r.trades, ''],
+      ['Win rate',   r.trades ? r.win_rate + '%' : '—', ''],
+      ['Avg PnL',    `${r.avg_pnl >= 0 ? '+' : ''}${CURRENCY_SYMBOL}${r.avg_pnl.toFixed(2)}`, r.avg_pnl >= 0 ? 'var(--green)' : 'var(--red)'],
+      ['Best',       `+${CURRENCY_SYMBOL}${r.best.toFixed(2)}`, 'var(--green)'],
+      ['Worst',      `${CURRENCY_SYMBOL}${r.worst.toFixed(2)}`, 'var(--red)'],
+      ['Fees',       `-${CURRENCY_SYMBOL}${r.total_fees.toFixed(2)}`, 'var(--muted)'],
+      ['DCA used',   r.dca_used, ''],
+      ['Final bal',  `${CURRENCY_SYMBOL}${r.final_balance.toFixed(2)}`, ''],
+    ];
+    document.getElementById('bt-summary').innerHTML = cards.map(([label, val, color]) =>
+      `<div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${label}</div>
+        <div style="font-size:16px;font-weight:600;${color ? 'color:'+color : ''}">${val}</div>
+      </div>`
+    ).join('');
+
+    document.getElementById('bt-reasons').innerHTML = 'Exits: ' +
+      Object.entries(r.exit_reasons).map(([k,v]) => `<span style="margin-right:12px">${_BT_EXIT_LABELS[k]||k}: <strong>${v}</strong></span>`).join('');
+
+    document.getElementById('bt-trades-body').innerHTML = r.trade_list.map((t, i) =>
+      `<tr>
+        <td style="color:var(--muted)">${i+1}</td>
+        <td style="color:${t.pnl>=0?'var(--green)':'var(--red)'}">${t.pnl>=0?'+':''}${CURRENCY_SYMBOL}${t.pnl.toFixed(2)}</td>
+        <td style="color:var(--muted)">${CURRENCY_SYMBOL}${t.fees.toFixed(4)}</td>
+        <td>${_BT_EXIT_LABELS[t.exit_reason]||t.exit_reason}</td>
+        <td>${t.dca_used?'✓':''}</td>
+      </tr>`
+    ).join('');
+  }
 </script>
 
 <!-- ═══════════════════ SETTINGS MODAL ═══════════════════ -->
