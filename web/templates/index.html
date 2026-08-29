@@ -316,6 +316,7 @@
   }
   .bt-field { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
   .bt-field input, .bt-field select { background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--text); padding:5px 8px; font-size:13px; width:100%; box-sizing:border-box; }
+  .bt-field select { color-scheme: dark; }
   </style>
 </head>
 <body>
@@ -364,7 +365,7 @@
       <button class="tab" data-tab="futures-shadow" onclick="switchTab('futures-shadow')" id="futures-shadow-tab-btn" style="display:none">
         <span class="tab-dot" style="background:#bc8cff"></span>Futures Shadow
       </button>
-      <button class="tab" data-tab="backtest" onclick="switchTab('backtest')">
+      <button class="tab pin-gated{% if config.DASHBOARD_PIN %} pin-locked{% endif %}" data-tab="backtest" onclick="switchTab('backtest')">
         Backtest
       </button>
     </div>
@@ -1121,7 +1122,7 @@
   </div><!-- /tab-backtest -->
 
   <!-- ═══════════════════════ SHARED: ACTIVITY LOG ══════════════════════ -->
-  <section>
+  <section id="activity-section">
     <h2>Recent Activity</h2>
     <div class="log-box" id="log-box">
       <div class="log-entry tick"><span class="log-time">--:--:--</span>Waiting for data…</div>
@@ -1189,6 +1190,7 @@
     document.getElementById('tab-futures').style.display        = name === 'futures'        ? '' : 'none';
     document.getElementById('tab-futures-shadow').style.display = name === 'futures-shadow' ? '' : 'none';
     document.getElementById('tab-backtest').style.display       = name === 'backtest'       ? '' : 'none';
+    document.getElementById('activity-section').style.display   = name === 'backtest'       ? 'none' : '';
     document.querySelectorAll('.tab-bar button').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === name));
     if (name === 'spot-shadow')    refreshShadowTab();
@@ -4123,7 +4125,9 @@
     };
 
     try {
-      const r1  = await fetch('/api/backtest/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+      const _bth = {'Content-Type':'application/json'};
+      if (_pinEnabled) _bth['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+      const r1  = await fetch('/api/backtest/run', {method:'POST', headers:_bth, body: JSON.stringify(payload)});
       const j1  = await r1.json();
       if (!j1.job_id) { status.textContent = 'Error: ' + (j1.error || 'unknown'); btn.disabled=false; return; }
       const jobId = j1.job_id;
