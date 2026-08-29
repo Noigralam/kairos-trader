@@ -1210,8 +1210,8 @@ def sweep_dca(days_list: list[int]):
             rows = []
             base, _ = run_pair(pair, df, start, enable_dca=False)
             rows.append(_format_row("no DCA  (baseline)", base, start, wide=True))
-            for drop in [0.01, 0.02, 0.03]:
-                for size in [0.50, 0.75]:
+            for drop in [0.01, 0.02, 0.03, 0.05, 0.08, 0.10, 0.15]:
+                for size in [0.50, 0.75, 1.00]:
                     cur = (abs(drop - config.SPOT_DCA_DROP_PCT) < 1e-9 and
                            abs(size - config.SPOT_DCA_SIZE_PCT) < 1e-9)
                     label = f"drop={drop*100:.0f}%  size={size*100:.0f}%{'  ◄ current' if cur else ''}"
