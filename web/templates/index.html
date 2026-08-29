@@ -760,7 +760,7 @@
     <section style="margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <h2 style="margin-bottom:0">Rankings</h2>
-        <button onclick="reloadShadows()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">↺ Reload shadows</button>
+        <span class="pin-gated{% if config.DASHBOARD_PIN %} pin-locked{% endif %}"><button onclick="reloadShadows()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:12px;padding:3px 9px;cursor:pointer;display:flex;align-items:center;gap:5px">↺ Reload shadows</button></span>
       </div>
       <div class="tbl-wrap">
         <table id="sh-ranking-table">
@@ -2022,7 +2022,7 @@
         ? `<span style="font-size:11px;background:var(--card);color:#d29922;padding:1px 6px;border-radius:3px;margin-right:6px">MAIN SIM</span>`
         : `<span style="font-size:11px;background:var(--card);color:#3fb950;padding:1px 6px;border-radius:3px;margin-right:6px">SPOT</span>`;
       const resetBtn  = s.is_main ? '' :
-        `<button onclick="resetShadow('${escHtml(s.name)}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 7px;cursor:pointer" title="Reset shadow">Reset</button>`;
+        `<span class="pin-gated"><button onclick="resetShadow('${escHtml(s.name)}')" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 7px;cursor:pointer" title="Reset shadow">Reset</button></span>`;
       return `<tr${s.is_main ? ' style="border-left:2px solid #d29922"' : ''}>
         <td style="color:var(--muted)">${i + 1}</td>
         <td>${badge}<span style="${nameStyle}" onclick="switchShadow('${escHtml(s.name)}')">${escHtml(s.name)}</span></td>
@@ -2035,6 +2035,7 @@
         <td>${resetBtn}</td>
       </tr>`;
     }).join('');
+    _applyLockState();
   }
 
   async function resetShadow(name) {
