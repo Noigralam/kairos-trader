@@ -22,6 +22,7 @@ Days can be one or multiple values: python backtest.py sweep exit 365 180 90
 import os
 import sys
 import datetime
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -1584,6 +1585,49 @@ def run_shadow_backtest(days_list: list[int]):
                   f"  {n:>4}  {wl:<7}  {exits}{marker}")
         print()
     _legend(wide=True)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard API
+# ---------------------------------------------------------------------------
+
+_bt_lock = threading.Lock()  # fetch() + initial_sync hit the DB; serialise to be safe
+
+
+def api_run_backtest(pair: str, days: int, start: float, interval: str = "15m", **kwargs) -> dict:
+    """Run a single-pair backtest and return structured results for the dashboard API."""
+    with _bt_lock:
+        df = fetch(pair, days, interval)
+    trades, final_balance = run_pair(pair, df, start, interval=interval, **kwargs)
+    closed = [t for t in trades if t.exit_reason != "end_of_data"]
+    wins   = [t for t in closed if t.pnl > 0]
+    total_pnl = sum(t.pnl for t in closed)
+    reasons: dict[str, int] = {}
+    for t in closed:
+        reasons[t.exit_reason] = reasons.get(t.exit_reason, 0) + 1
+    return {
+        "pair":          pair,
+        "days":          days,
+        "start":         round(start, 2),
+        "final_balance": round(final_balance, 2),
+        "total_pnl":     round(total_pnl, 2),
+        "return_pct":    round(total_pnl / start * 100, 2) if start else 0,
+        "trades":        len(closed),
+        "wins":          len(wins),
+        "losses":        len(closed) - len(wins),
+        "win_rate":      round(len(wins) / len(closed) * 100, 1) if closed else 0,
+        "avg_pnl":       round(total_pnl / len(closed), 2) if closed else 0,
+        "best":          round(max((t.pnl for t in closed), default=0), 2),
+        "worst":         round(min((t.pnl for t in closed), default=0), 2),
+        "total_fees":    round(sum(t.fees for t in closed), 2),
+        "dca_used":      sum(1 for t in closed if t.dca_used),
+        "exit_reasons":  reasons,
+        "trade_list": [
+            {"pnl": round(t.pnl, 2), "fees": round(t.fees, 4),
+             "exit_reason": t.exit_reason, "dca_used": t.dca_used}
+            for t in closed
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

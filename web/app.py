@@ -6,6 +6,8 @@ import sqlite3
 import time as _time
 import datetime
 import zoneinfo
+import uuid
+import threading
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from bot import spot_engine as engine, spot_simulator as simulator, db, config, tax
 from bot import __version__
@@ -20,6 +22,8 @@ _FUTURES_SNAPSHOT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__))
 _SNAPSHOT_STALE_SECS   = 300  # warn if snapshot older than 5 min
 _SPOT_COMMANDS_PATH    = os.path.join("data", "spot_commands.json")
 _FUTURES_COMMANDS_PATH = os.path.join("data", "futures_commands.json")
+
+_backtest_jobs: dict = {}
 
 
 def _read_snapshot(path: str) -> dict:
@@ -1726,6 +1730,69 @@ def api_futures_shadows_pnl_history():
     for sh in get_futures_shadows():
         out[sh.name] = _series(sh._db_mode, sh._starting)
     return jsonify(out)
+
+
+@app.route("/api/backtest/run", methods=["POST"])
+def api_backtest_run():
+    allowed, rate_limited = _check_pin()
+    if rate_limited:
+        return jsonify({"error": "too many attempts"}), 429
+    if config.DASHBOARD_PIN and not allowed:
+        return jsonify({"error": "PIN required"}), 403
+
+    data    = request.get_json(force=True) or {}
+    pair    = data.get("pair", "").upper().strip()
+    if not pair:
+        return jsonify({"error": "pair required"}), 400
+
+    days    = int(data.get("days", 365))
+    start   = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    params  = {
+        "rsi_period":  int(data["rsi_period"])    if "rsi_period"  in data else None,
+        "rsi_buy":     int(data["rsi_buy"])        if "rsi_buy"     in data else None,
+        "rsi_sell":    int(data["rsi_sell"])       if "rsi_sell"    in data else None,
+        "tp_pct":      float(data["tp_pct"])       if "tp_pct"      in data else None,
+        "trail_pct":   float(data["trail_pct"])    if "trail_pct"   in data else None,
+        "floor_pct":   float(data["floor_pct"])    if "floor_pct"   in data else None,
+        "min_exit":    float(data["min_exit"])     if "min_exit"    in data else None,
+        "pos_pct":     float(data["pos_pct"])      if "pos_pct"     in data else None,
+        "max_dca":     int(data["max_dca"])        if "max_dca"     in data else None,
+        "dca_drop":    float(data["dca_drop"])     if "dca_drop"    in data else None,
+        "dca_step":    float(data["dca_step"])     if "dca_step"    in data else None,
+        "enable_dca":  int(data.get("max_dca", 1)) > 0,
+    }
+    # Remove None values so run_pair falls back to config defaults
+    params = {k: v for k, v in params.items() if v is not None}
+
+    # Evict oldest jobs if store is getting large
+    if len(_backtest_jobs) >= 20:
+        oldest_keys = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest_keys:
+            _backtest_jobs.pop(k, None)
+
+    job_id = str(uuid.uuid4())
+    _backtest_jobs[job_id] = {"status": "running", "result": None, "error": None}
+
+    def _run():
+        try:
+            from backtest import api_run_backtest
+            result = api_run_backtest(pair, days, start, **params)
+            _backtest_jobs[job_id]["result"] = result
+            _backtest_jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _backtest_jobs[job_id]["error"]  = str(e)
+            _backtest_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/backtest/<job_id>")
+def api_backtest_status(job_id):
+    job = _backtest_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(job)
 
 
 @app.route("/api/futures/status")
