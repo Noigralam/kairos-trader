@@ -524,16 +524,6 @@ def api_shadows_pnl_history():
     def _series(db_mode, starting):
         rows = db.get_balance_history(db_mode, max(days, 0))
         result = []
-        # Prepend a synthetic origin point when history predates starting_balance
-        # (happens when a shadow was created before a balance reset, or history was
-        # cleared but the first real log entry reflects an already-deployed position)
-        if rows and rows[0][1] < starting * 0.95:
-            first_ts, _ = rows[0]
-            try:
-                dt0 = datetime.datetime.fromisoformat(first_ts).astimezone(_TZ) - datetime.timedelta(minutes=1)
-                result.append({"t": dt0.strftime("%d.%m. %H:%M"), "sk": dt0.timestamp(), "pnl": 0.0, "pct": 0.0})
-            except Exception:
-                pass
         for ts, bal in rows:
             try:
                 dt = datetime.datetime.fromisoformat(ts).astimezone(_TZ)
