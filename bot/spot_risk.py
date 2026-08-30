@@ -58,6 +58,9 @@ def check_trailing_stop(position: Position, current_price: float, floor_pct: flo
 def check_take_profit(position: Position, current_price: float) -> bool:
     return position.take_profit_price > 0 and current_price >= position.take_profit_price
 
+def check_hard_stop(position: Position, current_price: float, hard_stop_pct: float) -> bool:
+    return hard_stop_pct > 0 and current_price <= position.entry_price * (1 - hard_stop_pct)
+
 
 def calc_pnl(position: Position, exit_price: float, buy_fee: float = 0.0, sell_fee: float = 0.0) -> float:
     return (exit_price - position.entry_price) * position.amount - buy_fee - sell_fee

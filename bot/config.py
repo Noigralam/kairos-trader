@@ -57,6 +57,7 @@ SPOT_VOLUME_FILTER_PERIOD   = int(os.getenv("SPOT_VOLUME_FILTER_PERIOD", "0"))  
 SPOT_VOLUME_FILTER_MULT     = float(os.getenv("SPOT_VOLUME_FILTER_MULT", "1.5"))  # volume multiple required
 SPOT_PARTIAL_CLOSE_PCT      = float(os.getenv("SPOT_PARTIAL_CLOSE_PCT", "0"))     # sell this fraction at TP, hold rest; 0 = disabled
 SPOT_PARTIAL_CLOSE_TRAIL_PCT = float(os.getenv("SPOT_PARTIAL_CLOSE_TRAIL_PCT", "0.02"))  # trailing stop on remainder after partial close
+SPOT_HARD_STOP_PCT          = float(os.getenv("SPOT_HARD_STOP_PCT", "0"))         # close immediately if price drops X% below entry; 0 = disabled
 
 def rsi_period_for(pair: str) -> int:
     return int(os.getenv(f"SPOT_RSI_PERIOD_{pair}", SPOT_RSI_PERIOD))
@@ -105,6 +106,9 @@ def partial_close_for(pair: str) -> float:
 
 def partial_close_trail_for(pair: str) -> float:
     return float(os.getenv(f"SPOT_PARTIAL_CLOSE_TRAIL_PCT_{pair}", SPOT_PARTIAL_CLOSE_TRAIL_PCT))
+
+def hard_stop_for(pair: str) -> float:
+    return float(os.getenv(f"SPOT_HARD_STOP_PCT_{pair}", SPOT_HARD_STOP_PCT))
 
 def base_asset_for(pair: str) -> str:
     """Strip the configured quote currency suffix from a pair name to get the base asset."""
@@ -181,6 +185,7 @@ def get_shadow_overrides(name: str) -> dict:
         "REENTRY_DROP_PCT":        ("spot_reentry_drop_pct",      float),
         "PARTIAL_CLOSE_PCT":       ("spot_partial_close_pct",     float),
         "PARTIAL_CLOSE_TRAIL_PCT": ("spot_partial_close_trail_pct", float),
+        "HARD_STOP_PCT":           ("spot_hard_stop_pct",         float),
         # ── Position sizing / DCA ─────────────────────────────────
         "POSITION_SIZE_PCT":       ("spot_position_size_pct",     float),
         "DCA_DROP_PCT":            ("spot_dca_drop_pct",          float),

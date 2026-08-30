@@ -5,7 +5,7 @@ import threading
 import time as _time
 from dataclasses import dataclass, field
 from . import config
-from .spot_risk import Position, apply_dca, update_peak, check_trailing_stop, check_take_profit, calc_pnl
+from .spot_risk import Position, apply_dca, update_peak, check_trailing_stop, check_take_profit, check_hard_stop, calc_pnl
 from .notifier import trade_alert, trailing_stop_alert, notify
 
 log = logging.getLogger("cryptobot")
@@ -600,7 +600,9 @@ def check_stops(prices: dict):
             updated = update_peak(pos, price)
             floor = 0.0 if pos.partial_closed else config.profit_floor_for(pair)
             trail = config.partial_close_trail_for(pair) if pos.partial_closed else config.trailing_stop_for(pair)
-            if check_take_profit(pos, price) and not pos.partial_closed:
+            if check_hard_stop(pos, price, config.hard_stop_for(pair)):
+                close_position(pair, price, reason="hard_stop")
+            elif check_take_profit(pos, price) and not pos.partial_closed:
                 if config.partial_close_for(pair) > 0:
                     partial_close_position(pair, price)
                 else:
@@ -929,6 +931,11 @@ class SpotShadowSimulator:
             if pos:
                 update_peak(pos, price)
                 stop = self._trailing_stop_level(pos)
+                hard_stop = self._o("spot_hard_stop_pct", config.hard_stop_for(pair))
+                if check_hard_stop(pos, price, hard_stop):
+                    self._close(pair, price, "hard_stop")
+                    self._save()
+                    return
                 if price >= pos.take_profit_price > 0 and not pos.partial_closed:
                     pct = self._o("spot_partial_close_pct", config.partial_close_for(pair))
                     if pct > 0:
@@ -993,7 +1000,11 @@ class SpotShadowSimulator:
                     continue
                 updated = update_peak(pos, price)
                 stop    = self._trailing_stop_level(pos)
-                if price >= pos.take_profit_price > 0 and not pos.partial_closed:
+                hard_stop = self._o("spot_hard_stop_pct", config.hard_stop_for(pair))
+                if check_hard_stop(pos, price, hard_stop):
+                    self._close(pair, price, "hard_stop")
+                    changed = True
+                elif price >= pos.take_profit_price > 0 and not pos.partial_closed:
                     pct = self._o("spot_partial_close_pct", config.partial_close_for(pair))
                     if pct > 0:
                         self._partial_close(pair, price)
@@ -1033,6 +1044,8 @@ class SpotShadowSimulator:
                     "dca_count":     pos.dca_count,
                     "trailing_stop": round(self._trailing_stop_level(pos), 2),
                     "take_profit":   round(pos.take_profit_price, 2),
+                    "hard_stop":     round(pos.entry_price * (1 - self._o("spot_hard_stop_pct", config.hard_stop_for(pair))), 2)
+                                     if self._o("spot_hard_stop_pct", config.hard_stop_for(pair)) > 0 else None,
                 }
                 for pair, pos in self.positions.items()
             },
