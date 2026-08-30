@@ -808,9 +808,10 @@
             <button onclick="setShPnlMode('pct')" data-mode="pct" class="active">% return</button>
             <button onclick="setShPnlMode('abs')" data-mode="abs">{{ currency_symbol }} PnL</button>
           </div>
+          <button onclick="openPnlFullscreen()" title="Fullscreen" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:3px 7px;cursor:pointer;font-size:14px;line-height:1" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⛶</button>
         </div>
       </div>
-      <div class="chart-box" style="height:220px"><canvas id="sh-pnl-chart"></canvas></div>
+      <div class="chart-box" style="height:320px"><canvas id="sh-pnl-chart"></canvas></div>
     </section>
 
     <!-- profile selector — visible when >1 shadow -->
@@ -963,9 +964,10 @@
             <button onclick="setFShPnlMode('pct')" data-mode="pct" class="active">% return</button>
             <button onclick="setFShPnlMode('usd')" data-mode="usd">$ PnL</button>
           </div>
+          <button onclick="openFshPnlFullscreen()" title="Fullscreen" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:3px 7px;cursor:pointer;font-size:14px;line-height:1" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">⛶</button>
         </div>
       </div>
-      <div class="chart-box" style="height:220px"><canvas id="fsh-pnl-chart"></canvas></div>
+      <div class="chart-box" style="height:320px"><canvas id="fsh-pnl-chart"></canvas></div>
     </section>
 
     <!-- profile selector -->
@@ -2076,6 +2078,8 @@
   }
 
   let _shPnlMode = 'pct';  // 'pct' | 'abs'
+  let _shPnlFsChart  = null;
+  let _shPnlLastData = null;  // {labels, datasets, yTick, tooltipFn} — saved after each render
 
   function setShPnlDays(days) {
     _shPnlDays = days;
@@ -2167,23 +2171,51 @@
         _shPnlChart.update('none');
       } else {
         const ctx = document.getElementById('sh-pnl-chart').getContext('2d');
-        _shPnlChart = new Chart(ctx, {
-          type: 'line',
-          data: { labels: allTimes, datasets },
-          options: { ...CHART_OPTS,
-            plugins: { ...CHART_OPTS.plugins,
-              legend: { display: true, position: 'top',
-                labels: { color: '#8b949e', boxWidth: 12, padding: 10, font: { size: 11 } } },
-              tooltip: { ...CHART_OPTS.plugins.tooltip,
-                callbacks: { label: tooltipFn } },
-            },
-            scales: { x: CHART_OPTS.scales.x,
-              y: { ...CHART_OPTS.scales.y,
-                ticks: { ...CHART_OPTS.scales.y.ticks, callback: yTick } } },
-          },
-        });
+        _shPnlChart = new Chart(ctx, { type: 'line', data: { labels: allTimes, datasets }, options: _buildPnlChartOpts(yTick, tooltipFn) });
+      }
+
+      _shPnlLastData = { labels: allTimes, datasets, yTick, tooltipFn };
+      if (_shPnlFsChart) {
+        _shPnlFsChart.data.labels   = allTimes;
+        _shPnlFsChart.data.datasets = datasets;
+        _shPnlFsChart.options.scales.y.ticks.callback = yTick;
+        _shPnlFsChart.options.plugins.tooltip.callbacks.label = tooltipFn;
+        _shPnlFsChart.update('none');
       }
     } catch(e) { console.error('pnlchart', e); }
+  }
+
+  function _buildPnlChartOpts(yTick, tooltipFn) {
+    return { ...CHART_OPTS,
+      plugins: { ...CHART_OPTS.plugins,
+        legend: { display: true, position: 'top',
+          labels: { color: '#8b949e', boxWidth: 12, padding: 10, font: { size: 11 } } },
+        tooltip: { ...CHART_OPTS.plugins.tooltip,
+          callbacks: { label: tooltipFn } },
+      },
+      scales: { x: CHART_OPTS.scales.x,
+        y: { ...CHART_OPTS.scales.y,
+          ticks: { ...CHART_OPTS.scales.y.ticks, callback: yTick } } },
+    };
+  }
+
+  function openPnlFullscreen() {
+    const modal = document.getElementById('pnl-fs-modal');
+    modal.style.display = 'flex';
+    if (_shPnlFsChart) { _shPnlFsChart.destroy(); _shPnlFsChart = null; }
+    if (!_shPnlLastData) return;
+    const { labels, datasets, yTick, tooltipFn } = _shPnlLastData;
+    const ctx = document.getElementById('sh-pnl-chart-fs').getContext('2d');
+    _shPnlFsChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: _buildPnlChartOpts(yTick, tooltipFn),
+    });
+  }
+
+  function closePnlFullscreen() {
+    document.getElementById('pnl-fs-modal').style.display = 'none';
+    if (_shPnlFsChart) { _shPnlFsChart.destroy(); _shPnlFsChart = null; }
   }
 
   let _shRankingData = [];
@@ -3663,6 +3695,8 @@
   let _fshTradesPage   = 1;
   let _fshTradesPages  = 1;
   let _fshPnlChart     = null;
+  let _fshPnlFsChart   = null;
+  let _fshPnlLastData  = null;
   let _fshBalChart     = null;
   let _fshPriceChart   = null;
   let _fshCandleChart  = null;
@@ -4167,20 +4201,38 @@
           spanGaps: true,
         };
       });
-      if (_fshPnlChart) _fshPnlChart.destroy();
-      _fshPnlChart = new Chart(document.getElementById('fsh-pnl-chart'), {
-        type: 'line',
-        data: { labels, datasets },
-        options: {
-          animation: false, responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
-          scales: {
-            x: { ticks: { color: '#8b949e', maxTicksLimit: 8 }, grid: { color: '#21262d' } },
-            y: { ticks: { color: '#8b949e', callback: v => _fshPnlMode === 'pct' ? v.toFixed(1) + '%' : '$' + v.toFixed(2) }, grid: { color: '#21262d' } },
-          },
+      const fshOpts = {
+        animation: false, responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#8b949e', font: { size: 11 } } } },
+        scales: {
+          x: { ticks: { color: '#8b949e', maxTicksLimit: 8 }, grid: { color: '#21262d' } },
+          y: { ticks: { color: '#8b949e', callback: v => _fshPnlMode === 'pct' ? v.toFixed(1) + '%' : '$' + v.toFixed(2) }, grid: { color: '#21262d' } },
         },
-      });
+      };
+      if (_fshPnlChart) _fshPnlChart.destroy();
+      _fshPnlChart = new Chart(document.getElementById('fsh-pnl-chart'), { type: 'line', data: { labels, datasets }, options: fshOpts });
+      _fshPnlLastData = { labels, datasets, opts: fshOpts };
+      if (_fshPnlFsChart) {
+        _fshPnlFsChart.data.labels   = labels;
+        _fshPnlFsChart.data.datasets = datasets;
+        _fshPnlFsChart.update('none');
+      }
     } catch(e) {}
+  }
+
+  function openFshPnlFullscreen() {
+    const modal = document.getElementById('fsh-pnl-fs-modal');
+    modal.style.display = 'flex';
+    if (_fshPnlFsChart) { _fshPnlFsChart.destroy(); _fshPnlFsChart = null; }
+    if (!_fshPnlLastData) return;
+    const { labels, datasets, opts } = _fshPnlLastData;
+    const ctx = document.getElementById('fsh-pnl-chart-fs').getContext('2d');
+    _fshPnlFsChart = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: opts });
+  }
+
+  function closeFshPnlFullscreen() {
+    document.getElementById('fsh-pnl-fs-modal').style.display = 'none';
+    if (_fshPnlFsChart) { _fshPnlFsChart.destroy(); _fshPnlFsChart = null; }
   }
 
   function setFShPnlDays(d) {
@@ -4679,6 +4731,28 @@
 </script>
 
 <!-- ═══════════════════ SETTINGS MODAL ═══════════════════ -->
+<!-- Futures PnL fullscreen modal -->
+<div id="fsh-pnl-fs-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:#0d1117;align-items:center;justify-content:center" onclick="if(event.target===this)closeFshPnlFullscreen()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;width:min(1200px,96vw);height:min(700px,90vh);display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <span style="font-size:14px;font-weight:600;color:var(--text)">Futures PnL History</span>
+      <button onclick="closeFshPnlFullscreen()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+    </div>
+    <div style="flex:1;min-height:0;padding:16px"><canvas id="fsh-pnl-chart-fs"></canvas></div>
+  </div>
+</div>
+
+<!-- PnL fullscreen modal -->
+<div id="pnl-fs-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:#0d1117;align-items:center;justify-content:center" onclick="if(event.target===this)closePnlFullscreen()">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;width:min(1200px,96vw);height:min(700px,90vh);display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <span style="font-size:14px;font-weight:600;color:var(--text)">PnL History</span>
+      <button onclick="closePnlFullscreen()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+    </div>
+    <div style="flex:1;min-height:0;padding:16px"><canvas id="sh-pnl-chart-fs"></canvas></div>
+  </div>
+</div>
+
 <div id="settings-modal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)closeSettingsModal()">
   <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;width:min(560px,94vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #30363d">
