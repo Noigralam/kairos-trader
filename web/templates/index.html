@@ -2352,7 +2352,7 @@
   async function resetShadow(name) {
     if (!confirm(`Reset shadow ${name}? This wipes all trades and history.`)) return;
     try {
-      const res  = await fetch(`/api/shadows/${encodeURIComponent(name)}/reset`, {method: 'POST'});
+      const res  = await fetch(`/api/shadows/${encodeURIComponent(name)}/reset`, {method: 'POST', headers: _pinHeaders()});
       const data = await res.json();
       if (data.queued) { alert('Reset queued — will apply within 30s.'); }
       else if (data.ok) { location.reload(); }
@@ -2362,7 +2362,7 @@
 
   async function reloadShadows() {
     try {
-      const res  = await fetch('/api/shadows/reload', {method: 'POST'});
+      const res  = await fetch('/api/shadows/reload', {method: 'POST', headers: _pinHeaders()});
       const data = await res.json();
       if (data.queued) { alert('Reload queued — will apply within 30s.'); }
       else if (data.ok) { location.reload(); }
