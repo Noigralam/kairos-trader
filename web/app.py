@@ -105,6 +105,7 @@ def index():
 def api_status():
     snap = _read_snapshot(_SPOT_SNAPSHOT_PATH)
     snap["stale"] = _snapshot_stale(snap)
+    snap["version"] = __version__
     return jsonify(snap)
 
 
@@ -2051,6 +2052,45 @@ def api_backtest_2axissweep():
             from backtest import api_2axis_sweep
             result = api_2axis_sweep(pair, days, start, param1, param2,
                                      base_params=base_params, interval=interval)
+            _backtest_jobs[job_id]["result"] = result
+            _backtest_jobs[job_id]["status"] = "done"
+        except Exception as e:
+            _backtest_jobs[job_id]["error"]  = str(e)
+            _backtest_jobs[job_id]["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+
+@app.route("/api/backtest/optimize", methods=["POST"])
+def api_backtest_optimize():
+    data = request.get_json(force=True) or {}
+    pair = data.get("pair", "").upper().strip()
+    if not pair:
+        return jsonify({"error": "pair required"}), 400
+    days_list = data.get("days_list", [365, 180])
+    if isinstance(days_list, int):
+        days_list = [days_list]
+    start    = float(data.get("start", config.SPOT_SIMULATION_BALANCE))
+    interval = data.get("interval", "15m")
+    n_random = int(data.get("n_random", 200))
+    n_starts = int(data.get("n_starts", 3))
+
+    if len(_backtest_jobs) >= 20:
+        oldest = list(_backtest_jobs.keys())[:len(_backtest_jobs) - 19]
+        for k in oldest:
+            _backtest_jobs.pop(k, None)
+
+    job_id = str(uuid.uuid4())
+    _backtest_jobs[job_id] = {"status": "running", "progress": "", "result": None, "error": None}
+
+    def _run():
+        try:
+            from backtest import api_optimize
+            def _prog(msg):
+                _backtest_jobs[job_id]["progress"] = msg
+            result = api_optimize(pair, days_list, start, n_random=n_random,
+                                  n_starts=n_starts, interval=interval, progress_fn=_prog)
             _backtest_jobs[job_id]["result"] = result
             _backtest_jobs[job_id]["status"] = "done"
         except Exception as e:

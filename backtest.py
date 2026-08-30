@@ -1671,6 +1671,104 @@ def api_2axis_sweep(pair: str, days: int, start: float, param1: str, param2: str
     }
 
 
+def api_optimize(pair: str, days_list: list[int], start: float,
+                 n_random: int = 200, n_starts: int = 3,
+                 interval: str = "15m",
+                 progress_fn=None) -> dict:
+    """Random search → coordinate descent, scoring by average return across all windows.
+    progress_fn(msg) is called with live status updates if provided."""
+    import random as _random
+    import time as _time
+
+    with _bt_lock:
+        dfs = {days: fetch(pair, days, interval) for days in days_list}
+
+    ranges = _sweep_ranges()
+    _pct = {"tp_pct","trail_pct","floor_pct","min_exit","pos_pct",
+            "dca_drop","dca_step","ema_gap","hard_stop","partial_close_pct"}
+
+    def _fv(k, v):
+        return f"{v*100:.1f}%" if k in _pct else str(v)
+
+    def score(params):
+        total = 0.0
+        for days, df in dfs.items():
+            trades, final = run_pair(pair, df, start, interval=interval, **params)
+            total += _trade_summary(pair, days, start, final, trades)["return_pct"]
+        return total / len(dfs)
+
+    # Phase 1: random search
+    if progress_fn: progress_fn(f"Phase 1 — random search: {n_random} trials × {len(days_list)} window(s)…")
+    t0 = _time.time()
+    candidates = []
+    for _ in range(n_random):
+        params = {k: _random.choice(v) for k, v in ranges.items()}
+        try:
+            candidates.append((score(params), params))
+        except Exception:
+            pass
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    elapsed = _time.time() - t0
+    if progress_fn: progress_fn(f"  done in {elapsed:.0f}s — best random: {candidates[0][0]:+.2f}% avg across {days_list}")
+
+    # Phase 2: coordinate descent from top n_starts
+    best_score  = float("-inf")
+    best_params = None
+
+    for si, (init_score, init_params) in enumerate(candidates[:n_starts]):
+        if progress_fn: progress_fn(f"\nPhase 2 — start {si+1}/{n_starts} (initial {init_score:+.2f}% avg):")
+        current_params = init_params.copy()
+        current_score  = init_score
+        round_num = 0
+        improved  = True
+
+        while improved:
+            round_num += 1
+            improved = False
+            gains = []
+            for axis, values in ranges.items():
+                cur_val      = current_params[axis]
+                best_val     = cur_val
+                best_ax_score = current_score
+                for v in values:
+                    same = abs(v - cur_val) < 1e-9 if isinstance(v, float) else v == cur_val
+                    if same:
+                        continue
+                    try:
+                        s = score({**current_params, axis: v})
+                        if s > best_ax_score:
+                            best_ax_score = s
+                            best_val = v
+                    except Exception:
+                        pass
+                changed = (abs(best_val - cur_val) > 1e-9) if isinstance(best_val, float) else (best_val != cur_val)
+                if changed:
+                    gains.append(f"{axis} {_fv(axis, cur_val)}→{_fv(axis, best_val)} ({best_ax_score - current_score:+.2f}%)")
+                    current_params[axis] = best_val
+                    current_score = best_ax_score
+                    improved = True
+
+            if progress_fn:
+                if gains:
+                    progress_fn(f"  Round {round_num}: {current_score:+.2f}% avg — " + ", ".join(gains))
+                else:
+                    progress_fn(f"  Round {round_num}: converged at {current_score:+.2f}% avg")
+
+        if current_score > best_score:
+            best_score  = current_score
+            best_params = current_params.copy()
+
+    # Final per-window results with best params
+    per_window = []
+    for days, df in dfs.items():
+        trades, final = run_pair(pair, df, start, interval=interval, **best_params)
+        s = _trade_summary(pair, days, start, final, trades)
+        s["params"] = best_params
+        per_window.append(s)
+
+    return {"best_params": best_params, "best_score": best_score, "per_window": per_window}
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -1763,8 +1861,10 @@ if __name__ == "__main__":
         _tee.close()
     elif str_args and str_args[0] == "random":
         # python backtest.py random [n_trials] [days...] [--cached]
-        n_trials  = int(str_args[1]) if len(str_args) > 1 else 200
-        days_list = day_args or [365]
+        # First integer is n_trials, remaining are day windows
+        _all_ints = [int(a) for a in args if a.isdigit()]
+        n_trials  = _all_ints[0] if _all_ints else 200
+        days_list = _all_ints[1:] if len(_all_ints) > 1 else [365]
         n_show    = 20
         _days_str = "_".join(f"{d}d" for d in days_list)
         _tee = _Tee(f"{RESULTS_DIR}/spot_random_{n_trials}t_{_days_str}_{_date}.txt")
@@ -1864,6 +1964,42 @@ if __name__ == "__main__":
                             cells += f"  {ret:>+5.1f}%{mark}"
                         print(f"  {_fv2(param1, values1[ri]):<{lbl_w}}{cells}")
         print()
+        _tee.close()
+
+    elif str_args and str_args[0] == "optimize":
+        # python backtest.py optimize [n_random] [days...] [--cached]
+        # First integer = n_random trials, remaining = day windows
+        _all_ints = [int(a) for a in args if a.isdigit()]
+        n_random  = _all_ints[0] if _all_ints else 200
+        days_list = _all_ints[1:] if len(_all_ints) > 1 else [365, 180]
+        _days_str = "_".join(f"{d}d" for d in days_list)
+        _tee  = _Tee(f"{RESULTS_DIR}/spot_optimize_{n_random}r_{_days_str}_{_date}.txt")
+        start = config.SPOT_SIMULATION_BALANCE
+        _pct_keys = {"tp_pct","trail_pct","floor_pct","min_exit","pos_pct",
+                     "dca_drop","dca_step","ema_gap","hard_stop","partial_close_pct"}
+        def _fv_opt(k, v):
+            return f"{v*100:.1f}%" if k in _pct_keys else str(v)
+        W = 100
+        for pair in PAIRS:
+            print(f"\n{'━'*W}")
+            print(f"  Optimize — {pair} — {n_random} random trials → coordinate descent — windows: {days_list}")
+            print(f"{'━'*W}\n")
+            result = api_optimize(pair, days_list, start, n_random=n_random, n_starts=3,
+                                  progress_fn=lambda msg: print(f"  {msg}", flush=True))
+            print(f"\n  {'─'*W}")
+            print(f"  Best params  (avg {result['best_score']:+.2f}% across {days_list}):\n")
+            for k, v in result["best_params"].items():
+                print(f"    {k:<24} = {_fv_opt(k, v)}")
+            print(f"\n  Per-window validation:")
+            for r in result["per_window"]:
+                print(f"    {r['days']:>4}d   {r['return_pct']:>+7.2f}%   n={r['trades']:<4}  "
+                      f"W={r['win_rate']:>4}%   worst={r['worst']:>+7.2f}   PnL={r['total_pnl']:>+8.2f}")
+            print(f"\n  .env snippet:")
+            for k, v in result["best_params"].items():
+                env_key = "SPOT_SHADOW_NEW_" + k.upper()
+                env_val = v * 100 if k in _pct_keys else v
+                print(f"    {env_key}={env_val}")
+            print()
         _tee.close()
 
     elif str_args and str_args[0] == "topup":

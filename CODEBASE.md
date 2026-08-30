@@ -76,7 +76,7 @@ Futures trading loop, same two-thread structure as spot: 15-minute signal loop a
 Empty — marks `web/` as a package.
 
 ### `web/app.py` *(2 272 lines)*
-The Flask dashboard. ~50 API endpoints covering: spot and futures status (read from JSON snapshots), trades, balance history, signals, charts (OHLCV + RSI + EMA200 + Bollinger Bands + actual trade markers), shadow profile status/trades/signals/charts, futures shadow ranking, FIFO tax summary/export/integrity/rebuild, Fear & Greed index, and recent log. Backtest API: `/api/backtest/run`, `/api/backtest/sweep`, `/api/backtest/fullsweep`, `/api/backtest/randomsearch`, `/api/backtest/2axissweep` — all async (return a job_id, polled via `/api/backtest/<job_id>`). Shadow creation endpoint writes a new profile block to `.env` on the fly. Control endpoints (`/api/control`, `/api/futures/control`) return HTTP 503 when `KAIROS_DASHBOARD_ONLY=1`. PIN-gated actions use a lockout file to rate-limit brute force.
+The Flask dashboard. ~50 API endpoints covering: spot and futures status (read from JSON snapshots), trades, balance history, signals, charts (OHLCV + RSI + EMA200 + Bollinger Bands + actual trade markers), shadow profile status/trades/signals/charts, futures shadow ranking, FIFO tax summary/export/integrity/rebuild, Fear & Greed index, and recent log. Backtest API: `/api/backtest/run`, `/api/backtest/sweep`, `/api/backtest/fullsweep`, `/api/backtest/randomsearch`, `/api/backtest/2axissweep`, `/api/backtest/optimize` — all async (return a job_id, polled via `/api/backtest/status/<job_id>`). Shadow creation endpoint writes a new profile block to `.env` on the fly. Control endpoints (`/api/control`, `/api/futures/control`) return HTTP 503 when `KAIROS_DASHBOARD_ONLY=1`. PIN-gated actions use a lockout file to rate-limit brute force. Version badge in the dashboard header reflects the running dashboard process (`__version__`), not the engine snapshot.
 
 ---
 
@@ -87,8 +87,9 @@ Spot backtest engine and parameter sweep tool. Replays historical candles from t
 - **Baseline** — single run with current config, one or more day windows
 - **Shadows** — all shadow profiles ranked by return
 - **Sweep** — vary one axis over 12 preset values (`sweep_ranges.toml`); 16 axes available: `rsi_buy`, `rsi_period`, `rsi_sell`, `tp_pct`, `trail_pct`, `floor_pct`, `min_exit`, `pos_pct`, `dca_drop`, `dca_step`, `max_dca`, `ema_gap`, `time_stop_days`, `stop_cooldown`, `hard_stop`, `partial_close_pct`. Legacy short names (`buyrsi`, `trail`, `floor`, etc.) still accepted as aliases. `sweep all` runs every axis.
-- **Random** — `backtest.py random N days` samples N random combinations from all axes simultaneously; prints top 20 ranked by return.
+- **Random** — `backtest.py random N days…` samples N random combinations from all axes simultaneously; prints top 20 ranked by return. First integer is trial count, remaining integers are day windows.
 - **Grid** — `backtest.py grid param1 param2 days` tests all 12×12 combinations of two axes; prints a return-% matrix.
+- **Optimize** — `backtest.py optimize N days…` runs random search (N trials) then coordinate descent from the top 3 starting points, scoring by average return across all specified windows. Prints best params table and a `.env` snippet. May take 5–20 min. First integer is trial count.
 - **Topup** — monthly capital injection simulation.
 
 Results print as ranked tables with a footer legend. All output is mirrored to a descriptively-named file in `backtest_results/`. Sweep axis values live in `sweep_ranges.toml` — edit and rerun, no code change needed.

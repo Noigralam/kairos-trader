@@ -201,7 +201,30 @@ Some parameters interact strongly — for example, a tight trailing stop works b
 
 Output: a matrix where rows = axis 1 values, columns = axis 2 values, each cell = return %. The best cell is marked with `◄`. Use this after random search to zoom in on a region — random search points you toward a promising area, the grid shows the exact shape of it.
 
-Both random search and 2-axis grid are also available from the dashboard backtest tab (no CLI needed).
+Both random search, 2-axis grid, and optimizer are also available from the dashboard backtest tab (no CLI needed).
+
+---
+
+## Example 7 — Optimizer (random search → coordinate descent)
+
+The optimizer finds a parameter combination that performs well across multiple time windows simultaneously. It runs random search first to find good starting points, then refines each axis one at a time (coordinate descent) until it can't improve further.
+
+```bash
+# 200 random trials, then coordinate descent, scored across three windows
+.venv/bin/python backtest.py optimize 200 180 365 730
+
+# More trials = better starting points = less chance of a bad local optimum
+.venv/bin/python backtest.py optimize 500 180 365 730 --cached
+```
+
+Output:
+- Per-window table showing what return the best params achieved on each window
+- Best params table with the winning value for every axis
+- Ready-to-paste `.env` snippet
+
+The first integer is the random trial count (default 200 if omitted); remaining integers are day windows. The scoring function averages `return_pct` across all windows — params that win on 180d, 365d, and 730d simultaneously rank above params that only win on one.
+
+**Runtime**: roughly 3–4 seconds per trial plus coordinate descent rounds. 200 trials × 3 windows ≈ 5–10 min; 500 trials ≈ 15–20 min. Use `--cached` for repeat runs.
 
 ---
 
@@ -211,21 +234,22 @@ Both random search and 2-axis grid are also available from the dashboard backtes
 # 1. Explore a new pair — full single-axis sweep in one go
 .venv/bin/python pair_sweep.py XRPEUR 730
 
-# 2a. Random search to find promising combinations
-.venv/bin/python backtest.py random 300 365 --cached
+# 2. Run the optimizer to find a robust parameter combination
+.venv/bin/python backtest.py optimize 300 180 365 730 --cached
 
-# 2b. Or drill into a specific axis once you have a direction
+# 3. Or explore manually: random search first, then drill into specific axes
+.venv/bin/python backtest.py random 300 365 --cached
 .venv/bin/python backtest.py sweep rsi_buy 730 365 180 --cached
 .venv/bin/python backtest.py sweep trail_pct 730 365 180 --cached
 .venv/bin/python backtest.py sweep dca_drop 365 180 --cached
 
-# 3. Check interactions between two parameters
+# 4. Check interactions between two parameters
 .venv/bin/python backtest.py grid trail_pct floor_pct 365 --cached
 
-# 4. Validate the combined settings with a full shadow comparison
+# 5. Validate the combined settings with a full shadow comparison
 .venv/bin/python backtest.py shadows 365 180 90 --cached
 
-# 5. Add a shadow profile to .env, restart engine, and let it run live
+# 6. Add a shadow profile to .env, restart engine, and let it run live
 ./stop.sh engine && ./start.sh engine
 ```
 

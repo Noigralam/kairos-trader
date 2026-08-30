@@ -1164,7 +1164,10 @@
           <input id="bt-random-trials" type="number" value="200" min="10" max="2000" step="50" style="width:70px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--text);padding:5px 8px;font-size:13px">
           <span style="font-size:12px;color:var(--muted)">trials</span>
           <button onclick="runRandomSearch()" class="bt-action-btn" style="margin-left:4px">Random search</button>
+          <button onclick="runOptimize()" class="bt-action-btn" title="Random search → coordinate descent. Expect 5–20 min depending on trial count and windows.">Optimize ⚠</button>
         </div>
+        <div></div>
+        <div style="font-size:11px;color:var(--muted);opacity:0.7">Optimize runs random search then coordinate descent — may take 5–20 min</div>
 
         <!-- 2-axis grid -->
         <span style="font-size:12px;color:var(--muted)">2-axis grid</span>
@@ -2211,6 +2214,79 @@
       data: { labels, datasets },
       options: _buildPnlChartOpts(yTick, tooltipFn),
     });
+  }
+
+  async function runOptimize() {
+    const status = document.getElementById('bt-sweep-status');
+    const p = _collectParams();
+    const n_random = parseInt(document.getElementById('bt-random-trials').value) || 200;
+    const days_list = _selectedDays();
+    if (!days_list.length) { status.textContent = 'Select at least one time span.'; return; }
+    status.textContent = `Optimizing… (${n_random} random trials → coordinate descent)`;
+    document.getElementById('bt-sweep-results').style.display = 'none';
+    try {
+      const r = await fetch('/api/backtest/optimize', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({pair: p.pair, days_list, start: p.start, interval: p.interval, n_random, n_starts: 3}),
+      });
+      const j = await r.json();
+      if (!j.job_id) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      _pollOptimizeJob(j.job_id);
+    } catch(e) { status.textContent = 'Request failed: ' + e; }
+  }
+
+  async function _pollOptimizeJob(jobId) {
+    const status = document.getElementById('bt-sweep-status');
+    const poll = async () => {
+      const r = await fetch(`/api/backtest/${jobId}`);
+      const j = await r.json();
+      if (j.status === 'running') {
+        if (j.progress) status.textContent = j.progress;
+        setTimeout(poll, 2000);
+        return;
+      }
+      if (j.status === 'error') { status.textContent = 'Error: ' + j.error; return; }
+      status.textContent = 'Done.';
+      renderOptimizeResults(j.result);
+    };
+    setTimeout(poll, 2000);
+  }
+
+  function renderOptimizeResults(result) {
+    const el = document.getElementById('bt-sweep-results');
+    const { best_params, best_score, per_window } = result;
+    document.getElementById('bt-sweep-title').textContent =
+      `Optimize — best params (avg ${best_score >= 0 ? '+' : ''}${best_score.toFixed(2)}% across ${per_window.map(r => r.days + 'd').join(' / ')})`;
+
+    // Per-window validation table
+    let html = `<div class="tbl-wrap"><table class="data-tbl">
+      <thead><tr><th>Window</th><th>Return</th><th>PnL</th><th>Trades</th><th>Win%</th><th>Worst</th><th>Best</th></tr></thead>
+      <tbody>${per_window.map(r => `<tr>
+        <td>${r.days}d</td>
+        <td style="color:${r.return_pct>=0?'var(--green)':'var(--red)'}">${r.return_pct>=0?'+':''}${r.return_pct.toFixed(2)}%</td>
+        <td style="color:${r.total_pnl>=0?'var(--green)':'var(--red)'}">${r.total_pnl>=0?'+':''}${CURRENCY_SYMBOL}${r.total_pnl.toFixed(2)}</td>
+        <td>${r.trades}</td>
+        <td>${r.trades ? r.win_rate+'%' : '—'}</td>
+        <td style="color:var(--red)">${CURRENCY_SYMBOL}${r.worst.toFixed(2)}</td>
+        <td style="color:var(--green)">+${CURRENCY_SYMBOL}${r.best.toFixed(2)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+
+    // Best params table
+    html += `<h3 style="font-size:13px;margin:16px 0 8px">Best parameters</h3>
+    <div class="tbl-wrap"><table class="data-tbl">
+      <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+      <tbody>${Object.entries(best_params).map(([k, v]) => `<tr>
+        <td>${_SWEEP_PARAM_LABELS[k] || k}</td>
+        <td><strong>${_fmtSweptValue(k, v)}</strong></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div style="margin-top:12px">
+      <button onclick='_applyParamsToForm(${JSON.stringify(best_params)})' style="padding:6px 16px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">Use these params</button>
+    </div>`;
+
+    document.getElementById('bt-sweep-content').innerHTML = html;
+    el.style.display = '';
   }
 
   function closePnlFullscreen() {

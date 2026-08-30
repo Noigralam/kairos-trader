@@ -331,18 +331,24 @@ Most parameters can be left at their defaults. The ones below have the biggest i
 
 2. **Sweep the parameters that matter** — each sweep tests a range of values and ranks them by net PnL, win rate, and max drawdown:
    ```bash
-   .venv/bin/python backtest.py sweep buyrsi   # find the best RSI buy threshold
-   .venv/bin/python backtest.py sweep trail    # find the best trailing stop %
-   .venv/bin/python backtest.py sweep floor    # find the best profit floor %
-   .venv/bin/python backtest.py sweep dca      # find the best DCA settings
-   .venv/bin/python backtest.py sweep all      # run everything at once
+   .venv/bin/python backtest.py sweep rsi_buy    # find the best RSI buy threshold
+   .venv/bin/python backtest.py sweep trail_pct  # find the best trailing stop %
+   .venv/bin/python backtest.py sweep floor_pct  # find the best profit floor %
+   .venv/bin/python backtest.py sweep dca_drop   # find the best DCA settings
+   .venv/bin/python backtest.py sweep all        # run everything at once
    ```
    For a new pair, `pair_sweep.py` does a full sweep in one command:
    ```bash
    .venv/bin/python pair_sweep.py XRPEUR
    ```
 
-3. **Watch out for overfitting** — a setting that ranks first over one 180-day window may not generalise. Run the same sweep over multiple windows (365d, 730d) and prefer values that are consistently good rather than occasionally excellent.
+3. **Run the optimizer** to find a parameter combination that works across multiple windows — random search narrows the field, then coordinate descent refines the best candidates:
+   ```bash
+   .venv/bin/python backtest.py optimize 300 180 365 730
+   ```
+   Also available as the **Optimize** button in the dashboard backtest tab (uses the same trial count as the random search input). Expect 5–20 minutes depending on trial count.
+
+4. **Watch out for overfitting** — a setting that ranks first over one 180-day window may not generalise. Run the same sweep over multiple windows (365d, 730d) and prefer values that are consistently good rather than occasionally excellent.
 
 4. **Validate with shadows before going live** — once you have candidate settings, add a shadow profile in `.env` with those values and let it run alongside the live bot for a few days in simulation. The dashboard's Shadow tab shows its equity curve and trades in real time. Only promote to live once it's behaving as expected.
 
@@ -459,9 +465,15 @@ See [SWEEP_EXAMPLES.md](SWEEP_EXAMPLES.md) for worked examples showing how the c
 .venv/bin/python backtest.py sweep all              # all 16 axes in sequence
 
 # Multi-parameter search — finds combinations single-axis sweeps miss
+# First integer is trial count; remaining integers are day windows
 .venv/bin/python backtest.py random 200 365         # 200 random combos, ranked by return
 .venv/bin/python backtest.py random 500 365 730     # 500 trials across two windows
 .venv/bin/python backtest.py grid rsi_buy tp_pct 365  # full 12×12 grid for two axes
+
+# Optimizer — random search then coordinate descent (may take 5–20 min)
+# First integer is random trial count; remaining integers are day windows to score across
+.venv/bin/python backtest.py optimize 200 365       # 200 random starts, optimise for 365d
+.venv/bin/python backtest.py optimize 500 180 365 730  # score averaged across three windows
 
 # All sweeps run with --cached skip candle sync (much faster for repeat runs)
 .venv/bin/python backtest.py sweep rsi_buy 365 --cached
