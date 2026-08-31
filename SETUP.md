@@ -23,7 +23,7 @@ python3 --version
 ## Step 2 — Get the code
 
 ```bash
-git clone https://github.com/Noigralam/crypto.git cairn
+git clone https://github.com/Noigralam/cairn.git cairn
 cd cairn
 ```
 
