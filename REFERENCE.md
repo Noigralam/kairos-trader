@@ -1,4 +1,4 @@
-# Kairos
+# Cairn
 
 RSI + EMA200 mean-reversion bot for Binance. Runs in simulation or live mode with two independent engines:
 - **Spot** — any Binance quote currency (SOLEUR, ETHUSDT, XRPGBP, …), 15m candles
@@ -76,7 +76,7 @@ Dashboard: http://192.168.1.x:8888
 Open it and confirm the status badge shows **running**. The first tick happens within 15 minutes when the next candle closes. If something looks wrong:
 
 ```bash
-tail -f data/kairos.log
+tail -f data/cairn.log
 ```
 
 ### 4. Go live (optional)
@@ -85,7 +85,7 @@ tail -f data/kairos.log
 
 1. Log in to Binance → top-right profile icon → **API Management**
 2. Click **Create API** → choose **System generated**
-3. Give it a label (e.g. `kairos-bot`) and complete the 2FA verification — Binance will also send a confirmation email; click the link in that email before the key activates
+3. Give it a label (e.g. `cairn-bot`) and complete the 2FA verification — Binance will also send a confirmation email; click the link in that email before the key activates
 4. On the permissions page, enable **exactly** these:
    - ✅ **Enable Reading**
    - ✅ **Enable Spot & Margin Trading**
@@ -109,7 +109,7 @@ In `.env` set `SPOT_MODE=live`, then restart:
 ./stop.sh && ./start.sh
 ```
 
-On startup in live mode the engine fetches your real quote-currency balance from Binance and logs it. Check `data/kairos.log` to confirm it looks correct before leaving it running:
+On startup in live mode the engine fetches your real quote-currency balance from Binance and logs it. Check `data/cairn.log` to confirm it looks correct before leaving it running:
 
 ```
 [LIVE] Started — Binance EUR balance: €XXX.XX  open positions: none
@@ -117,7 +117,7 @@ On startup in live mode the engine fetches your real quote-currency balance from
 
 (The currency symbol in that line reflects your `SPOT_QUOTE_CURRENCY` setting.)
 
-If that line doesn't appear within 30 seconds, check `data/kairos.log` for an error — it's almost always an API key or IP restriction issue.
+If that line doesn't appear within 30 seconds, check `data/cairn.log` for an error — it's almost always an API key or IP restriction issue.
 
 ## Running
 
@@ -138,11 +138,11 @@ The trading engine and web dashboard run as **separate processes**. The engine w
 Logs are written to separate files:
 
 ```bash
-tail -f data/kairos.log       # trading engine (all trade activity)
+tail -f data/cairn.log       # trading engine (all trade activity)
 tail -f data/dashboard.log    # web dashboard (Flask requests)
 ```
 
-The dashboard's **Log** view also tails `data/kairos.log` directly, so engine activity is always visible even when the dashboard is a separate process.
+The dashboard's **Log** view also tails `data/cairn.log` directly, so engine activity is always visible even when the dashboard is a separate process.
 
 Two modes (set via `SPOT_MODE` / `FUTURES_MODE` in `.env`):
 - `simulation` — paper trades, virtual balance, no API keys needed; state file is written on first start so balance persists across restarts
@@ -542,7 +542,7 @@ web/
     index.html          — single-page dashboard (Spot / Futures tabs)
 data/
   trades.db             — trade history, balance history, candle cache (WAL)
-  kairos.log            — engine log (all trading activity)
+  cairn.log            — engine log (all trading activity)
   dashboard.log         — dashboard process log (Flask requests)
   status_spot.json      — spot engine status snapshot; written by engine, read by dashboard
   status_futures.json   — futures engine status snapshot; written by engine, read by dashboard

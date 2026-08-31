@@ -23,8 +23,8 @@ python3 --version
 ## Step 2 — Get the code
 
 ```bash
-git clone https://github.com/Noigralam/crypto.git kairos
-cd kairos
+git clone https://github.com/Noigralam/crypto.git cairn
+cd cairn
 ```
 
 ---
@@ -84,7 +84,7 @@ Expected output:
 Engine started (PID 12345)
 Dashboard started (PID 12346)
 Dashboard: http://192.168.1.x:8888
-Engine log:    tail -f data/kairos.log
+Engine log:    tail -f data/cairn.log
 Dashboard log: tail -f data/dashboard.log
 Stop:          ./stop.sh
 ```
@@ -105,7 +105,7 @@ Once the first tick fires you'll see:
 To watch the log live:
 
 ```bash
-tail -f data/kairos.log
+tail -f data/cairn.log
 ```
 
 To check whether both processes are running:
@@ -128,12 +128,12 @@ crontab -e
 Add this line (adjust the path to match where you cloned the repo):
 
 ```
-*/5 * * * * /home/<user>/kairos/watchdog.sh >> /home/<user>/kairos/data/watchdog.log 2>&1
+*/5 * * * * /home/<user>/cairn/watchdog.sh >> /home/<user>/cairn/data/watchdog.log 2>&1
 ```
 
 If `DISCORD_WEBHOOK_URL` is set in `.env`, the watchdog will post a Discord alert when it detects a crash and again when the restart succeeds or fails.
 
-> The watchdog only monitors the **engine** process (`data/kairos.pid`), not the dashboard. The dashboard can be restarted independently with `./start.sh dashboard` and is less critical to monitor since it does not execute trades.
+> The watchdog only monitors the **engine** process (`data/cairn.pid`), not the dashboard. The dashboard can be restarted independently with `./start.sh dashboard` and is less critical to monitor since it does not execute trades.
 
 ---
 
@@ -144,7 +144,7 @@ If you set a `DASHBOARD_PIN`, the PIN is sent in cleartext over HTTP by default.
 ```bash
 # Generate a self-signed certificate valid for 10 years (no domain needed)
 openssl req -x509 -newkey rsa:4096 -keyout data/key.pem -out data/cert.pem \
-  -days 3650 -nodes -subj "/CN=kairos"
+  -days 3650 -nodes -subj "/CN=cairn"
 ```
 
 Then add to `.env`:
@@ -187,11 +187,11 @@ The short version:
 
 **"No module named X" on start**
 - Run `.venv/bin/pip install -r requirements.txt` again
-- Make sure you're running `./start.sh` from inside the `kairos/` directory
+- Make sure you're running `./start.sh` from inside the `cairn/` directory
 
 **Bot appears to do nothing for 15 minutes**
 - This is normal — it's waiting for the next candle boundary
-- Check `tail -f data/kairos.log` and look for `Waiting Xs to align to next 15m candle`
+- Check `tail -f data/cairn.log` and look for `Waiting Xs to align to next 15m candle`
 - If that line is there, everything is fine
 
 **"Permission denied" running start.sh / stop.sh**

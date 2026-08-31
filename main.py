@@ -4,7 +4,7 @@ import time
 from bot import __version__
 from bot.db import init_db
 
-LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "kairos.log")
+LOG_PATH = os.path.join(os.path.dirname(__file__), "data", "cairn.log")
 
 
 def setup_logging():

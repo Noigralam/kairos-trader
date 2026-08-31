@@ -1,4 +1,4 @@
-# Kairos
+# Cairn
 
 A self-hosted crypto trading bot for Binance with a web dashboard. Runs two independent engines simultaneously:
 
@@ -35,7 +35,7 @@ cp .env.example .env
 # Dashboard: http://<your-ip>:8888
 
 # 4. Watch logs
-tail -f data/kairos.log       # trading engine
+tail -f data/cairn.log       # trading engine
 tail -f data/dashboard.log    # web dashboard
 ```
 
@@ -57,13 +57,13 @@ First candle tick fires within 15 minutes. When you're happy with simulation res
 
 ## Screenshots
 
-![Main dashboard — balance, portfolio value, P&L and performance stats](screenshots/kairos_1.jpg)
+![Main dashboard — balance, portfolio value, P&L and performance stats](screenshots/cairn_1.jpg)
 
-![Open position detail — price ladder, DCA trigger, break-even and trailing stop](screenshots/kairos_2.jpg)
+![Open position detail — price ladder, DCA trigger, break-even and trailing stop](screenshots/cairn_2.jpg)
 
-![Price chart with candlesticks, indicators and trade markers, plus recent trades table](screenshots/kairos_3.jpg)
+![Price chart with candlesticks, indicators and trade markers, plus recent trades table](screenshots/cairn_3.jpg)
 
-![Shadow simulator rankings — all profiles compared by return, P&L and win rate](screenshots/kairos_4.jpg)
+![Shadow simulator rankings — all profiles compared by return, P&L and win rate](screenshots/cairn_4.jpg)
 
 ## Documentation
 
@@ -72,7 +72,7 @@ See [REFERENCE.md](REFERENCE.md) for the full configuration reference, per-pair 
 
 ## Support
 
-Kairos is free and open source. If it's been useful to you, tips are appreciated but never expected.
+Cairn is free and open source. If it's been useful to you, tips are appreciated but never expected.
 
 | Coin | Address |
 |------|---------|

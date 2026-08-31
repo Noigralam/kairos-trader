@@ -8,10 +8,10 @@ Total: ~10 100 lines across 23 files.
 ## Entry points
 
 ### `main.py` *(51 lines)*
-Engine process entry point. Sets up logging to `data/kairos.log`, calls `init_db()`, then starts the spot engine, Discord bot, and (if enabled) futures engine. Keeps the main thread alive with a `while True: sleep(60)` loop so the daemon threads keep running. No Flask.
+Engine process entry point. Sets up logging to `data/cairn.log`, calls `init_db()`, then starts the spot engine, Discord bot, and (if enabled) futures engine. Keeps the main thread alive with a `while True: sleep(60)` loop so the daemon threads keep running. No Flask.
 
 ### `dashboard.py` *(44 lines)*
-Dashboard process entry point. Sets `KAIROS_DASHBOARD_ONLY=1` before importing anything, which causes control endpoints in `app.py` to return 503 instead of trying to start engine threads in the wrong process. Sets up its own logging to `data/dashboard.log`, then starts Flask. No engine threads.
+Dashboard process entry point. Sets `CAIRN_DASHBOARD_ONLY=1` before importing anything, which causes control endpoints in `app.py` to return 503 instead of trying to start engine threads in the wrong process. Sets up its own logging to `data/dashboard.log`, then starts Flask. No engine threads.
 
 ---
 
@@ -76,7 +76,7 @@ Futures trading loop, same two-thread structure as spot: 15-minute signal loop a
 Empty — marks `web/` as a package.
 
 ### `web/app.py` *(2 272 lines)*
-The Flask dashboard. ~50 API endpoints covering: spot and futures status (read from JSON snapshots), trades, balance history, signals, charts (OHLCV + RSI + EMA200 + Bollinger Bands + actual trade markers), shadow profile status/trades/signals/charts, futures shadow ranking, FIFO tax summary/export/integrity/rebuild, Fear & Greed index, and recent log. Backtest API: `/api/backtest/run`, `/api/backtest/sweep`, `/api/backtest/fullsweep`, `/api/backtest/randomsearch`, `/api/backtest/2axissweep`, `/api/backtest/optimize` — all async (return a job_id, polled via `/api/backtest/<job_id>`). Shadow creation endpoint writes a new profile block to `.env` on the fly. Control endpoints (`/api/control`, `/api/futures/control`) return HTTP 503 when `KAIROS_DASHBOARD_ONLY=1`. PIN-gated actions use a lockout file to rate-limit brute force. Version badge in the dashboard header reflects the running dashboard process (`__version__`), not the engine snapshot.
+The Flask dashboard. ~50 API endpoints covering: spot and futures status (read from JSON snapshots), trades, balance history, signals, charts (OHLCV + RSI + EMA200 + Bollinger Bands + actual trade markers), shadow profile status/trades/signals/charts, futures shadow ranking, FIFO tax summary/export/integrity/rebuild, Fear & Greed index, and recent log. Backtest API: `/api/backtest/run`, `/api/backtest/sweep`, `/api/backtest/fullsweep`, `/api/backtest/randomsearch`, `/api/backtest/2axissweep`, `/api/backtest/optimize` — all async (return a job_id, polled via `/api/backtest/<job_id>`). Shadow creation endpoint writes a new profile block to `.env` on the fly. Control endpoints (`/api/control`, `/api/futures/control`) return HTTP 503 when `CAIRN_DASHBOARD_ONLY=1`. PIN-gated actions use a lockout file to rate-limit brute force. Version badge in the dashboard header reflects the running dashboard process (`__version__`), not the engine snapshot.
 
 ---
 

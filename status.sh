@@ -1,10 +1,10 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-ENGINE_PID="data/kairos.pid"
+ENGINE_PID="data/cairn.pid"
 DASHBOARD_PID="data/dashboard.pid"
 
-echo "=== Kairos status ==="
+echo "=== Cairn status ==="
 echo ""
 
 # Engine
@@ -31,8 +31,8 @@ fi
 echo ""
 
 # Last 5 engine log lines
-if [ -f "data/kairos.log" ]; then
+if [ -f "data/cairn.log" ]; then
     echo "=== Last engine log lines ==="
-    tail -5 data/kairos.log
+    tail -5 data/cairn.log
     echo ""
 fi

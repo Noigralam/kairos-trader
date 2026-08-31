@@ -6,7 +6,7 @@ if [ ! -d ".venv" ]; then
     exit 1
 fi
 
-ENGINE_PID="data/kairos.pid"
+ENGINE_PID="data/cairn.pid"
 DASHBOARD_PID="data/dashboard.pid"
 
 mkdir -p data
@@ -49,6 +49,6 @@ esac
 if [ "$TARGET" = "both" ] || [ "$TARGET" = "dashboard" ]; then
     echo "Dashboard: http://$(hostname -I | awk '{print $1}'):$(grep WEB_PORT .env | cut -d= -f2)"
 fi
-echo "Engine log:    tail -f data/kairos.log"
+echo "Engine log:    tail -f data/cairn.log"
 echo "Dashboard log: tail -f data/dashboard.log"
 echo "Stop:          ./stop.sh"

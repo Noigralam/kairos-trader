@@ -98,7 +98,7 @@ def favicon():
 def index():
     return render_template("index.html", config=config,
                            currency_symbol=config.SPOT_CURRENCY_SYMBOL,
-                           dashboard_only=bool(os.environ.get("KAIROS_DASHBOARD_ONLY")))
+                           dashboard_only=bool(os.environ.get("CAIRN_DASHBOARD_ONLY")))
 
 
 @app.route("/api/status")
@@ -850,7 +850,7 @@ def api_shadow_reset(name):
     if config.DASHBOARD_PIN and not allowed:
         return jsonify({"error": "PIN required"}), 403
     name = name.upper()
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+    if os.environ.get("CAIRN_DASHBOARD_ONLY"):
         _queue_command(_SPOT_COMMANDS_PATH, {"action": "reset_shadow", "name": name})
         return jsonify({"ok": True, "queued": True})
     from bot.spot_simulator import get_spot_shadows
@@ -951,7 +951,7 @@ def api_shadows_create():
         return jsonify({"error": str(e)}), 500
 
     # Trigger reload
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+    if os.environ.get("CAIRN_DASHBOARD_ONLY"):
         _queue_command(_SPOT_COMMANDS_PATH, {"action": "reload_shadows"})
         return jsonify({"ok": True, "queued": True, "name": name})
     from bot.spot_simulator import reload_spot_shadows
@@ -966,7 +966,7 @@ def api_shadows_reload():
         return jsonify({"error": "too many attempts — IP locked, run unlock_pin.sh on server"}), 429
     if config.DASHBOARD_PIN and not allowed:
         return jsonify({"error": "PIN required"}), 403
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+    if os.environ.get("CAIRN_DASHBOARD_ONLY"):
         _queue_command(_SPOT_COMMANDS_PATH, {"action": "reload_shadows"})
         return jsonify({"ok": True, "queued": True})
     from bot.spot_simulator import reload_spot_shadows
@@ -1537,7 +1537,7 @@ def api_futures_chart(symbol):
     })
 
 
-_ENGINE_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kairos.log")
+_ENGINE_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "cairn.log")
 
 
 def _tail_log(path: str, n: int = 150, chunk: int = 8192) -> list[str]:
@@ -1560,7 +1560,7 @@ def _tail_log(path: str, n: int = 150, chunk: int = 8192) -> list[str]:
 
 @app.route("/api/log")
 def api_log():
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+    if os.environ.get("CAIRN_DASHBOARD_ONLY"):
         out = []
         for l in _tail_log(_ENGINE_LOG_PATH):
             # format: "YYYY-MM-DD HH:MM:SS  vX.X.X  LEVEL  message"
@@ -2202,7 +2202,7 @@ def api_futures_control():
     data   = request.get_json(force=True)
     action = data.get("action")
     symbol = data.get("symbol", "").upper()
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+    if os.environ.get("CAIRN_DASHBOARD_ONLY"):
         if action in ("manual_buy", "manual_close") and symbol:
             cmd = {"action": action, "symbol": symbol}
             if action == "manual_buy":
@@ -2236,7 +2236,7 @@ def api_control():
     data = request.get_json(force=True)
     action = data.get("action")
     pair = data.get("pair")
-    if os.environ.get("KAIROS_DASHBOARD_ONLY"):
+    if os.environ.get("CAIRN_DASHBOARD_ONLY"):
         if action in ("manual_buy", "manual_close") and pair:
             cmd = {"action": action, "pair": pair}
             if action == "manual_buy":

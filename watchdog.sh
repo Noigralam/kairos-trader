@@ -1,7 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-PID_FILE="data/kairos.pid"
+PID_FILE="data/cairn.pid"
 ENV_FILE=".env"
 
 # load DISCORD_WEBHOOK_URL from .env
@@ -21,12 +21,12 @@ is_running() {
 }
 
 if ! is_running; then
-    alert "⚠️ **Kairos is down** — bot process not found. Attempting restart..."
+    alert "⚠️ **Cairn is down** — bot process not found. Attempting restart..."
     bash start.sh
     sleep 5
     if is_running; then
-        alert "✅ **Kairos restarted** successfully (PID $(cat "$PID_FILE"))."
+        alert "✅ **Cairn restarted** successfully (PID $(cat "$PID_FILE"))."
     else
-        alert "❌ **Kairos restart failed** — manual intervention required."
+        alert "❌ **Cairn restart failed** — manual intervention required."
     fi
 fi

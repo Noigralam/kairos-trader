@@ -3,7 +3,7 @@ import os
 
 # Must be set before web.app is imported so control endpoints know they're in
 # dashboard-only mode and can't reach the engine process.
-os.environ["KAIROS_DASHBOARD_ONLY"] = "1"
+os.environ["CAIRN_DASHBOARD_ONLY"] = "1"
 
 from bot import __version__
 from bot.db import init_db

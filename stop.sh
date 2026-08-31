@@ -1,7 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")"
 
-ENGINE_PID="data/kairos.pid"
+ENGINE_PID="data/cairn.pid"
 DASHBOARD_PID="data/dashboard.pid"
 
 TARGET="${1:-both}"

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Kairos</title>
+  <title>Cairn</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <script src="/static/chart.umd.min.js"></script>
   <style>
@@ -326,13 +326,13 @@
 <header>
   <div style="display:flex;align-items:center;gap:20px;">
     <h1>
-      <svg xmlns="http://www.w3.org/2000/svg" width="148" height="40" viewBox="0 0 148 40" aria-label="Kairos">
+      <svg xmlns="http://www.w3.org/2000/svg" width="148" height="40" viewBox="0 0 148 40" aria-label="Cairn">
         <defs>
-          <linearGradient id="kLineGrad" x1="0" y1="0" x2="1" y2="0">
+          <linearGradient id="cLineGrad" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stop-color="#58a6ff" stop-opacity="0.55"/>
             <stop offset="100%" stop-color="#3fb950"/>
           </linearGradient>
-          <linearGradient id="kFillGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="cFillGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#3fb950" stop-opacity="0.15"/>
             <stop offset="100%" stop-color="#3fb950" stop-opacity="0"/>
           </linearGradient>
@@ -340,18 +340,20 @@
         <!-- Area fill under sparkline -->
         <polygon
           points="2,37 20,34 36,35.5 52,31 68,32 84,27.5 100,28.5 116,23 132,24 146,19 146,40 2,40"
-          fill="url(#kFillGrad)"/>
+          fill="url(#cFillGrad)"/>
         <!-- Rising sparkline -->
         <polyline
           points="2,37 20,34 36,35.5 52,31 68,32 84,27.5 100,28.5 116,23 132,24 146,19"
-          fill="none" stroke="url(#kLineGrad)" stroke-width="1.5"
+          fill="none" stroke="url(#cLineGrad)" stroke-width="1.5"
           stroke-linecap="round" stroke-linejoin="round"/>
-        <!-- End dot -->
-        <circle cx="146" cy="19" r="2.5" fill="#3fb950"/>
-        <!-- Kairos text: tilted upward left→right -->
+        <!-- Cairn icon: 3 stacked stones at end of sparkline -->
+        <ellipse cx="146" cy="23" rx="4.5" ry="1.8" fill="#3fb950"/>
+        <ellipse cx="146" cy="20" rx="3.5" ry="1.8" fill="#3fb950"/>
+        <ellipse cx="146" cy="17" rx="2.5" ry="1.8" fill="#3fb950"/>
+        <!-- Cairn text: tilted upward left→right -->
         <text transform="translate(2,29) rotate(-6)"
           font-family="'Segoe UI',system-ui,-apple-system,sans-serif"
-          font-size="20" font-weight="700" fill="#e6edf3" letter-spacing="0.4">Kairos</text>
+          font-size="20" font-weight="700" fill="#e6edf3" letter-spacing="0.4">Cairn</text>
       </svg>
     </h1>
     <div class="tab-bar" style="margin-bottom:0">
@@ -377,7 +379,7 @@
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
         <span id="version-badge" style="font-size:10px;color:var(--muted);opacity:0.5;">v—</span>
-        {% if config.DASHBOARD_PIN %}<button id="lock-btn" onclick="if(_pinUnlocked){sessionStorage.removeItem('kairos_pin_ok');sessionStorage.removeItem('kairos_pin');_pinUnlocked=false;_applyLockState();}else{openPinModal();}" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0;line-height:1;" title="Lock/unlock controls">🔒</button>{% endif %}
+        {% if config.DASHBOARD_PIN %}<button id="lock-btn" onclick="if(_pinUnlocked){sessionStorage.removeItem('cairn_pin_ok');sessionStorage.removeItem('cairn_pin');_pinUnlocked=false;_applyLockState();}else{openPinModal();}" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0;line-height:1;" title="Lock/unlock controls">🔒</button>{% endif %}
       </div>
       <span id="uptime"    style="font-size:12px;color:var(--muted);">Session: —</span>
       <span id="next-tick" style="font-size:12px;color:var(--muted);">Next tick in —</span>
@@ -441,12 +443,12 @@
     <div id="spot-first-run-notice" style="display:none;background:#0d1117;border:1px solid #d29922;border-radius:6px;padding:12px 16px;margin-bottom:14px;font-size:13px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div>
-          <strong style="color:#d29922;">👋 Welcome to Kairos</strong><br>
+          <strong style="color:#d29922;">👋 Welcome to Cairn</strong><br>
           <span style="color:var(--muted);">You're paper trading with virtual money — no real orders are placed.
           Watch the simulation run for a while before considering live mode.
           Set <code>SPOT_MODE=live</code> in <code>.env</code> when ready.</span>
         </div>
-        <button onclick="localStorage.setItem('kairos_welcome_dismissed','1');document.getElementById('spot-first-run-notice').style.display='none';"
+        <button onclick="localStorage.setItem('cairn_welcome_dismissed','1');document.getElementById('spot-first-run-notice').style.display='none';"
           style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);padding:2px 8px;cursor:pointer;white-space:nowrap;font-size:12px;">Dismiss</button>
       </div>
     </div>
@@ -1342,12 +1344,12 @@
 
   // --- PIN lock ---
   const _pinEnabled = {{ 'true' if config.DASHBOARD_PIN else 'false' }};
-  let _pinUnlocked  = !_pinEnabled || sessionStorage.getItem('kairos_pin_ok') === '1';
+  let _pinUnlocked  = !_pinEnabled || sessionStorage.getItem('cairn_pin_ok') === '1';
   let _pendingUnlockCb = null;
 
   function _pinHeaders() {
     const h = { 'Content-Type': 'application/json' };
-    if (_pinEnabled) h['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+    if (_pinEnabled) h['X-Dashboard-Pin'] = sessionStorage.getItem('cairn_pin') || '';
     return h;
   }
 
@@ -1392,8 +1394,8 @@
       document.getElementById('pin-input').focus();
       return;
     }
-    sessionStorage.setItem('kairos_pin', pin);
-    sessionStorage.setItem('kairos_pin_ok', '1');
+    sessionStorage.setItem('cairn_pin', pin);
+    sessionStorage.setItem('cairn_pin_ok', '1');
     _pinUnlocked = true;
     closePinModal();
     _applyLockState();
@@ -1693,7 +1695,7 @@
       document.getElementById('spot-sim-notice').style.display = s.mode === 'simulation' ? '' : 'none';
 
       // First-run welcome notice (simulation only, dismissible)
-      const _welcomed = localStorage.getItem('kairos_welcome_dismissed') === '1';
+      const _welcomed = localStorage.getItem('cairn_welcome_dismissed') === '1';
       const _firstRunEl = document.getElementById('spot-first-run-notice');
       if (_firstRunEl) _firstRunEl.style.display = (s.mode === 'simulation' && !_welcomed && s.total_trades === 0) ? '' : 'none';
 
@@ -4527,7 +4529,7 @@
     };
     try {
       const h = {'Content-Type': 'application/json'};
-      if (_pinEnabled) h['X-Dashboard-Pin'] = sessionStorage.getItem('kairos_pin') || '';
+      if (_pinEnabled) h['X-Dashboard-Pin'] = sessionStorage.getItem('cairn_pin') || '';
       const r = await fetch('/api/shadows/create', {method: 'POST', headers: h, body: JSON.stringify(payload)});
       const j = await r.json();
       if (!j.ok) { status.textContent = 'Error: ' + (j.error || 'unknown'); return; }
