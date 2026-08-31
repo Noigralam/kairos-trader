@@ -1,5 +1,7 @@
 # Cairn
 
+> Formerly known as **kairos-trader**.
+
 A self-hosted crypto trading bot for Binance with a web dashboard. Runs two independent engines simultaneously:
 
 - **Spot** — any Binance quote currency (SOLEUR, ETHUSDT, XRPGBP, …), 15m candles, RSI + EMA200 mean-reversion
